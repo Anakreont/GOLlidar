@@ -36,8 +36,18 @@ STAN = {
     "znaczniki": 0, "komunikat": "",
     "pauza": False, "auto_pauza": False,
     "pom": [],                 # pomieszczenia zapisane w biezacej sesji
+    "przechyl": None,          # kat odchylenia od pionu [st.]
+    "prz_faza": 0,             # 0 brak, 1 trzymaj nieruchomo, 2 przekroj zapisany (postaw do pionu)
+    "prz_zostalo": 0.0,        # sekundy do zapisania przekroju
+    "prz_nr": 0,               # liczba przekrojow w sesji
+    "prz_wynik": "",           # wymiary ostatniego przekroju (szacunek na zywo)
+    "prz_skany": [],           # obroty zebrane podczas trzymania
 }
 PROG_PRZECHYLU = 15.0          # stopnie; powyzej tego skany sa oznaczane jako do pominiecia
+PRZ_WEJSCIE, PRZ_WYJSCIE = 60.0, 45.0   # przekroj pionowy: glowica polozona (60-125 st.), koniec ponizej 45 st.
+PRZ_MAX = 125.0
+PRZ_CZAS = 3.0                 # tyle sekund nieruchomo i przekroj jest zapisany
+PRZ_DRGANIA = 6.0              # dopuszczalna zmiana przechylu w czasie trzymania [st.]
 PLIKI = {}                      # nazwa strumienia -> otwarty plik (gdy nagrywa)
 KONIEC = threading.Event()
 ARGS = None
@@ -96,6 +106,8 @@ def watek_lidar(port, baud):
                             if ost_kat is not None and kat < ost_kat - 180:
                                 teraz = time.time()
                                 with LOCK:
+                                    if STAN["prz_faza"] == 1 and len(STAN["prz_skany"]) < 40:
+                                        STAN["prz_skany"].append(obrot)
                                     STAN["obrot"] = obrot
                                     STAN["pkt_obrot"] = len(obrot)
                                     STAN["hz"] = 1.0 / max(teraz - t_obr, 1e-3)
@@ -108,9 +120,89 @@ def watek_lidar(port, baud):
             time.sleep(1)
 
 
+# ----------------------------------------------------------------------------- przekroj pionowy
+def wymiary_przekroju(skany):
+    """Szacuje dwa wymiary prostokata (np. wysokosc i szerokosc sali) z obrotow zebranych przy polozonej glowicy.
+    Zwraca (a, b) w metrach, mniejszy pierwszy; None gdy nie widac pary przeciwleglych plaszczyzn."""
+    pkt = []
+    for ob in skany[-12:]:
+        for kat, odl in ob:
+            if 150 < odl < 12000:
+                a = math.radians(kat)
+                pkt.append((odl / 1000 * math.sin(a), odl / 1000 * math.cos(a)))
+    if len(pkt) < 150:
+        return None, None
+    pkt = pkt[::max(1, len(pkt) // 700)]
+    BIN = 0.04
+    najl = (-1, 0, None, None)
+    for st in range(0, 90):
+        c, s_ = math.cos(math.radians(st)), math.sin(math.radians(st))
+        hu, hv = {}, {}
+        for x, y in pkt:
+            u, v = int((x * c + y * s_) // BIN), int((-x * s_ + y * c) // BIN)
+            hu[u] = hu.get(u, 0) + 1
+            hv[v] = hv.get(v, 0) + 1
+        ocena = sum(n * n for n in hu.values()) + sum(n * n for n in hv.values())
+        if ocena > najl[0]:
+            najl = (ocena, st, hu, hv)
+    prog = max(6, len(pkt) * 0.03)
+
+    def rozpietosc(h):
+        uj = [(n + h.get(k - 1, 0) + h.get(k + 1, 0), k) for k, n in h.items() if k < -3]
+        do = [(n + h.get(k - 1, 0) + h.get(k + 1, 0), k) for k, n in h.items() if k > 3]
+        if not uj or not do:
+            return None
+        (n1, k1), (n2, k2) = max(uj), max(do)
+        if n1 < prog or n2 < prog:
+            return None
+        return (k2 - k1) * BIN
+    w = sorted(x for x in (rozpietosc(najl[2]), rozpietosc(najl[3])) if x)
+    return (w + [None, None])[:2]
+
+
+class Przekroj:
+    """Automat: glowica polozona i nieruchoma przez PRZ_CZAS -> przekroj zapisany. Zwraca zdarzenia do znacznikow."""
+
+    def __init__(self):
+        self.faza, self.t0, self.okno = 0, 0.0, []
+
+    def krok(self, t, kat):
+        zd = []
+        if self.faza == 0:
+            if PRZ_WEJSCIE <= kat <= PRZ_MAX:
+                self.faza, self.t0, self.okno = 1, t, [(t, kat)]
+                zd.append("START")
+        elif kat < PRZ_WYJSCIE:
+            zd.append("KONIEC" if self.faza == 2 else "PRZERWANY")
+            self.faza = 0
+        elif self.faza == 1:
+            self.okno = [(a, b) for a, b in self.okno if t - a <= 1.0] + [(t, kat)]
+            k = [b for _, b in self.okno]
+            if max(k) - min(k) > PRZ_DRGANIA or not (PRZ_WEJSCIE <= kat <= PRZ_MAX):
+                self.t0, self.okno = t, [(t, kat)]
+                zd.append("OD_NOWA")
+            elif t - self.t0 >= PRZ_CZAS:
+                self.faza = 2
+                zd.append("OK")
+        return zd
+
+    def zostalo(self, t):
+        return max(0.0, PRZ_CZAS - (t - self.t0)) if self.faza == 1 else 0.0
+
+
+def policz_przekroj(nr, skany):
+    a, b = wymiary_przekroju(skany)
+    wynik = " × ".join(f"{x:.2f}".replace(".", ",") for x in (a, b) if x) + (" m" if a else "")
+    with LOCK:
+        if STAN["prz_nr"] == nr:
+            STAN["prz_wynik"] = wynik or "brak wymiarów na żywo"
+    znacznik(f"PRZEKROJ_WYNIK nr={nr} a={a or ''} b={b or ''}", licz=False)
+
+
 # ----------------------------------------------------------------------------- IMU (BNO085 UART-RVC)
 def watek_imu(port, baud):
     buf = bytearray()
+    prz = Przekroj()
     while not KONIEC.is_set():
         try:
             with serial.Serial(port, baud, timeout=0.05) as s:
@@ -131,7 +223,9 @@ def watek_imu(port, baud):
                         del buf[:19]
                         with LOCK:
                             STAN["yaw"], STAN["pitch"], STAN["roll"] = yaw / 100, pitch / 100, roll / 100
-                            m = max(abs(pitch), abs(roll)) / 100
+                            m = math.degrees(math.acos(max(-1.0, min(1.0, math.cos(math.radians(pitch / 100)) *
+                                                                         math.cos(math.radians(roll / 100))))))
+                            STAN["przechyl"] = m
                             if STAN["nagrywa"]:
                                 STAN["max_przechyl"] = max(STAN["max_przechyl"], m)
                             zmiana = None
@@ -139,8 +233,28 @@ def watek_imu(port, baud):
                                 STAN["auto_pauza"], zmiana = True, "AUTO_PRZECHYL_START"
                             elif m < PROG_PRZECHYLU - 3 and STAN["auto_pauza"]:
                                 STAN["auto_pauza"], zmiana = False, "AUTO_PRZECHYL_KONIEC"
+                            teraz = time.time()
+                            zdarzenia = prz.krok(teraz, m) if STAN["nagrywa"] and not STAN["pauza"] else []
+                            if not STAN["nagrywa"] and prz.faza:
+                                prz.faza = 0
+                            skany, nr = None, 0
+                            for z in zdarzenia:
+                                if z in ("START", "OD_NOWA"):
+                                    STAN["prz_skany"] = []
+                                    STAN["prz_wynik"] = ""
+                                elif z == "OK":
+                                    STAN["prz_nr"] += 1
+                                    nr, skany = STAN["prz_nr"], STAN["prz_skany"]
+                                    STAN["prz_skany"] = []
+                            STAN["prz_faza"], STAN["prz_zostalo"] = prz.faza, prz.zostalo(teraz)
                         if zmiana:
                             znacznik(zmiana, licz=False)
+                        for z in zdarzenia:
+                            if z == "OK":
+                                znacznik(f"PRZEKROJ_OK nr={nr} przechyl={m:.0f}", licz=False)
+                                threading.Thread(target=policz_przekroj, args=(nr, skany), daemon=True).start()
+                            elif z != "OD_NOWA":
+                                znacznik(f"PRZEKROJ_{z} przechyl={m:.0f}", licz=False)
         except (serial.SerialException, OSError):
             time.sleep(1)
 
@@ -220,7 +334,7 @@ def start(nazwa):
         kal = STAN.get("_baro_kal")
         if kal:
             PLIKI["baro"].write(struct.pack("<QH", time.time_ns(), len(kal)) + kal)
-        STAN.update(nagrywa=True, nazwa=nazwa, katalog=kat, t_start=time.time(), znaczniki=0, max_przechyl=0.0, pom=[])
+        STAN.update(nagrywa=True, nazwa=nazwa, katalog=kat, t_start=time.time(), znaczniki=0, max_przechyl=0.0, pom=[], prz_nr=0, prz_wynik="", prz_faza=0)
     return True
 
 
@@ -310,6 +424,8 @@ body{margin:0;font-family:system-ui,sans-serif;background:#111;color:#eee;font-s
 #mapa{position:relative}
 #c{width:100vw;height:min(100vw,40vh);display:block;background:#000}
 #zas{position:absolute;right:6px;top:6px;width:auto;font-size:15px;padding:6px 8px;border-radius:8px;border:0;background:#333c;color:#fff}
+#prk{display:none;position:absolute;left:0;right:0;bottom:0;padding:12px 10px;text-align:center;font-size:20px;font-weight:700;color:#fff}
+#prk small{display:block;font-weight:400;font-size:14px}
 #kom{padding:4px 10px;color:#fb3;font-size:13px}
 #kom:empty{display:none}
 .w{padding:5px 8px;display:flex;gap:8px}
@@ -338,7 +454,7 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
  <div><small>Przechył</small><b id="prz">–</b></div>
  <div><small>Wysokość</small><b id="wys">–</b></div>
 </div>
-<div id="mapa"><canvas id="c"></canvas>
+<div id="mapa"><canvas id="c"></canvas><div id="prk"></div>
  <select id="zas"><option value="3">3 m</option><option value="6" selected>6 m</option><option value="12">12 m</option><option value="20">20 m</option></select></div>
 <div id="kom"></div>
 
@@ -386,6 +502,15 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 const $=id=>document.getElementById(id),c=$('c'),g=c.getContext('2d');let ost=null;
 function cmd(u,ok){fetch('/'+u,{method:'POST'}).then(r=>r.json()).then(j=>{if(j.blad)alert(j.blad);else if(ok)ok()}).catch(()=>alert('Brak połączenia z Raspberry Pi'))}
 function wibr(){if(navigator.vibrate)navigator.vibrate(40)}
+let ac=null,pf=0;
+function dzw(f,ms,kiedy){if(!ac)return;const o=ac.createOscillator(),w=ac.createGain();o.frequency.value=f;o.connect(w);w.connect(ac.destination);
+ const t=ac.currentTime+(kiedy||0);w.gain.setValueAtTime(.5,t);o.start(t);o.stop(t+ms/1000)}
+addEventListener('pointerdown',()=>{try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();ac.resume()}catch(e){}});
+function przekroj(s){const e=$('prk'),f=s.nagrywa?s.prz_faza:0;
+ if(f==1){e.style.display='block';e.style.background='#b70d';e.innerHTML='PRZEKRÓJ – trzymaj nieruchomo '+Math.ceil(s.prz_zostalo)+' s'}
+ else if(f==2){e.style.display='block';e.style.background='#1f9d68e6';e.innerHTML='PRZEKRÓJ nr '+s.prz_nr+' ZAPISANY<small>'+(s.prz_wynik||'liczę…')+' · postaw do pionu</small>'}
+ else e.style.display='none';
+ if(f!=pf){if(f==1){dzw(660,90)}else if(f==2){dzw(880,150);dzw(1320,250,.18);if(navigator.vibrate)navigator.vibrate([150,80,150])}else if(pf==1){dzw(220,250)}pf=f}}
 function zapZn(){cmd('znacznik?opis='+encodeURIComponent($('opis').value),()=>{$('opis').value='';wibr()})}
 function szybki(t){cmd('znacznik?opis='+encodeURIComponent(t),wibr)}
 function krok(id,d){const e=$(id);e.value=Math.max(0,(parseInt(e.value)||0)+d)}
@@ -403,15 +528,15 @@ function rys(s){const dp=devicePixelRatio||1,W=c.width=c.clientWidth*dp,H=c.heig
  g.fillStyle='#f33';g.beginPath();g.moveTo(cx,cy-9*dp);g.lineTo(cx-5*dp,cy+5*dp);g.lineTo(cx+5*dp,cy+5*dp);g.fill()}
 function kl(e,t,k){e.textContent=t;e.className=k||''}
 function fmt(t){const m=Math.floor(t/60),s=Math.floor(t%60);return m+':'+(s<10?'0':'')+s}
-function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);
- kl($('nag'),!s.nagrywa?'stop':s.pauza?'PAUZA':s.auto_pauza?'PRZECHYŁ':'● '+fmt(s.czas),!s.nagrywa?'uw':s.pauza?'uw':s.auto_pauza?'zle':'ok');
+function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);przekroj(s);
+ kl($('nag'),!s.nagrywa?'stop':s.pauza?'PAUZA':s.prz_faza?'PRZEKRÓJ':s.auto_pauza?'PRZECHYŁ':'● '+fmt(s.czas),!s.nagrywa?'uw':s.pauza?'uw':s.auto_pauza?'zle':'ok');
  $('bpa').textContent=s.pauza?'WZNÓW (stoję prosto)':'PAUZA (schylam się / kucam)';$('bpa').style.background=s.pauza?'#1f9d68':'#b70';
  $('bs').style.opacity=s.nagrywa?.35:1;$('bp').style.opacity=s.nagrywa?1:.35;
  kl($('lid'),s.lidar_ok?s.hz.toFixed(1)+' Hz':'BRAK',s.lidar_ok?'ok':'zle');$('lid2').textContent=s.pkt_obrot+' pkt/obrót';
- if(s.pitch===null){kl($('prz'),s.imu_wl?'BRAK':'wył.',s.imu_wl?'zle':'')}else{const m=Math.max(Math.abs(s.pitch),Math.abs(s.roll));kl($('prz'),m.toFixed(1)+'°',m>15?'zle':m>8?'uw':'ok')}
+ if(s.pitch===null){kl($('prz'),s.imu_wl?'BRAK':'wył.',s.imu_wl?'zle':'')}else{const m=s.przechyl;kl($('prz'),m.toFixed(1)+'°',m>15?'zle':m>8?'uw':'ok')}
  $('prz2').textContent=s.max_przechyl.toFixed(1)+'°';
  if(s.wys===null){kl($('wys'),s.baro_wl?'BRAK':'wył.',s.baro_wl?'zle':'');$('wys2').textContent=''}else{kl($('wys'),(s.wys>=0?'+':'')+s.wys.toFixed(1)+' m');$('wys2').textContent='temp. '+s.temp.toFixed(0)+' °C'}
- $('roz').textContent=(s.rozmiar/1e6).toFixed(1)+' MB';$('zn').textContent='znaczniki: '+s.znaczniki;$('ses').textContent=s.nazwa||'';
+ $('roz').textContent=(s.rozmiar/1e6).toFixed(1)+' MB';$('zn').textContent='znaczniki: '+s.znaczniki+(s.prz_nr?' · przekroje: '+s.prz_nr:'');$('ses').textContent=s.nazwa||'';
  kl($('dysk'),(s.wolne/1e9).toFixed(1)+' GB',s.wolne<1e9?'zle':'ok');
  if(!s.kopia){kl($('kop'),'wyłączona');$('kop2').textContent=''}else{const w=s.kopia.wiek,st=w>300;
   kl($('kop'),s.kopia.ok?(st?'brak od '+Math.round(w/60)+' min':'OK'):'BŁĄD',s.kopia.ok&&!st?'ok':s.kopia.ok?'uw':'zle');
@@ -442,7 +567,8 @@ class Handler(BaseHTTPRequestHandler):
             teraz = time.time()
             with LOCK:
                 s = {k: STAN[k] for k in ("nagrywa", "nazwa", "hz", "pkt_obrot", "yaw", "pitch", "roll",
-                                          "max_przechyl", "wys", "temp", "znaczniki", "komunikat", "pauza", "auto_pauza")}
+                                          "max_przechyl", "wys", "temp", "znaczniki", "komunikat", "pauza", "auto_pauza",
+                                          "przechyl", "prz_faza", "prz_zostalo", "prz_nr", "prz_wynik")}
                 s["obrot"] = STAN["obrot"]
                 s["pom"] = STAN["pom"][-5:]
                 s["pom_n"] = len(STAN["pom"])

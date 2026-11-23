@@ -122,6 +122,21 @@ albo pod adresem IP z listy urządzeń podłączonych do hotspotu, z dopiskiem `
 6. Na każdej kondygnacji zmierz dalmierzem 3–4 długie wymiary kontrolne oraz grubość ściany zewnętrznej w ościeżu okna.
 7. Skanuj po lekcjach — ludzie w kadrze psują mapę.
 
+### Przekrój pionowy (wysokości) — automatycznie
+
+W trakcie nagrywania można w dowolnym miejscu zmierzyć pionowy przekrój pomieszczenia:
+
+1. Stanąć i położyć monopod poziomo (przechył 60–125°), tak żeby płaszczyzna skanu przecinała to, co ma być zmierzone
+   (np. w poprzek sali albo prostopadle do ściany z oknem).
+2. Trzymać nieruchomo. Strona pokazuje odliczanie, po 3 s jest podwójny sygnał, wibracja i napis „PRZEKRÓJ nr N ZAPISANY"
+   z szacunkowymi wymiarami (np. `3,04 × 6,20 m` — wysokość i szerokość).
+3. Postawić monopod do pionu, odczekać sekundę i iść dalej. Nic nie trzeba klikać; przekrojów może być dowolnie wiele.
+
+Poruszenie w trakcie zaczyna odliczanie od nowa; podniesienie przed sygnałem anuluje pomiar (niski dźwięk).
+W `znaczniki.txt` zapisują się `PRZEKROJ_START`, `PRZEKROJ_OK nr=…`, `PRZEKROJ_WYNIK`, `PRZEKROJ_KONIEC`.
+Wymiary na stronie są tylko podglądem; dokładne przekroje (parapety, nadproża, grzejniki) liczone są później z nagrania.
+Dźwięk działa po pierwszym dotknięciu strony w telefonie; wymaga czujnika przechyłu.
+
 ## 8. Pliki nagrania
 
 Katalog `~/skany/<data>_<nazwa>/`:
