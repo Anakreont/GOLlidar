@@ -28,7 +28,7 @@ router = APIRouter(prefix="/lidar", tags=["lidar"])
 
 KATALOG = Path(os.environ.get("LIDAR_DIR", "/mnt/backup/lidar"))
 MAX_KAWALEK = 8 * 1024 * 1024
-DOZWOLONE = {"lidar.bin", "imu.bin", "baro.bin", "info.txt", "znaczniki.txt", "pomieszczenia.csv"}
+PLIK_RE = re.compile(r"^[a-z0-9_]{1,40}\.(csv|txt|bin)$")       # pliki sesji; nowe rodzaje nie wymagaja zmian na serwerze
 SESJA_RE = re.compile(r"^[A-Za-z0-9_+\-]{1,100}$")
 _blokada = threading.Lock()
 
@@ -39,7 +39,7 @@ def _sprawdz(token, sesja, plik):
         raise HTTPException(503, "LIDAR_TOKEN nie jest ustawiony na serwerze")
     if not token or not hmac.compare_digest(token.encode(), wzor.encode()):
         raise HTTPException(401, "zly token")
-    if not SESJA_RE.match(sesja) or plik not in DOZWOLONE:
+    if not SESJA_RE.match(sesja) or not PLIK_RE.match(plik):
         raise HTTPException(400, "niedozwolona nazwa sesji lub pliku")
     return KATALOG / sesja / plik
 

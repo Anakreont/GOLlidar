@@ -136,6 +136,16 @@ albo pod adresem IP z listy urządzeń podłączonych do hotspotu, z dopiskiem `
   w `znaczniki.txt` są to wiersze `EDYCJA <id> <tekst>` i `USUNIETO <id>`. Dzięki temu kopia na serwer zawsze się zgadza.
 - Usuwanie z karty nie usuwa kopii na serwerze.
 
+### Grzejniki, wysokość w świetle, klimatyzacja
+
+- Zakładka **Grzejniki**: rodzaj (żeliwny, płytowy, aluminiowy, łazienkowy, rurowy, favier), sztuk, liczba żeberek w jednym
+  albo szerokość i długość w cm, uwagi. Zapis do `grzejniki.csv`, poprawki i usuwanie jak przy pomieszczeniach.
+  Nazwa pomieszczenia jest wspólna z zakładką Oprawy i zostaje do zmiany.
+- Zakładka **Notatka**: szybkie wpisy „Wysokość w świetle" i „Klimatyzacja" zapisują się jako znaczniki
+  (`WYSOKOŚĆ W ŚWIETLE 285 cm (sala 12)`, `KLIMATYZACJA …`).
+- Po dodaniu nowych rodzajów plików trzeba raz odświeżyć odbiornik na serwerze:
+  `git -C ~/GOLlidar pull && cp ~/GOLlidar/serwer/lidar_upload.py ~/BMS/ && sudo systemctl restart bms-api`.
+
 ### Przekrój pionowy (wysokości) — automatycznie
 
 W trakcie nagrywania można w dowolnym miejscu zmierzyć pionowy przekrój pomieszczenia:

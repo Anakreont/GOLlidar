@@ -37,6 +37,7 @@ STAN = {
     "pauza": False, "auto_pauza": False,
     "pom": [],                 # pomieszczenia zapisane w biezacej sesji
     "budynek": "", "kondygnacja": "",
+    "grz": [],                 # grzejniki zapisane w biezacej sesji
     "przechyl": None,          # kat odchylenia od pionu [st.]
     "prz_faza": 0,             # 0 brak, 1 trzymaj nieruchomo, 2 przekroj zapisany (postaw do pionu)
     "prz_zostalo": 0.0,        # sekundy do zapisania przekroju
@@ -358,7 +359,7 @@ def start(budynek, kondygnacja):
         kal = STAN.get("_baro_kal")
         if kal:
             PLIKI["baro"].write(struct.pack("<QH", time.time_ns(), len(kal)) + kal)
-        STAN.update(nagrywa=True, nazwa=nazwa, katalog=kat, t_start=time.time(), znaczniki=0, max_przechyl=0.0, pom=[], prz_nr=0, prz_wynik="", prz_faza=0,
+        STAN.update(nagrywa=True, nazwa=nazwa, katalog=kat, t_start=time.time(), znaczniki=0, max_przechyl=0.0, pom=[], grz=[], prz_nr=0, prz_wynik="", prz_faza=0,
                     budynek=budynek, kondygnacja=kondygnacja)
     return True
 
@@ -391,7 +392,8 @@ def znacznik(opis, licz=True):
 
 KOL_POM = ("czas_ns;godzina;pomieszczenie;rodzaj_oprawy;punktow_w_oprawie;liczba_opraw;punktow_razem;uwagi;"
            "wysokosc_wzgl_m;budynek;kondygnacja;moc_punktu_W;moc_razem_W;wpis")
-ZN_SYSTEMOWE = ("AUTO_", "PRZEKROJ_", "PAUZA_", "KONDYGNACJA ", "POM ", "EDYCJA ", "USUNIETO ")
+ZN_SYSTEMOWE = ("AUTO_", "PRZEKROJ_", "PAUZA_", "KONDYGNACJA ", "POM ", "GRZ ", "EDYCJA ", "USUNIETO ")
+KOL_GRZ = "czas_ns;godzina;pomieszczenie;rodzaj;sztuk;zeberek;szerokosc_cm;dlugosc_cm;uwagi;wysokosc_wzgl_m;budynek;kondygnacja;wpis"
 
 
 def _liczba(t):
@@ -426,6 +428,69 @@ def wiersze_pom(kat):
         else:
             stan[k[0]] = rek
     return list(stan.values())
+
+
+def wiersze_grz(kat):
+    """Aktualny stan grzejnikow sesji (plik tylko dopisywany, zasady jak w wiersze_pom)."""
+    try:
+        with open(os.path.join(kat, "grzejniki.csv"), encoding="utf-8-sig") as f:
+            linie = f.read().splitlines()[1:]
+    except OSError:
+        return []
+    stan = {}
+    for w in linie:
+        k = (w.split(";") + [""] * 13)[:13]
+        if not k[0].isdigit():
+            continue
+        if k[12] == "usuniety":
+            stan.pop(k[0], None)
+            continue
+        stan[k[0]] = {"id": k[0], "godz": k[1], "nr": k[2], "rodzaj": k[3], "sztuk": int(_liczba(k[4])), "zeberek": int(_liczba(k[5])),
+                      "szer": _liczba(k[6]), "dl": _liczba(k[7]), "uwagi": k[8], "wys": k[9], "bud": k[10], "kond": k[11]}
+    return sorted(stan.values(), key=lambda x: int(x["id"]))
+
+
+def grzejnik(nr, rodzaj, sztuk, zeberek, szer, dl, uwagi, n=None, idg=None, usun=False):
+    """Dopisuje wiersz do grzejniki.csv. Z n i idg: poprawka albo usuniecie wpisu."""
+    try:
+        sztuk, zeberek = int(sztuk or 0), int(zeberek or 0)
+        szer, dl = float(str(szer or 0).replace(",", ".")), float(str(dl or 0).replace(",", "."))
+    except ValueError:
+        return "Sztuki, żeberka i wymiary muszą być liczbami"
+    if min(sztuk, zeberek, szer, dl) < 0:
+        return "Liczby nie mogą być ujemne"
+    if not usun and sztuk <= 0:
+        return "Podaj liczbę sztuk"
+    lw = lambda x: (f"{x:.1f}".rstrip("0").rstrip(".").replace(".", ",")) if x else ""
+    with LOCK:
+        if idg:
+            kat = sesja_sciezka(n)
+            stary = next((x for x in wiersze_grz(kat) if x["id"] == idg), None) if kat else None
+            if not stary:
+                return "Nie ma takiego wpisu"
+            czas, godz, wys, bud, kond, wpis = idg, stary["godz"], stary["wys"], stary["bud"], stary["kond"], "usuniety" if usun else "poprawka"
+            if usun:
+                nr, rodzaj, uwagi = stary["nr"], stary["rodzaj"], stary["uwagi"]
+        else:
+            if not STAN["nagrywa"]:
+                return "Zapis grzejników działa tylko podczas nagrywania"
+            kat, czas, godz, wpis = STAN["katalog"], str(time.time_ns()), datetime.now().strftime("%H:%M:%S"), ""
+            if not czysc(nr):
+                nr = f"bez nazwy {len(wiersze_grz(kat)) + 1}"
+            wys = "" if STAN["wys"] is None else f"{STAN['wys']:.1f}".replace(".", ",")
+            bud, kond = STAN["budynek"], STAN["kondygnacja"]
+        sciezka = os.path.join(kat, "grzejniki.csv")
+        nowy = not os.path.exists(sciezka)
+        with open(sciezka, "a", encoding="utf-8-sig" if nowy else "utf-8") as f:
+            if nowy:
+                f.write(KOL_GRZ + "\n")
+            f.write(f"{czas};{godz};{czysc(nr)};{czysc(rodzaj)};{sztuk or ''};{zeberek or ''};{lw(szer)};{lw(dl)};{czysc(uwagi)};{wys};"
+                    f"{bud};{kond};{wpis}\n")
+        if STAN["nagrywa"] and os.path.abspath(kat) == os.path.abspath(STAN["katalog"]):
+            STAN["grz"] = wiersze_grz(kat)
+    if not idg:
+        znacznik(f"GRZ {czysc(nr)}", licz=True)
+    return None
 
 
 def znaczniki_stan(kat):
@@ -557,11 +622,12 @@ def lista_sesji():
         p = sesja_sciezka(n)
         if not p:
             continue
-        inf, pom = info_sesji(p), wiersze_pom(p)
+        inf, pom, grz = info_sesji(p), wiersze_pom(p), wiersze_grz(p)
         wyn.append({"n": n, "mb": round(sum(os.path.getsize(os.path.join(p, x)) for x in os.listdir(p)) / 1e6, 1),
                     "bud": inf.get("budynek", ""), "kond": inf.get("kondygnacja", ""),
                     "data": n[6:8] + "." + n[4:6] + "." + n[:4] + " " + n[9:11] + ":" + n[11:13] if n[:8].isdigit() else "",
                     "zn": sum(1 for z in znaczniki_stan(p) if not z["sys"]), "pom": len(pom),
+                    "grz": sum(x["sztuk"] for x in grz),
                     "opraw": sum(x["opraw"] for x in pom), "w": round(sum(x["moc_razem"] for x in pom)),
                     "aktywna": STAN["nagrywa"] and os.path.abspath(p) == os.path.abspath(STAN["katalog"])})
     return wyn
@@ -586,7 +652,7 @@ def sesja_tresc(n):
             info = f.read()[-4000:]
     except OSError:
         info = ""
-    return {"n": n, "info": info, "znaczniki": znaczniki_stan(p), "pom": wiersze_pom(p)}
+    return {"n": n, "info": info, "znaczniki": znaczniki_stan(p), "pom": wiersze_pom(p), "grz": wiersze_grz(p)}
 
 
 def usun_sesje(n):
@@ -628,7 +694,8 @@ STRONA = r"""<!doctype html><html lang="pl"><head><meta charset="utf-8">
 body{margin:0;font-family:system-ui,sans-serif;background:#111;color:#eee;font-size:16px;padding-bottom:76px}
 section{display:none}section.on{display:block}
 #tb{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;gap:4px;padding:6px 6px calc(6px + env(safe-area-inset-bottom));background:#181818;border-top:1px solid #333}
-#tb button{min-height:52px;font-size:15px;background:#2a2a2a;border-radius:10px}#tb button.on{background:#2b62c9}
+.siatka{flex-wrap:wrap}.siatka button{flex:1 0 30%}
+#tb button{min-height:52px;font-size:14px;padding:0;background:#2a2a2a;border-radius:10px}#tb button.on{background:#2b62c9}
 body:not(.nagr) .rec{display:none!important}body.nagr .nrec{display:none!important}
 .lb{flex:0 0 96px;align-self:center;font-size:13px;color:#bbb;line-height:1.2}.zaw{flex-wrap:wrap;overflow:visible}
 #pasek{position:sticky;top:0;z-index:5;background:#181818;display:flex;gap:4px;padding:6px;border-bottom:1px solid #333}
@@ -652,7 +719,7 @@ body:not(.nagr) .rec{display:none!important}body.nagr .nrec{display:none!importa
 button{flex:1;font-size:17px;font-weight:600;min-height:50px;border:0;border-radius:12px;color:#fff;touch-action:manipulation}
 button:active{filter:brightness(1.35)}
 input,select,textarea{width:100%;font-size:17px;padding:11px 12px;border-radius:12px;border:1px solid #444;background:#222;color:#fff;font-family:inherit}
-textarea{min-height:110px;resize:vertical}
+textarea{min-height:80px;resize:vertical}
 h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;letter-spacing:.05em}
 #bs{background:#1f9d68;min-height:60px}#bp{background:#c33}#bpa{background:#b70}.nb{background:#2b62c9}.sz{background:#444;font-weight:400;font-size:16px}
 .chip{flex:0 0 auto;min-height:40px;font-size:15px;font-weight:400;background:#333;padding:0 14px;border-radius:22px}
@@ -689,7 +756,7 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 </section>
 
 <section id="t2">
-<div class="w"><input id="pnr" placeholder="pomieszczenie, np. sala 12 (może być puste)" autocomplete="off"></div>
+<div class="w"><input id="pnr" placeholder="pomieszczenie, np. sala 12 (może być puste)" autocomplete="off" oninput="$('gnr').value=this.value"></div>
 <div class="w seg" id="ptyp"><button class="on" onclick="typ(this)">świetlówki</button><button onclick="typ(this)">LED</button>
  <button onclick="typ(this)">żarówki</button><button onclick="typ(this)">inne</button></div>
 <div class="w"><label class="lb">1. Opraw</label><div class="licz"><button onclick="krok('popr',-1)">−</button>
@@ -706,7 +773,28 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 <div class="w" id="bed" style="display:none"><button class="sz" onclick="tab(4);sesja(encodeURIComponent(aktN))">Popraw / usuń wpisy</button></div>
 </section>
 
+<section id="t5">
+<div class="w"><input id="gnr" placeholder="pomieszczenie, np. sala 12 (może być puste)" autocomplete="off" oninput="$('pnr').value=this.value"></div>
+<div class="w seg siatka" id="grodz"><button class=on onclick="typG(this)">żeliwny</button><button onclick="typG(this)">płytowy</button><button onclick="typG(this)">aluminiowy</button><button onclick="typG(this)">łazienkowy</button><button onclick="typG(this)">rurowy</button><button onclick="typG(this)">favier</button></div>
+<div class="w"><label class="lb">1. Sztuk</label><div class="licz"><button onclick="krok('gszt',-1)">−</button>
+ <input id="gszt" type="number" inputmode="numeric" placeholder="0"><button onclick="krok('gszt',1)">+</button></div></div>
+<div class="w"><label class="lb">2. Żeberek (w jednym)</label><div class="licz"><button onclick="krok('gzeb',-1)">−</button>
+ <input id="gzeb" type="number" inputmode="numeric" placeholder="0"><button onclick="krok('gzeb',1)">+</button></div></div>
+<div class="w"><label class="lb">lub szerokość cm</label><div class="licz"><button onclick="krok('gszer',-1)">−</button>
+ <input id="gszer" type="number" inputmode="decimal" placeholder="0"><button onclick="krok('gszer',1)">+</button></div></div>
+<div class="w"><label class="lb">i długość cm</label><div class="licz"><button onclick="krok('gdl',-1)">−</button>
+ <input id="gdl" type="number" inputmode="decimal" placeholder="0"><button onclick="krok('gdl',1)">+</button></div></div>
+<div class="w"><input id="guw" placeholder="uwagi, np. bez zaworu, zabudowany" autocomplete="off"></div>
+<div id="edg" class="lst" style="display:none;color:#fb3"></div>
+<div class="w"><button class="nb" id="bzg" onclick="zapGrz()">ZAPISZ GRZEJNIK</button></div>
+<div id="glista" class="lst"></div>
+</section>
+
 <section id="t3">
+<div class="w"><label class="lb">Wysokość w świetle cm</label><input id="zwys" type="number" inputmode="decimal" placeholder="np. 285">
+ <button class="nb" style="flex:0 0 90px" onclick="if($('zwys').value)szybki('WYSOKOŚĆ W ŚWIETLE '+$('zwys').value+' cm'+nazwaP());$('zwys').value=''">Zapisz</button></div>
+<div class="w"><label class="lb">Klimatyzacja</label><input id="zkli" placeholder="np. 2 szt. split 3,5 kW" autocomplete="off">
+ <button class="nb" style="flex:0 0 90px" onclick="if($('zkli').value)szybki('KLIMATYZACJA '+$('zkli').value+nazwaP());$('zkli').value=''">Zapisz</button></div>
 <div class="w"><textarea id="opis" placeholder="Notatka do tego miejsca, np. zabudowa na całej ścianie północnej"></textarea></div>
 <div class="w"><button class="nb" onclick="zapZn()">ZAPISZ ZNACZNIK</button></div>
 <div class="et">Szybkie znaczniki (jedno dotknięcie)</div>
@@ -727,7 +815,7 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
  <button class="sz" onclick="if(confirm('Zatrzymać zapis i wyłączyć Raspberry Pi?'))cmd('wylacz')">Wyłącz RPi</button></div>
 </section>
 
-<nav id="tb"><button onclick="tab(1)">Skan</button><button onclick="tab(2)">Oprawy</button><button onclick="tab(3)">Notatka</button><button onclick="tab(4)">Dane</button></nav>
+<nav id="tb"><button onclick="tab(1)">Skan</button><button onclick="tab(2)">Oprawy</button><button onclick="tab(5)">Grzejniki</button><button onclick="tab(3)">Notatka</button><button onclick="tab(4)">Dane</button></nav>
 <script>
 const $=id=>document.getElementById(id),c=$('c'),g=c.getContext('2d');let ost=null;
 function cmd(u,ok){fetch('/'+u,{method:'POST'}).then(r=>r.json()).then(j=>{if(j.blad)alert(j.blad);else if(ok)ok()}).catch(()=>alert('Brak połączenia z Raspberry Pi'))}
@@ -746,12 +834,27 @@ function szybki(t){cmd('znacznik?opis='+encodeURIComponent(t),wibr)}
 function krok(id,d){const e=$(id);e.value=Math.max(0,(parseInt(e.value)||0)+d)}
 function typ(b){for(const x of $('ptyp').children)x.className='';b.className='on'}
 let ed=null,aktN='',otw='';
-function tab(n){for(let i=1;i<=4;i++){$('t'+i).className=i==n?'on':'';$('tb').children[i-1].className=i==n?'on':''}
+const TB=[1,2,5,3,4];
+function nazwaP(){return $('pnr').value?' ('+$('pnr').value+')':''}
+function tab(n){for(let i=1;i<=5;i++){$('t'+i).className=i==n?'on':'';$('tb').children[TB.indexOf(i)].className=i==n?'on':''}
  try{localStorage.setItem('tab',n)}catch(e){} if(n==4)sesje();scrollTo(0,0)}
 function zapPom(){const e=encodeURIComponent,t=$('ptyp').querySelector('.on').textContent;
  cmd('pomieszczenie?nr='+e($('pnr').value)+'&typ='+e(t)+'&punktow='+e($('ppkt').value)+'&opraw='+e($('popr').value)+'&moc='+e($('pmoc').value)+'&uwagi='+e($('puw').value)+
- (ed?'&n='+e(ed.n)+'&id='+ed.id:''),()=>{$('pnr').value='';$('popr').value='';$('puw').value='';wibr();if(ed){const n=ed.n;koniecEd();tab(4);sesja(e(n))}})}
-function koniecEd(){ed=null;$('edb').style.display='none';$('bzp').textContent='ZAPISZ POMIESZCZENIE';$('pnr').value='';$('popr').value='';$('puw').value=''}
+ (ed?'&n='+e(ed.n)+'&id='+ed.id:''),()=>{$('popr').value='';$('puw').value='';wibr();if(ed){const n=ed.n;koniecEd();tab(4);sesja(e(n))}})}
+function koniecEd(){ed=null;$('edb').style.display='none';$('bzp').textContent='ZAPISZ POMIESZCZENIE';$('popr').value='';$('puw').value=''}
+let edg=null;
+function typG(b){for(const x of $('grodz').children)x.className='';b.className='on'}
+function opisGrz(g){return g.sztuk+' × '+esc(g.rodzaj)+(g.zeberek?', '+g.zeberek+' żeb.':'')+(g.szer||g.dl?', '+(g.szer||'?')+' × '+(g.dl||'?')+' cm':'')}
+function zapGrz(){const e=encodeURIComponent,r=$('grodz').querySelector('.on').textContent;
+ cmd('grzejnik?nr='+e($('gnr').value)+'&rodzaj='+e(r)+'&sztuk='+e($('gszt').value)+'&zeberek='+e($('gzeb').value)+'&szer='+e($('gszer').value)+'&dl='+e($('gdl').value)+'&uwagi='+e($('guw').value)+
+ (edg?'&n='+e(edg.n)+'&id='+edg.id:''),()=>{$('gszt').value='';$('guw').value='';wibr();if(edg){const n=edg.n;koniecEdG();tab(4);sesja(e(n))}})}
+function koniecEdG(){edg=null;$('edg').style.display='none';$('bzg').textContent='ZAPISZ GRZEJNIK';$('gszt').value='';$('guw').value=''}
+function edGrz(i){const g=podgl.grz[i];edg={n:podgl.n,id:g.id};$('gnr').value=g.nr;$('gszt').value=g.sztuk;$('gzeb').value=g.zeberek||'';$('gszer').value=g.szer||'';$('gdl').value=g.dl||'';$('guw').value=g.uwagi;
+ for(const b of $('grodz').children)b.className=b.textContent==g.rodzaj?'on':'';if(!$('grodz').querySelector('.on'))$('grodz').children[0].className='on';
+ $('edg').style.display='block';$('edg').innerHTML='Poprawiasz wpis: <b>'+esc(g.nr)+'</b> ('+g.godz+') &nbsp; <a href="#" style="color:#9cf" onclick="koniecEdG();return false">anuluj</a>';
+ $('bzg').textContent='ZAPISZ POPRAWKĘ';tab(5)}
+function usGrz(i){const g=podgl.grz[i];if(!confirm('Usunąć wpis grzejnika w „'+g.nr+'”?'))return;
+ cmd('grzejnik?usun=1&n='+encodeURIComponent(podgl.n)+'&id='+g.id,()=>sesja(encodeURIComponent(podgl.n)))}
 function edPom(i){const p=podgl.pom[i];ed={n:podgl.n,id:p.id};$('pnr').value=p.nr;$('ppkt').value=p.punktow||'';$('pmoc').value=p.moc||'';$('popr').value=p.opraw;$('puw').value=p.uwagi;
  for(const b of $('ptyp').children)b.className=(b.textContent==p.typ||(!p.typ&&b==$('ptyp').children[0]))?'on':'';
  $('edb').style.display='block';$('edb').innerHTML='Poprawiasz wpis: <b>'+esc(p.nr)+'</b> ('+p.godz+') &nbsp; <a href="#" style="color:#9cf" onclick="koniecEd();return false">anuluj</a>';
@@ -773,10 +876,10 @@ function sesje(){fetch('/sesje').then(r=>r.json()).then(l=>{$('sd').innerHTML=''
  const B=Object.keys(g);window._bud=B;
  $('sl').innerHTML=B.length?B.map((b,bi)=>{const w=g[b],sum=k=>w.reduce((a,x)=>a+x[k],0),o=rozw[b];
   return '<div class="r" style="background:#1c2430;padding:8px;border-radius:8px;margin-top:6px"><span onclick="rozw[_bud['+bi+']]=!rozw[_bud['+bi+']];sesje()"><b>'+(o?'▾ ':'▸ ')+esc(b)+'</b><br>'+
-   'nagrań: '+w.length+' · '+sum('mb').toFixed(1)+' MB · pomieszczeń: '+sum('pom')+' · opraw: '+sum('opraw')+(sum('w')?' · '+sum('w')+' W':'')+'</span>'+
+   'nagrań: '+w.length+' · '+sum('mb').toFixed(1)+' MB · pomieszczeń: '+sum('pom')+' · grzejników: '+sum('grz')+' · opraw: '+sum('opraw')+(sum('w')?' · '+sum('w')+' W':'')+'</span>'+
    (b[0]=='('?'':'<button style="background:#933" onclick="usunBud('+bi+')">Usuń budynek</button>')+'</div>'+
    (o?w.slice().sort((a,c)=>(a.kond||'').localeCompare(c.kond||'')||a.n.localeCompare(c.n)).map(x=>
-   '<div class="r" style="padding-left:14px"><span><b>'+esc(x.kond||x.n)+'</b> · '+x.data+(x.aktywna?' · <b class="ok">NAGRYWA</b>':'')+'<br>'+x.mb+' MB · znaczniki: '+x.zn+' · pomieszczenia: '+x.pom+(x.w?' · '+x.w+' W':'')+'</span>'+
+   '<div class="r" style="padding-left:14px"><span><b>'+esc(x.kond||x.n)+'</b> · '+x.data+(x.aktywna?' · <b class="ok">NAGRYWA</b>':'')+'<br>'+x.mb+' MB · znaczniki: '+x.zn+' · pomieszczenia: '+x.pom+' · grzejniki: '+x.grz+(x.w?' · '+x.w+' W':'')+'</span>'+
    '<button data-n="'+encodeURIComponent(x.n)+'" onclick="sesja(this.dataset.n)">Podgląd</button>'+
    (x.aktywna?'':'<button data-n="'+encodeURIComponent(x.n)+'" style="background:#933" onclick="usun(this.dataset.n)">Usuń</button>')+'</div>').join(''):'')}).join(''):'brak zapisanych danych'})}
 function usunBud(bi){const b=_bud[bi];
@@ -787,6 +890,9 @@ function sesja(n){fetch('/sesja?n='+n).then(r=>r.json()).then(t=>{if(t.blad){ale
  $('sd').innerHTML='<b>'+esc(t.n)+'</b><pre>'+esc(t.info)+'</pre><b>Pomieszczenia ('+t.pom.length+')</b>'+
  (t.pom.map((p,i)=>'<div class="r"><span>'+p.godz+' '+(p.kond?'['+esc(p.kond)+'] ':'')+'<b>'+esc(p.nr)+'</b> – '+opisPom(p)+(p.uwagi?'<br>'+esc(p.uwagi):'')+'</span>'+
   prz+'edPom('+i+')">Edytuj</button>'+prz+'usPom('+i+')" style="background:#933">Usuń</button></div>').join('')||'<div>brak</div>')+
+ '<br><b>Grzejniki ('+(t.grz||[]).length+')</b>'+
+ ((t.grz||[]).map((g,i)=>'<div class="r"><span>'+g.godz+' '+(g.kond?'['+esc(g.kond)+'] ':'')+'<b>'+esc(g.nr)+'</b> – '+opisGrz(g)+(g.uwagi?'<br>'+esc(g.uwagi):'')+'</span>'+
+  prz+'edGrz('+i+')">Edytuj</button>'+prz+'usGrz('+i+')" style="background:#933">Usuń</button></div>').join('')||'<div>brak</div>')+
  '<br><b>Znaczniki</b>'+(t.znaczniki.map((z,i)=>'<div class="r"><span'+(z.sys?' style="color:#888"':'')+'>'+z.godz+' '+esc(z.opis)+'</span>'+
   (z.sys?'':prz+'edZn('+i+')">Edytuj</button>'+prz+'usZn('+i+')" style="background:#933">Usuń</button>')+'</div>').join('')||'<div>brak</div>');
  if(otw!=t.n){otw=t.n;$('sd').scrollIntoView({behavior:'smooth'})}})}
@@ -825,6 +931,7 @@ function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);przekroj(s);
   $('pen2').textContent=p.ok?'ostatnia '+(p.wiek<90?p.wiek+' s':Math.round(p.wiek/60)+' min')+' temu':'dane są na karcie'}
  $('plista').innerHTML=(s.pom_n?'<b>Pomieszczeń: '+s.pom_sal+', opraw: '+s.pom_opraw+', punktów świetlnych: '+s.pom_pkt+(s.pom_w?', moc: '+s.pom_w+' W':'')+'</b><br>':'')+
   (s.pom||[]).slice().reverse().map(x=>esc(x.nr)+' – '+opisPom(x)).join('<br>');aktN=s.sesja_n||'';$('bed').style.display=aktN?'':'none';
+ $('glista').innerHTML=(s.grz_szt?'<b>Grzejników w tej sesji: '+s.grz_szt+'</b><br>':'')+(s.grz||[]).slice().reverse().map(x=>esc(x.nr)+' – '+opisGrz(x)).join('<br>');
  $('kom').textContent=s.komunikat||''}).catch(()=>{$('kom').textContent='Brak połączenia z Raspberry Pi'})}
 let t0=1;try{t0=+localStorage.getItem('tab')||1}catch(e){}tab(t0);setInterval(odswiez,500);odswiez();sesje();
 </script></body></html>"""
@@ -854,6 +961,8 @@ class Handler(BaseHTTPRequestHandler):
                                           "budynek", "kondygnacja")}
                 s["obrot"] = STAN["obrot"]
                 s["pom"] = STAN["pom"][-5:]
+                s["grz"] = STAN["grz"][-5:]
+                s["grz_szt"] = sum(x["sztuk"] for x in STAN["grz"])
                 s["sesja_n"] = os.path.basename(STAN["katalog"]) if STAN["nagrywa"] else ""
                 s["pom_n"] = len(STAN["pom"])
                 s["pom_w"] = round(sum(x.get("moc_razem", 0) for x in STAN["pom"]))
@@ -911,6 +1020,11 @@ class Handler(BaseHTTPRequestHandler):
             g = lambda k: q.get(k, [""])[0]
             blad = pomieszczenie(g("nr"), g("typ"), g("punktow"), g("opraw"), g("uwagi"), g("moc"),
                                  n=g("n") or None, idp=g("id") or None, usun=g("usun") == "1")
+            self._json({"blad": blad} if blad else {"ok": True})
+        elif u.path == "/grzejnik":
+            g = lambda k: q.get(k, [""])[0]
+            blad = grzejnik(g("nr"), g("rodzaj"), g("sztuk"), g("zeberek"), g("szer"), g("dl"), g("uwagi"),
+                            n=g("n") or None, idg=g("id") or None, usun=g("usun") == "1")
             self._json({"blad": blad} if blad else {"ok": True})
         elif u.path == "/znacznik_zmien":
             g = lambda k: q.get(k, [None])[0]

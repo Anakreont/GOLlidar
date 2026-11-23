@@ -6,7 +6,9 @@ Wywolywane przez sync.sh; mozna tez recznie: python3 sync_http.py
 """
 import json, os, sys, time, urllib.error, urllib.parse, urllib.request
 
-PLIKI = ("info.txt", "znaczniki.txt", "pomieszczenia.csv", "imu.bin", "baro.bin", "lidar.bin")
+import re
+PIERWSZE = ("info.txt", "znaczniki.txt", "pomieszczenia.csv", "grzejniki.csv")      # male pliki ida przed duzymi
+WZOR = re.compile(r"^[a-z0-9_]{1,40}\.(csv|txt|bin)$")
 KAWALEK = 512 * 1024
 
 
@@ -57,10 +59,9 @@ def main():
         kat = os.path.join(zrodlo, sesja)
         if not os.path.isdir(kat):
             continue
-        for plik in PLIKI:
+        pliki = [p for p in os.listdir(kat) if WZOR.match(p) and os.path.isfile(os.path.join(kat, p))]
+        for plik in sorted(pliki, key=lambda p: (p not in PIERWSZE, p.endswith(".bin"), p)):
             sciezka = os.path.join(kat, plik)
-            if not os.path.isfile(sciezka):
-                continue
             q = urllib.parse.urlencode({"sesja": bezpieczna(sesja), "plik": plik})
             kod, odp = zapytanie(f"{url}/lidar/rozmiar?{q}", token)
             if kod in (401, 503):
