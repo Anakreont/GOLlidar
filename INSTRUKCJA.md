@@ -175,6 +175,26 @@ ssh-copy-id uzytkownik@adres-serwera
 ```
 W `sync.conf` ustawić `CEL` i ewentualnie `PORT`; włączenie timera jak wyżej.
 
+### Wariant C: tunel Cloudflare na Raspberry Pi, serwer sam pobiera nagrania
+
+Na malinie działa `cloudflared` (jak na innych malinach w terenie), a serwer co minutę pobiera nowe dane przez SSH w tunelu.
+Dodatkowo jest zdalny dostęp SSH do skanera z dowolnego miejsca. Na malinie nie ma wtedy żadnego tokenu API ani `sync.conf`.
+
+1. W panelu Cloudflare Zero Trust utworzyć nowy tunel i polecenie instalacyjne z panelu wkleić na malinie
+   (architekturę pokazuje `dpkg --print-architecture`). Publiczny adres: `ssh-NAZWA.domena` -> `ssh://localhost:22`.
+   **Strony skanera (port 8080) nie wystawiać publicznie bez Cloudflare Access** — nie ma logowania, a ma przyciski STOP i wyłączania.
+2. Klucz SSH roota serwera wgrać na malinę (w domu, po sieci lokalnej): `sudo ssh-copy-id anakreont@ADRES-MALINY`.
+   Zalecane wyłączenie logowania hasłem po SSH na malinie.
+3. Na serwerze:
+   ```bash
+   sudo install serwer/pobierz_lidar.sh /usr/local/bin/
+   sudo nano /etc/lidar-pobierz.conf            # HOST, UZYTKOWNIK, CEL (opis w skrypcie)
+   sudo /usr/local/bin/pobierz_lidar.sh && echo OK
+   sudo cp serwer/lidar-pobierz.service serwer/lidar-pobierz.timer /etc/systemd/system/
+   sudo systemctl daemon-reload && sudo systemctl enable --now lidar-pobierz.timer
+   ```
+Po każdym udanym pobraniu serwer zapisuje na malinie potwierdzenie, które strona pokazuje w kafelku „Kopia na serwer".
+
 ## 10. Wariant zapasowy bez strony
 
 ```bash
