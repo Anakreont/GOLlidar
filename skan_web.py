@@ -38,6 +38,7 @@ STAN = {
     "pom": [],                 # pomieszczenia zapisane w biezacej sesji
     "budynek": "", "kondygnacja": "",
     "grz": [],                 # grzejniki zapisane w biezacej sesji
+    "okn": [],                 # okna i drzwi zewnetrzne zapisane w biezacej sesji
     "przechyl": None,          # kat odchylenia od pionu [st.]
     "prz_faza": 0,             # 0 brak, 1 trzymaj nieruchomo, 2 przekroj zapisany (postaw do pionu)
     "prz_zostalo": 0.0,        # sekundy do zapisania przekroju
@@ -359,7 +360,7 @@ def start(budynek, kondygnacja):
         kal = STAN.get("_baro_kal")
         if kal:
             PLIKI["baro"].write(struct.pack("<QH", time.time_ns(), len(kal)) + kal)
-        STAN.update(nagrywa=True, nazwa=nazwa, katalog=kat, t_start=time.time(), znaczniki=0, max_przechyl=0.0, pom=[], grz=[], prz_nr=0, prz_wynik="", prz_faza=0,
+        STAN.update(nagrywa=True, nazwa=nazwa, katalog=kat, t_start=time.time(), znaczniki=0, max_przechyl=0.0, pom=[], grz=[], okn=[], prz_nr=0, prz_wynik="", prz_faza=0,
                     budynek=budynek, kondygnacja=kondygnacja)
     return True
 
@@ -392,7 +393,8 @@ def znacznik(opis, licz=True):
 
 KOL_POM = ("czas_ns;godzina;pomieszczenie;rodzaj_oprawy;punktow_w_oprawie;liczba_opraw;punktow_razem;uwagi;"
            "wysokosc_wzgl_m;budynek;kondygnacja;moc_punktu_W;moc_razem_W;wpis")
-ZN_SYSTEMOWE = ("AUTO_", "PRZEKROJ_", "PAUZA_", "KONDYGNACJA ", "POM ", "GRZ ", "EDYCJA ", "USUNIETO ")
+ZN_SYSTEMOWE = ("AUTO_", "PRZEKROJ_", "PAUZA_", "KONDYGNACJA ", "POM ", "GRZ ", "OKN ", "EDYCJA ", "USUNIETO ")
+KOL_OKN = "czas_ns;godzina;pomieszczenie;typ;rodzaj;szer_cm;wys_cm;rama;szyby;sztuk;uwagi;wysokosc_wzgl_m;budynek;kondygnacja;wpis"
 KOL_GRZ = "czas_ns;godzina;pomieszczenie;rodzaj;sztuk;zeberek;szerokosc_cm;dlugosc_cm;uwagi;wysokosc_wzgl_m;budynek;kondygnacja;wpis"
 
 
@@ -490,6 +492,101 @@ def grzejnik(nr, rodzaj, sztuk, zeberek, szer, dl, uwagi, n=None, idg=None, usun
             STAN["grz"] = wiersze_grz(kat)
     if not idg:
         znacznik(f"GRZ {czysc(nr)}", licz=True)
+    return None
+
+
+def wiersze_okn(kat):
+    """Aktualny stan stolarki sesji (okna i drzwi zewnetrzne); plik tylko dopisywany."""
+    try:
+        with open(os.path.join(kat, "okna.csv"), encoding="utf-8-sig") as f:
+            linie = f.read().splitlines()[1:]
+    except OSError:
+        return []
+    stan = {}
+    for w in linie:
+        k = (w.split(";") + [""] * 15)[:15]
+        if not k[0].isdigit():
+            continue
+        if k[14] == "usuniety":
+            stan.pop(k[0], None)
+            continue
+        stan[k[0]] = {"id": k[0], "godz": k[1], "nr": k[2], "typ": k[3], "rodzaj": k[4], "szer": _liczba(k[5]), "wys_cm": _liczba(k[6]),
+                      "rama": k[7], "szyby": k[8], "sztuk": int(_liczba(k[9])), "uwagi": k[10], "wys": k[11], "bud": k[12], "kond": k[13]}
+    return sorted(stan.values(), key=lambda x: int(x["id"]))
+
+
+def typy_okien(budynek):
+    """Typy stolarki uzyte dotad w budynku (we wszystkich jego nagraniach): litera -> cechy i liczba sztuk."""
+    typy = {}
+    for n in sorted(os.listdir(ARGS.katalog)):
+        p = sesja_sciezka(n)
+        if not p or info_sesji(p).get("budynek", "") != budynek:
+            continue
+        for o in wiersze_okn(p):
+            t = typy.setdefault(o["typ"], {"typ": o["typ"], "rodzaj": o["rodzaj"], "szer": o["szer"], "wys_cm": o["wys_cm"],
+                                           "rama": o["rama"], "szyby": o["szyby"], "sztuk": 0})
+            t["sztuk"] += o["sztuk"]
+    return sorted(typy.values(), key=lambda t: (len(t["typ"]), t["typ"]))
+
+
+def _litera(i):
+    return (chr(65 + i // 26 - 1) if i >= 26 else "") + chr(65 + i % 26)
+
+
+def okno(nr, rodzaj, szer, wys_cm, rama, szyby, sztuk, uwagi, n=None, ido=None, usun=False):
+    """Dopisuje wiersz do okna.csv. Litera typu nadawana jest sama: te same cechy = ten sam typ w calym budynku."""
+    try:
+        sztuk = int(sztuk or 0)
+        szer, wys_cm = float(str(szer or 0).replace(",", ".")), float(str(wys_cm or 0).replace(",", "."))
+    except ValueError:
+        return "Sztuki i wymiary muszą być liczbami"
+    if min(sztuk, szer, wys_cm) < 0:
+        return "Liczby nie mogą być ujemne"
+    if not usun and sztuk <= 0:
+        return "Podaj liczbę sztuk"
+    if not usun and (szer <= 0 or wys_cm <= 0):
+        return "Podaj szerokość i wysokość w cm"
+    lw = lambda x: (f"{x:.1f}".rstrip("0").rstrip(".").replace(".", ",")) if x else ""
+    rodzaj, rama, szyby = czysc(rodzaj, 30), czysc(rama, 30), czysc(szyby, 10)
+    if ido:
+        kat = sesja_sciezka(n)
+        stary = next((x for x in wiersze_okn(kat) if x["id"] == ido), None) if kat else None
+        if not stary:
+            return "Nie ma takiego wpisu"
+        bud = stary["bud"]
+    else:
+        if not STAN["nagrywa"]:
+            return "Zapis stolarki działa tylko podczas nagrywania"
+        kat, stary, bud = STAN["katalog"], None, STAN["budynek"]
+    typy = typy_okien(bud)
+    if usun:
+        typ = stary["typ"]
+    else:
+        pas = next((t for t in typy if (t["rodzaj"], t["szer"], t["wys_cm"], t["rama"], t["szyby"]) == (rodzaj, szer, wys_cm, rama, szyby)), None)
+        uzyte = {t["typ"] for t in typy}
+        typ = pas["typ"] if pas else next(_litera(i) for i in range(700) if _litera(i) not in uzyte)
+    with LOCK:
+        if ido:
+            czas, godz, wys, kond, wpis = ido, stary["godz"], stary["wys"], stary["kond"], "usuniety" if usun else "poprawka"
+            if usun:
+                nr, uwagi = stary["nr"], stary["uwagi"]
+        else:
+            czas, godz, wpis = str(time.time_ns()), datetime.now().strftime("%H:%M:%S"), ""
+            if not czysc(nr):
+                nr = f"bez nazwy {len(wiersze_okn(kat)) + 1}"
+            wys = "" if STAN["wys"] is None else f"{STAN['wys']:.1f}".replace(".", ",")
+            kond = STAN["kondygnacja"]
+        sciezka = os.path.join(kat, "okna.csv")
+        nowy = not os.path.exists(sciezka)
+        with open(sciezka, "a", encoding="utf-8-sig" if nowy else "utf-8") as f:
+            if nowy:
+                f.write(KOL_OKN + "\n")
+            f.write(f"{czas};{godz};{czysc(nr)};{typ};{rodzaj};{lw(szer)};{lw(wys_cm)};{rama};{szyby};{sztuk or ''};{czysc(uwagi)};{wys};"
+                    f"{bud};{kond};{wpis}\n")
+        if STAN["nagrywa"] and os.path.abspath(kat) == os.path.abspath(STAN["katalog"]):
+            STAN["okn"] = wiersze_okn(kat)
+    if not ido:
+        znacznik(f"OKN {czysc(nr)} typ {typ}", licz=True)
     return None
 
 
@@ -627,7 +724,7 @@ def lista_sesji():
                     "bud": inf.get("budynek", ""), "kond": inf.get("kondygnacja", ""),
                     "data": n[6:8] + "." + n[4:6] + "." + n[:4] + " " + n[9:11] + ":" + n[11:13] if n[:8].isdigit() else "",
                     "zn": sum(1 for z in znaczniki_stan(p) if not z["sys"]), "pom": len(pom),
-                    "grz": sum(x["sztuk"] for x in grz),
+                    "grz": sum(x["sztuk"] for x in grz), "okn": sum(x["sztuk"] for x in wiersze_okn(p)),
                     "opraw": sum(x["opraw"] for x in pom), "w": round(sum(x["moc_razem"] for x in pom)),
                     "aktywna": STAN["nagrywa"] and os.path.abspath(p) == os.path.abspath(STAN["katalog"])})
     return wyn
@@ -652,7 +749,7 @@ def sesja_tresc(n):
             info = f.read()[-4000:]
     except OSError:
         info = ""
-    return {"n": n, "info": info, "znaczniki": znaczniki_stan(p), "pom": wiersze_pom(p), "grz": wiersze_grz(p)}
+    return {"n": n, "info": info, "znaczniki": znaczniki_stan(p), "pom": wiersze_pom(p), "grz": wiersze_grz(p), "okn": wiersze_okn(p)}
 
 
 def usun_sesje(n):
@@ -693,9 +790,9 @@ STRONA = r"""<!doctype html><html lang="pl"><head><meta charset="utf-8">
 *{box-sizing:border-box}
 body{margin:0;font-family:system-ui,sans-serif;background:#111;color:#eee;font-size:16px;padding-bottom:76px}
 section{display:none}section.on{display:block}
-#tb{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;gap:4px;padding:6px 6px calc(6px + env(safe-area-inset-bottom));background:#181818;border-top:1px solid #333}
+#tb{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;gap:3px;padding:6px 6px calc(6px + env(safe-area-inset-bottom));background:#181818;border-top:1px solid #333}
 .siatka{flex-wrap:wrap}.siatka button{flex:1 0 30%}
-#tb button{min-height:52px;font-size:14px;padding:0;background:#2a2a2a;border-radius:10px}#tb button.on{background:#2b62c9}
+#tb button{min-height:52px;font-size:13px;padding:0;background:#2a2a2a;border-radius:10px}#tb button.on{background:#2b62c9}
 body:not(.nagr) .rec{display:none!important}body.nagr .nrec{display:none!important}
 .lb{flex:0 0 96px;align-self:center;font-size:13px;color:#bbb;line-height:1.2}.zaw{flex-wrap:wrap;overflow:visible}
 #pasek{position:sticky;top:0;z-index:5;background:#181818;display:flex;gap:4px;padding:6px;border-bottom:1px solid #333}
@@ -746,6 +843,12 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 <section id="t1">
 <div id="mapa"><canvas id="c"></canvas><div id="prk"></div>
  <select id="zas"><option value="3">3 m</option><option value="6" selected>6 m</option><option value="12">12 m</option><option value="20">20 m</option></select></div>
+<div id="pkt" style="display:none;background:#1c2430;padding:4px 0 6px">
+<div class="et" id="pktet"></div>
+<div class="w"><input id="popis" placeholder="co to jest, np. pion c.o." autocomplete="off"><input id="psr" type="number" inputmode="numeric" placeholder="Ø mm" style="flex:0 0 96px;width:96px"></div>
+<div class="chips"><button class="chip" onclick="$('popis').value='pion c.o.'">pion c.o.</button><button class="chip" onclick="$('popis').value='pion wod-kan'">pion wod-kan</button><button class="chip" onclick="$('popis').value='pion went.'">pion went.</button><button class="chip" onclick="$('popis').value='rozdzielnica'">rozdzielnica</button><button class="chip" onclick="$('popis').value='hydrant'">hydrant</button><button class="chip" onclick="$('popis').value='komin'">komin</button></div>
+<div class="w"><button class="nb" onclick="zapPkt()">ZAPISZ PUNKT</button><button class="sz" style="flex:0 0 34%" onclick="sel=null;$('pkt').style.display='none'">Anuluj</button></div>
+</div>
 <div class="w nrec"><input id="bud" list="budl" placeholder="budynek (z listy albo nowy)" autocomplete="off"><datalist id="budl"></datalist></div>
 <div class="w"><input id="kon" placeholder="kondygnacja" autocomplete="off">
  <button id="bk" class="sz rec" style="flex:0 0 96px" onclick="cmd('kondygnacja?k='+encodeURIComponent($('kon').value),wibr)">Zmień</button></div>
@@ -756,7 +859,7 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 </section>
 
 <section id="t2">
-<div class="w"><input id="pnr" placeholder="pomieszczenie, np. sala 12 (może być puste)" autocomplete="off" oninput="$('gnr').value=this.value"></div>
+<div class="w"><input id="pnr" placeholder="pomieszczenie, np. sala 12 (może być puste)" autocomplete="off" oninput="$('gnr').value=$('onr').value=this.value"></div>
 <div class="w seg" id="ptyp"><button class="on" onclick="typ(this)">świetlówki</button><button onclick="typ(this)">LED</button>
  <button onclick="typ(this)">żarówki</button><button onclick="typ(this)">inne</button></div>
 <div class="w"><label class="lb">1. Opraw</label><div class="licz"><button onclick="krok('popr',-1)">−</button>
@@ -774,7 +877,7 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 </section>
 
 <section id="t5">
-<div class="w"><input id="gnr" placeholder="pomieszczenie, np. sala 12 (może być puste)" autocomplete="off" oninput="$('pnr').value=this.value"></div>
+<div class="w"><input id="gnr" placeholder="pomieszczenie, np. sala 12 (może być puste)" autocomplete="off" oninput="$('pnr').value=$('onr').value=this.value"></div>
 <div class="w seg siatka" id="grodz"><button class=on onclick="typG(this)">żeliwny</button><button onclick="typG(this)">płytowy</button><button onclick="typG(this)">aluminiowy</button><button onclick="typG(this)">łazienkowy</button><button onclick="typG(this)">rurowy</button><button onclick="typG(this)">favier</button></div>
 <div class="w"><label class="lb">1. Sztuk</label><div class="licz"><button onclick="krok('gszt',-1)">−</button>
  <input id="gszt" type="number" inputmode="numeric" placeholder="0"><button onclick="krok('gszt',1)">+</button></div></div>
@@ -788,6 +891,22 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 <div id="edg" class="lst" style="display:none;color:#fb3"></div>
 <div class="w"><button class="nb" id="bzg" onclick="zapGrz()">ZAPISZ GRZEJNIK</button></div>
 <div id="glista" class="lst"></div>
+</section>
+
+<section id="t6">
+<div class="w"><input id="onr" placeholder="pomieszczenie / elewacja (może być puste)" autocomplete="off" oninput="$('pnr').value=$('gnr').value=this.value"></div>
+<div class="et">Typy w tym budynku (dotknij, żeby wczytać wymiary)</div>
+<div class="chips" id="otypy"><span style="color:#888;font-size:13px;padding:10px 4px">brak – pierwszy wpis utworzy typ A</span></div>
+<div class="w seg" id="orodz"><button class=on onclick="segO(this)">okno</button><button onclick="segO(this)">drzwi zewn.</button><button onclick="segO(this)">drzwi balk.</button><button onclick="segO(this)">inne</button></div>
+<div class="w"><label class="lb">Szer. × wys. cm</label><input id="oszer" type="number" inputmode="decimal" placeholder="szer."><input id="owys" type="number" inputmode="decimal" placeholder="wys."></div>
+<div class="w seg" id="orama"><button class=on onclick="segO(this)">PCV</button><button onclick="segO(this)">drewno</button><button onclick="segO(this)">aluminium</button><button onclick="segO(this)">stal</button></div>
+<div class="w seg" id="oszyb"><button class=on onclick="segO(this)">1 szyba</button><button onclick="segO(this)">2 szyby</button><button onclick="segO(this)">3 szyby</button><button onclick="segO(this)">pełne</button></div>
+<div class="w"><label class="lb">Sztuk</label><div class="licz"><button onclick="krok('oszt',-1)">−</button>
+ <input id="oszt" type="number" inputmode="numeric" placeholder="0"><button onclick="krok('oszt',1)">+</button></div></div>
+<div class="w"><input id="ouw" placeholder="uwagi, np. nieszczelne, rok 1998, nawiewniki" autocomplete="off"></div>
+<div id="edo" class="lst" style="display:none;color:#fb3"></div>
+<div class="w"><button class="nb" id="bzo" onclick="zapOkn()">ZAPISZ OKNA / DRZWI</button></div>
+<div id="olista" class="lst"></div>
 </section>
 
 <section id="t3">
@@ -815,7 +934,7 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
  <button class="sz" onclick="if(confirm('Zatrzymać zapis i wyłączyć Raspberry Pi?'))cmd('wylacz')">Wyłącz RPi</button></div>
 </section>
 
-<nav id="tb"><button onclick="tab(1)">Skan</button><button onclick="tab(2)">Oprawy</button><button onclick="tab(5)">Grzejniki</button><button onclick="tab(3)">Notatka</button><button onclick="tab(4)">Dane</button></nav>
+<nav id="tb"><button onclick="tab(1)">Skan</button><button onclick="tab(2)">Oprawy</button><button onclick="tab(5)">Grzejniki</button><button onclick="tab(6)">Okna</button><button onclick="tab(3)">Notatka</button><button onclick="tab(4)">Dane</button></nav>
 <script>
 const $=id=>document.getElementById(id),c=$('c'),g=c.getContext('2d');let ost=null;
 function cmd(u,ok){fetch('/'+u,{method:'POST'}).then(r=>r.json()).then(j=>{if(j.blad)alert(j.blad);else if(ok)ok()}).catch(()=>alert('Brak połączenia z Raspberry Pi'))}
@@ -834,14 +953,31 @@ function szybki(t){cmd('znacznik?opis='+encodeURIComponent(t),wibr)}
 function krok(id,d){const e=$(id);e.value=Math.max(0,(parseInt(e.value)||0)+d)}
 function typ(b){for(const x of $('ptyp').children)x.className='';b.className='on'}
 let ed=null,aktN='',otw='';
-const TB=[1,2,5,3,4];
+const TB=[1,2,5,6,3,4];
 function nazwaP(){return $('pnr').value?' ('+$('pnr').value+')':''}
-function tab(n){for(let i=1;i<=5;i++){$('t'+i).className=i==n?'on':'';$('tb').children[TB.indexOf(i)].className=i==n?'on':''}
- try{localStorage.setItem('tab',n)}catch(e){} if(n==4)sesje();scrollTo(0,0)}
+function tab(n){for(let i=1;i<=6;i++){$('t'+i).className=i==n?'on':'';$('tb').children[TB.indexOf(i)].className=i==n?'on':''}
+ try{localStorage.setItem('tab',n)}catch(e){} if(n==4)sesje();if(n==6)typyO();scrollTo(0,0)}
 function zapPom(){const e=encodeURIComponent,t=$('ptyp').querySelector('.on').textContent;
  cmd('pomieszczenie?nr='+e($('pnr').value)+'&typ='+e(t)+'&punktow='+e($('ppkt').value)+'&opraw='+e($('popr').value)+'&moc='+e($('pmoc').value)+'&uwagi='+e($('puw').value)+
  (ed?'&n='+e(ed.n)+'&id='+ed.id:''),()=>{$('popr').value='';$('puw').value='';wibr();if(ed){const n=ed.n;koniecEd();tab(4);sesja(e(n))}})}
 function koniecEd(){ed=null;$('edb').style.display='none';$('bzp').textContent='ZAPISZ POMIESZCZENIE';$('popr').value='';$('puw').value=''}
+let edo=null,typyL=[];
+function segO(b){for(const x of b.parentNode.children)x.className='';b.className='on'}
+function ustSeg(id,t){let z=false;for(const b of $(id).children){b.className=b.textContent==t?'on':'';z=z||b.textContent==t}if(!z)$(id).children[0].className='on'}
+function wybSeg(id){return $(id).querySelector('.on').textContent}
+function opisOkn(o){return o.sztuk+' × typ '+esc(o.typ)+' ('+esc(o.rodzaj)+' '+o.szer+'×'+o.wys_cm+', '+esc(o.rama)+', '+esc(o.szyby)+')'}
+function typyO(){fetch('/typy_okien?b='+encodeURIComponent($('bud').value)).then(r=>r.json()).then(l=>{typyL=l;
+ if(l.length)$('otypy').innerHTML=l.map((t,i)=>'<button class="chip" onclick="wczytajTyp('+i+')"><b>'+esc(t.typ)+'</b>&nbsp;'+esc(t.rodzaj)+' '+t.szer+'×'+t.wys_cm+' · '+t.sztuk+' szt.</button>').join('')})}
+function wczytajTyp(i){const t=typyL[i];ustSeg('orodz',t.rodzaj);ustSeg('orama',t.rama);ustSeg('oszyb',t.szyby);$('oszer').value=t.szer;$('owys').value=t.wys_cm;$('oszt').focus()}
+function zapOkn(){const e=encodeURIComponent;
+ cmd('okno?nr='+e($('onr').value)+'&rodzaj='+e(wybSeg('orodz'))+'&szer='+e($('oszer').value)+'&wys='+e($('owys').value)+'&rama='+e(wybSeg('orama'))+'&szyby='+e(wybSeg('oszyb'))+'&sztuk='+e($('oszt').value)+'&uwagi='+e($('ouw').value)+
+ (edo?'&n='+e(edo.n)+'&id='+edo.id:''),()=>{$('oszt').value='';$('ouw').value='';wibr();typyO();if(edo){const n=edo.n;koniecEdO();tab(4);sesja(e(n))}})}
+function koniecEdO(){edo=null;$('edo').style.display='none';$('bzo').textContent='ZAPISZ OKNA / DRZWI';$('oszt').value='';$('ouw').value=''}
+function edOkn(i){const o=podgl.okn[i];edo={n:podgl.n,id:o.id};$('onr').value=o.nr;ustSeg('orodz',o.rodzaj);ustSeg('orama',o.rama);ustSeg('oszyb',o.szyby);$('oszer').value=o.szer;$('owys').value=o.wys_cm;$('oszt').value=o.sztuk;$('ouw').value=o.uwagi;
+ $('edo').style.display='block';$('edo').innerHTML='Poprawiasz wpis: <b>'+esc(o.nr)+'</b> ('+o.godz+') &nbsp; <a href="#" style="color:#9cf" onclick="koniecEdO();return false">anuluj</a>';
+ $('bzo').textContent='ZAPISZ POPRAWKĘ';tab(6)}
+function usOkn(i){const o=podgl.okn[i];if(!confirm('Usunąć wpis stolarki w „'+o.nr+'”?'))return;
+ cmd('okno?usun=1&n='+encodeURIComponent(podgl.n)+'&id='+o.id,()=>sesja(encodeURIComponent(podgl.n)))}
 let edg=null;
 function typG(b){for(const x of $('grodz').children)x.className='';b.className='on'}
 function opisGrz(g){return g.sztuk+' × '+esc(g.rodzaj)+(g.zeberek?', '+g.zeberek+' żeb.':'')+(g.szer||g.dl?', '+(g.szer||'?')+' × '+(g.dl||'?')+' cm':'')}
@@ -876,10 +1012,10 @@ function sesje(){fetch('/sesje').then(r=>r.json()).then(l=>{$('sd').innerHTML=''
  const B=Object.keys(g);window._bud=B;
  $('sl').innerHTML=B.length?B.map((b,bi)=>{const w=g[b],sum=k=>w.reduce((a,x)=>a+x[k],0),o=rozw[b];
   return '<div class="r" style="background:#1c2430;padding:8px;border-radius:8px;margin-top:6px"><span onclick="rozw[_bud['+bi+']]=!rozw[_bud['+bi+']];sesje()"><b>'+(o?'▾ ':'▸ ')+esc(b)+'</b><br>'+
-   'nagrań: '+w.length+' · '+sum('mb').toFixed(1)+' MB · pomieszczeń: '+sum('pom')+' · grzejników: '+sum('grz')+' · opraw: '+sum('opraw')+(sum('w')?' · '+sum('w')+' W':'')+'</span>'+
+   'nagrań: '+w.length+' · '+sum('mb').toFixed(1)+' MB · pomieszczeń: '+sum('pom')+' · grzejników: '+sum('grz')+' · okien/drzwi: '+sum('okn')+' · opraw: '+sum('opraw')+(sum('w')?' · '+sum('w')+' W':'')+'</span>'+
    (b[0]=='('?'':'<button style="background:#933" onclick="usunBud('+bi+')">Usuń budynek</button>')+'</div>'+
    (o?w.slice().sort((a,c)=>(a.kond||'').localeCompare(c.kond||'')||a.n.localeCompare(c.n)).map(x=>
-   '<div class="r" style="padding-left:14px"><span><b>'+esc(x.kond||x.n)+'</b> · '+x.data+(x.aktywna?' · <b class="ok">NAGRYWA</b>':'')+'<br>'+x.mb+' MB · znaczniki: '+x.zn+' · pomieszczenia: '+x.pom+' · grzejniki: '+x.grz+(x.w?' · '+x.w+' W':'')+'</span>'+
+   '<div class="r" style="padding-left:14px"><span><b>'+esc(x.kond||x.n)+'</b> · '+x.data+(x.aktywna?' · <b class="ok">NAGRYWA</b>':'')+'<br>'+x.mb+' MB · znaczniki: '+x.zn+' · pomieszczenia: '+x.pom+' · grzejniki: '+x.grz+' · okna: '+x.okn+(x.w?' · '+x.w+' W':'')+'</span>'+
    '<button data-n="'+encodeURIComponent(x.n)+'" onclick="sesja(this.dataset.n)">Podgląd</button>'+
    (x.aktywna?'':'<button data-n="'+encodeURIComponent(x.n)+'" style="background:#933" onclick="usun(this.dataset.n)">Usuń</button>')+'</div>').join(''):'')}).join(''):'brak zapisanych danych'})}
 function usunBud(bi){const b=_bud[bi];
@@ -893,19 +1029,31 @@ function sesja(n){fetch('/sesja?n='+n).then(r=>r.json()).then(t=>{if(t.blad){ale
  '<br><b>Grzejniki ('+(t.grz||[]).length+')</b>'+
  ((t.grz||[]).map((g,i)=>'<div class="r"><span>'+g.godz+' '+(g.kond?'['+esc(g.kond)+'] ':'')+'<b>'+esc(g.nr)+'</b> – '+opisGrz(g)+(g.uwagi?'<br>'+esc(g.uwagi):'')+'</span>'+
   prz+'edGrz('+i+')">Edytuj</button>'+prz+'usGrz('+i+')" style="background:#933">Usuń</button></div>').join('')||'<div>brak</div>')+
+ '<br><b>Okna i drzwi zewn. ('+(t.okn||[]).length+')</b>'+
+ ((t.okn||[]).map((o,i)=>'<div class="r"><span>'+o.godz+' '+(o.kond?'['+esc(o.kond)+'] ':'')+'<b>'+esc(o.nr)+'</b> – '+opisOkn(o)+(o.uwagi?'<br>'+esc(o.uwagi):'')+'</span>'+
+  prz+'edOkn('+i+')">Edytuj</button>'+prz+'usOkn('+i+')" style="background:#933">Usuń</button></div>').join('')||'<div>brak</div>')+
  '<br><b>Znaczniki</b>'+(t.znaczniki.map((z,i)=>'<div class="r"><span'+(z.sys?' style="color:#888"':'')+'>'+z.godz+' '+esc(z.opis)+'</span>'+
   (z.sys?'':prz+'edZn('+i+')">Edytuj</button>'+prz+'usZn('+i+')" style="background:#933">Usuń</button>')+'</div>').join('')||'<div>brak</div>');
  if(otw!=t.n){otw=t.n;$('sd').scrollIntoView({behavior:'smooth'})}})}
 function usun(n){const nz=decodeURIComponent(n);
  if(!confirm('Usunąć z karty sesję\n'+nz+' ?\n\n'+(kopOK?'Kopia na serwerze zostaje.':'UWAGA: brak potwierdzonej kopii na serwerze – dane mogą przepaść bezpowrotnie!')))return;
  if(!confirm('Na pewno? Tego nie da się cofnąć.'))return;cmd('usun?n='+n,sesje)}
-function rys(s){const dp=devicePixelRatio||1,W=c.width=c.clientWidth*dp,H=c.height=c.clientHeight*dp;
+let sel=null,ostS=null;
+c.addEventListener('click',ev=>{if(!ostS||!ostS.nagrywa){return}const r=c.getBoundingClientRect(),R=+$('zas').value,sk=Math.min(r.width,r.height)/2/R;
+ let x=(ev.clientX-r.left-r.width/2)/sk,y=(r.height/2-(ev.clientY-r.top))/sk,najl=null,dm=0.35;
+ for(const p of ostS.obrot||[]){const a=p[0]*Math.PI/180,d=p[1]/1000,dd=Math.hypot(d*Math.sin(a)-x,d*Math.cos(a)-y);if(dd<dm){dm=dd;najl=p}}
+ sel=najl?{kat:najl[0],odl:najl[1],lid:true}:{kat:(Math.atan2(x,y)*180/Math.PI+360)%360,odl:Math.round(Math.hypot(x,y)*1000),lid:false};
+ $('pkt').style.display='block';$('pktet').textContent='Punkt: '+(sel.odl/1000).toFixed(2)+' m od skanera, kierunek '+sel.kat.toFixed(0)+'°'+(sel.lid?' (przyciągnięty do pomiaru)':' (wolne miejsce)');wibr()});
+function zapPkt(){if(!sel)return;const o=($('popis').value||'punkt')+($('psr').value?' Ø'+$('psr').value:'');
+ cmd('znacznik?opis='+encodeURIComponent('PUNKT kat='+sel.kat.toFixed(1)+' odl='+sel.odl+' '+o),()=>{sel=null;$('pkt').style.display='none';$('psr').value='';wibr()})}
+function rys(s){ostS=s;const dp=devicePixelRatio||1,W=c.width=c.clientWidth*dp,H=c.height=c.clientHeight*dp;
  const R=+$('zas').value,sk=Math.min(W,H)/2/R,cx=W/2,cy=H/2;g.fillStyle='#000';g.fillRect(0,0,W,H);
  g.strokeStyle='#263';g.fillStyle='#484';g.lineWidth=1;g.font=11*dp+'px sans-serif';
  for(let r=1;r<=R;r+=(R>6?(R>12?5:2):1)){g.beginPath();g.arc(cx,cy,r*sk,0,7);g.stroke();g.fillText(r+' m',cx+3,cy-r*sk+12*dp)}
  g.beginPath();g.moveTo(cx,0);g.lineTo(cx,H);g.moveTo(0,cy);g.lineTo(W,cy);g.stroke();
  g.fillStyle='#fff';const p=s.obrot||[],k=2*dp;
  for(let i=0;i<p.length;i++){const a=p[i][0]*Math.PI/180,d=p[i][1]/1000;g.fillRect(cx+d*Math.sin(a)*sk-k/2,cy-d*Math.cos(a)*sk-k/2,k,k)}
+ if(sel){const a=sel.kat*Math.PI/180,d=sel.odl/1000;g.strokeStyle='#fd0';g.lineWidth=2*dp;g.beginPath();g.arc(cx+d*Math.sin(a)*sk,cy-d*Math.cos(a)*sk,9*dp,0,7);g.stroke()}
  g.fillStyle='#f33';g.beginPath();g.moveTo(cx,cy-9*dp);g.lineTo(cx-5*dp,cy+5*dp);g.lineTo(cx+5*dp,cy+5*dp);g.fill()}
 function kl(e,t,k){e.textContent=t;e.className=k||''}
 function fmt(t){const m=Math.floor(t/60),s=Math.floor(t%60);return m+':'+(s<10?'0':'')+s}
@@ -931,6 +1079,7 @@ function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);przekroj(s);
   $('pen2').textContent=p.ok?'ostatnia '+(p.wiek<90?p.wiek+' s':Math.round(p.wiek/60)+' min')+' temu':'dane są na karcie'}
  $('plista').innerHTML=(s.pom_n?'<b>Pomieszczeń: '+s.pom_sal+', opraw: '+s.pom_opraw+', punktów świetlnych: '+s.pom_pkt+(s.pom_w?', moc: '+s.pom_w+' W':'')+'</b><br>':'')+
   (s.pom||[]).slice().reverse().map(x=>esc(x.nr)+' – '+opisPom(x)).join('<br>');aktN=s.sesja_n||'';$('bed').style.display=aktN?'':'none';
+ $('olista').innerHTML=(s.okn_szt?'<b>Okien i drzwi w tej sesji: '+s.okn_szt+'</b><br>':'')+(s.okn||[]).slice().reverse().map(x=>esc(x.nr)+' – '+opisOkn(x)).join('<br>');
  $('glista').innerHTML=(s.grz_szt?'<b>Grzejników w tej sesji: '+s.grz_szt+'</b><br>':'')+(s.grz||[]).slice().reverse().map(x=>esc(x.nr)+' – '+opisGrz(x)).join('<br>');
  $('kom').textContent=s.komunikat||''}).catch(()=>{$('kom').textContent='Brak połączenia z Raspberry Pi'})}
 let t0=1;try{t0=+localStorage.getItem('tab')||1}catch(e){}tab(t0);setInterval(odswiez,500);odswiez();sesje();
@@ -962,6 +1111,8 @@ class Handler(BaseHTTPRequestHandler):
                 s["obrot"] = STAN["obrot"]
                 s["pom"] = STAN["pom"][-5:]
                 s["grz"] = STAN["grz"][-5:]
+                s["okn"] = STAN["okn"][-4:]
+                s["okn_szt"] = sum(x["sztuk"] for x in STAN["okn"])
                 s["grz_szt"] = sum(x["sztuk"] for x in STAN["grz"])
                 s["sesja_n"] = os.path.basename(STAN["katalog"]) if STAN["nagrywa"] else ""
                 s["pom_n"] = len(STAN["pom"])
@@ -990,6 +1141,8 @@ class Handler(BaseHTTPRequestHandler):
                 except (OSError, ValueError):
                     pass
             self._json(s)
+        elif u.path == "/typy_okien":
+            self._json(typy_okien(parse_qs(u.query).get("b", [""])[0]))
         elif u.path == "/sesje":
             self._json(lista_sesji())
         elif u.path == "/sesja":
@@ -1025,6 +1178,11 @@ class Handler(BaseHTTPRequestHandler):
             g = lambda k: q.get(k, [""])[0]
             blad = grzejnik(g("nr"), g("rodzaj"), g("sztuk"), g("zeberek"), g("szer"), g("dl"), g("uwagi"),
                             n=g("n") or None, idg=g("id") or None, usun=g("usun") == "1")
+            self._json({"blad": blad} if blad else {"ok": True})
+        elif u.path == "/okno":
+            g = lambda k: q.get(k, [""])[0]
+            blad = okno(g("nr"), g("rodzaj"), g("szer"), g("wys"), g("rama"), g("szyby"), g("sztuk"), g("uwagi"),
+                        n=g("n") or None, ido=g("id") or None, usun=g("usun") == "1")
             self._json({"blad": blad} if blad else {"ok": True})
         elif u.path == "/znacznik_zmien":
             g = lambda k: q.get(k, [None])[0]

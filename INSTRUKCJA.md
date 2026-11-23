@@ -146,6 +146,14 @@ albo pod adresem IP z listy urządzeń podłączonych do hotspotu, z dopiskiem `
 - Po dodaniu nowych rodzajów plików trzeba raz odświeżyć odbiornik na serwerze:
   `git -C ~/GOLlidar pull && cp ~/GOLlidar/serwer/lidar_upload.py ~/BMS/ && sudo systemctl restart bms-api`.
 
+### Okna i drzwi zewnętrzne, punkty na podglądzie
+
+- Zakładka **Okna**: rodzaj, szerokość × wysokość, rama, szyby, sztuk. Litera typu nadaje się sama — te same cechy to ten sam typ
+  w całym budynku; użyte typy są na górze jako skróty z liczbą sztuk. Zapis do `okna.csv`.
+- **Punkt na podglądzie**: podczas nagrywania dotknięcie mapy w zakładce Skan zaznacza miejsce (przyciąga do najbliższego
+  pomiaru w promieniu 35 cm); po wpisaniu opisu i średnicy powstaje znacznik `PUNKT kat=… odl=… pion c.o. Ø50`,
+  czyli położenie względem skanera w tej chwili. Stać nieruchomo od dotknięcia do zapisu.
+
 ### Przekrój pionowy (wysokości) — automatycznie
 
 W trakcie nagrywania można w dowolnym miejscu zmierzyć pionowy przekrój pomieszczenia:

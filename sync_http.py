@@ -7,7 +7,7 @@ Wywolywane przez sync.sh; mozna tez recznie: python3 sync_http.py
 import json, os, sys, time, urllib.error, urllib.parse, urllib.request
 
 import re
-PIERWSZE = ("info.txt", "znaczniki.txt", "pomieszczenia.csv", "grzejniki.csv")      # male pliki ida przed duzymi
+PIERWSZE = ("info.txt", "znaczniki.txt", "pomieszczenia.csv", "grzejniki.csv", "okna.csv")      # male pliki ida przed duzymi
 WZOR = re.compile(r"^[a-z0-9_]{1,40}\.(csv|txt|bin)$")
 KAWALEK = 512 * 1024
 
