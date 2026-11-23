@@ -138,24 +138,42 @@ Godzina nagrania to ok. 80 MB. Zestaw pobiera ok. 4–4,5 W; powerbank 10 000 mA
 
 ## 9. Kopia nagrań na serwer w trakcie pracy
 
-`sync.sh` co minutę wysyła katalog `~/skany/` na serwer przez SSH (rsync). Dla rosnących plików wysyłana jest tylko
-nowa końcówka, więc transfer to ok. 80 MB na godzinę nagrania. Stan kopii widać na stronie w sekcji „Stan".
+`sync.sh` co minutę wysyła nowe dane z `~/skany/` na serwer. Wysyłana jest tylko nowa końcówka rosnących plików
+(ok. 80 MB na godzinę nagrania). Stan kopii widać na stronie w sekcji „Stan". Dane zawsze najpierw trafiają na kartę SD;
+kopia jest dodatkowym zabezpieczeniem i przy braku zasięgu sama nadrabia zaległości.
 
-1. Serwer musi być osiągalny z internetu po SSH — najprościej przez Tailscale zainstalowany na Raspberry Pi i na serwerze.
-2. Klucz SSH bez hasła z Raspberry Pi na serwer:
-   ```bash
-   ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519
-   ssh-copy-id uzytkownik@adres-serwera
-   ```
-3. Konfiguracja i włączenie:
-   ```bash
-   cd ~/skaner && cp sync.conf.example sync.conf && nano sync.conf
-   ./sync.sh && cat ~/skany/.sync_status          # powinno wypisać czas i OK
-   sudo cp skaner-sync.service skaner-sync.timer /etc/systemd/system/
-   sudo systemctl daemon-reload && sudo systemctl enable --now skaner-sync.timer
-   ```
+### Wariant A (zalecany): HTTPS do BMS API przez istniejący tunel
 
-Dane zawsze najpierw trafiają na kartę SD; kopia jest dodatkowym zabezpieczeniem i przy braku zasięgu nadrabia zaległości sama.
+Raspberry Pi wysyła dane zwykłym HTTPS na adres API — nie potrzeba SSH, VPN ani tunelu na samej malinie.
+
+**Na serwerze (jednorazowo):**
+1. Skopiować `serwer/lidar_upload.py` do katalogu z `api_server.py` i dopisać w `api_server.py`:
+   ```python
+   from lidar_upload import router as lidar_router
+   app.include_router(lidar_router)
+   ```
+2. Wygenerować token (`openssl rand -hex 32`) i ustawić w środowisku usługi API: `LIDAR_TOKEN=...` oraz
+   `LIDAR_DIR=/sciezka/na/nagrania`. Zrestartować usługę API.
+
+**Na Raspberry Pi (jednorazowo):**
+```bash
+cd ~/skaner && cp sync.conf.example sync.conf && nano sync.conf     # URL i TOKEN
+chmod 600 sync.conf
+./sync.sh && cat ~/skany/.sync_status                               # powinno wypisać czas i OK
+sudo cp skaner-sync.service skaner-sync.timer /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now skaner-sync.timer
+```
+
+Token wpisuje się tylko w `sync.conf` (plik nie trafia do repozytorium) i w środowisku usługi na serwerze.
+
+### Wariant B: rsync przez SSH
+
+Używany, gdy w `sync.conf` nie ma `URL`. Serwer musi być osiągalny po SSH (np. Tailscale), z kluczem bez hasła:
+```bash
+ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519
+ssh-copy-id uzytkownik@adres-serwera
+```
+W `sync.conf` ustawić `CEL` i ewentualnie `PORT`; włączenie timera jak wyżej.
 
 ## 10. Wariant zapasowy bez strony
 

@@ -1,5 +1,9 @@
 # Skopiuj do sync.conf i uzupelnij. Plik sync.conf nie trafia do repozytorium.
-# Cel kopii: uzytkownik@serwer:/katalog/  (koniecznie z ukosnikiem na koncu)
-CEL="uzytkownik@adres-serwera:/home/uzytkownik/skany-lidar/"
-# Port SSH serwera (domyslnie 22)
-PORT=22
+
+# --- Wariant A (zalecany): wysylka przez HTTPS do BMS API (endpoint z serwer/lidar_upload.py)
+URL="https://adres-api"
+TOKEN="tu-wklej-LIDAR_TOKEN"
+
+# --- Wariant B: rsync przez SSH (uzywany, gdy URL jest pusty)
+# CEL="uzytkownik@adres-serwera:/home/uzytkownik/skany-lidar/"
+# PORT=22

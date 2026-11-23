@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""
+sync_http.py - wysylka nagran z ~/skany do BMS API przez HTTPS (dopisywanie z kontrola pozycji).
+Konfiguracja w sync.conf:  URL="https://adres-api"   TOKEN="..."
+Wywolywane przez sync.sh; mozna tez recznie: python3 sync_http.py
+"""
+import json, os, sys, time, urllib.error, urllib.parse, urllib.request
+
+PLIKI = ("info.txt", "znaczniki.txt", "pomieszczenia.csv", "imu.bin", "baro.bin", "lidar.bin")
+KAWALEK = 512 * 1024
+
+
+def wczytaj_conf(sciezka):
+    conf = {}
+    with open(sciezka) as f:
+        for linia in f:
+            linia = linia.strip()
+            if linia and not linia.startswith("#") and "=" in linia:
+                k, v = linia.split("=", 1)
+                conf[k.strip()] = v.strip().strip('"').strip("'")
+    return conf
+
+
+def zapytanie(url, token, metoda="GET", dane=None):
+    req = urllib.request.Request(url, data=dane, method=metoda,
+                                 headers={"X-Lidar-Token": token, "Content-Type": "application/octet-stream",
+                                          "User-Agent": "GOLlidar-sync/1"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return r.status, json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read() or b"{}")
+        except ValueError:
+            return e.code, {}
+
+
+def main():
+    tu = os.path.dirname(os.path.abspath(__file__))
+    conf = wczytaj_conf(os.path.join(tu, "sync.conf"))
+    url, token = conf.get("URL", "").rstrip("/"), conf.get("TOKEN", "")
+    zrodlo = os.path.expanduser(conf.get("ZRODLO", "~/skany"))
+    if not url or not token:
+        sys.exit("W sync.conf brakuje URL lub TOKEN")
+    limit = time.time() + 50                      # jedno uruchomienie pracuje najwyzej ok. 50 s
+    wyslano = 0
+    for sesja in sorted(os.listdir(zrodlo)):
+        kat = os.path.join(zrodlo, sesja)
+        if not os.path.isdir(kat):
+            continue
+        for plik in PLIKI:
+            sciezka = os.path.join(kat, plik)
+            if not os.path.isfile(sciezka):
+                continue
+            q = urllib.parse.urlencode({"sesja": sesja, "plik": plik})
+            kod, odp = zapytanie(f"{url}/lidar/rozmiar?{q}", token)
+            if kod != 200:
+                sys.exit(f"Serwer odpowiedzial {kod} dla {sesja}/{plik}: {odp}")
+            zdalny = int(odp.get("rozmiar", 0))
+            with open(sciezka, "rb") as f:
+                while time.time() < limit:
+                    if os.path.getsize(sciezka) <= zdalny:
+                        break
+                    f.seek(zdalny)
+                    dane = f.read(KAWALEK)
+                    if not dane:
+                        break
+                    kod, odp = zapytanie(f"{url}/lidar/dopisz?{q}&offset={zdalny}", token, "PUT", dane)
+                    if kod == 409:
+                        zdalny = int(odp.get("rozmiar", 0))
+                        continue
+                    if kod != 200:
+                        sys.exit(f"Serwer odpowiedzial {kod} przy wysylce {sesja}/{plik}: {odp}")
+                    zdalny = int(odp["rozmiar"])
+                    wyslano += len(dane)
+    print(f"wyslano {wyslano} bajtow")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (urllib.error.URLError, OSError) as e:
+        sys.exit(f"Brak polaczenia: {e}")

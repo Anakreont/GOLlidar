@@ -1,17 +1,22 @@
 #!/bin/bash
-# Kopia nagran z ~/skany na serwer (rsync przez SSH). Uruchamiane co minute przez skaner-sync.timer.
+# Kopia nagran z ~/skany na serwer: przez HTTPS do BMS API (URL+TOKEN) albo rsync przez SSH (CEL). Uruchamiane co minute przez skaner-sync.timer.
 # Konfiguracja: ~/skaner/sync.conf (wzor: sync.conf.example). Bez tego pliku skrypt nic nie robi.
 CONF="$(dirname "$0")/sync.conf"
 [ -f "$CONF" ] || exit 0
 # shellcheck disable=SC1090
 source "$CONF"
-[ -n "$CEL" ] || exit 0
+[ -n "$CEL" ] || [ -n "$URL" ] || exit 0
 ZRODLO="${ZRODLO:-$HOME/skany}"
 STATUS="$ZRODLO/.sync_status"
 mkdir -p "$ZRODLO"
 # jedna kopia naraz
 exec 9>"/tmp/skaner-sync.lock"
 flock -n 9 || exit 0
+# tryb HTTPS (BMS API) ma pierwszenstwo przed rsync
+if [ -n "$URL" ]; then
+    if python3 "$(dirname "$0")/sync_http.py"; then echo "$(date +%s) OK" > "$STATUS"; exit 0
+    else echo "$(date +%s) BLAD" > "$STATUS"; exit 1; fi
+fi
 if [ -n "$CEL_LOKALNY" ]; then
     RSH=()                                   # tryb testowy: kopia do katalogu lokalnego
 else
