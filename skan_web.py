@@ -340,7 +340,8 @@ def ustawienia(nowe=None):
 def start(budynek, kondygnacja):
     budynek, kondygnacja = czysc(budynek, 40), czysc(kondygnacja, 30)
     nazwa = "_".join(x for x in (budynek, kondygnacja) if x) or "sesja"
-    nazwa = "".join(ch if ch.isalnum() or ch in "-_+" else "_" for ch in nazwa)[:60]
+    nazwa = nazwa.translate(str.maketrans("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ", "acelnoszzACELNOSZZ"))
+    nazwa = "".join(ch if (ch.isascii() and ch.isalnum()) or ch in "-_+" else "_" for ch in nazwa)[:60]
     ustawienia({"budynek": budynek, "kondygnacja": kondygnacja})
     with LOCK:
         if STAN["nagrywa"]:

@@ -35,6 +35,15 @@ def zapytanie(url, token, metoda="GET", dane=None):
             return e.code, {}
 
 
+PL = str.maketrans("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ", "acelnoszzACELNOSZZ")
+
+
+def bezpieczna(nazwa):
+    """Nazwa sesji dla serwera: tylko litery ASCII, cyfry i _ + - (serwer inne odrzuca)."""
+    n = nazwa.translate(PL)
+    return "".join(ch if (ch.isascii() and ch.isalnum()) or ch in "_+-" else "_" for ch in n)[:100]
+
+
 def main():
     tu = os.path.dirname(os.path.abspath(__file__))
     conf = wczytaj_conf(os.path.join(tu, "sync.conf"))
@@ -43,7 +52,7 @@ def main():
     if not url or not token:
         sys.exit("W sync.conf brakuje URL lub TOKEN")
     limit = time.time() + 50                      # jedno uruchomienie pracuje najwyzej ok. 50 s
-    wyslano = 0
+    wyslano, bledy = 0, []
     for sesja in sorted(os.listdir(zrodlo)):
         kat = os.path.join(zrodlo, sesja)
         if not os.path.isdir(kat):
@@ -52,10 +61,13 @@ def main():
             sciezka = os.path.join(kat, plik)
             if not os.path.isfile(sciezka):
                 continue
-            q = urllib.parse.urlencode({"sesja": sesja, "plik": plik})
+            q = urllib.parse.urlencode({"sesja": bezpieczna(sesja), "plik": plik})
             kod, odp = zapytanie(f"{url}/lidar/rozmiar?{q}", token)
-            if kod != 200:
-                sys.exit(f"Serwer odpowiedzial {kod} dla {sesja}/{plik}: {odp}")
+            if kod in (401, 503):
+                sys.exit(f"Serwer odpowiedzial {kod}: {odp}")
+            if kod != 200:                          # klopot z jedna sesja nie blokuje pozostalych
+                bledy.append(f"{sesja}/{plik}: {kod} {odp}")
+                continue
             zdalny = int(odp.get("rozmiar", 0))
             with open(sciezka, "rb") as f:
                 while time.time() < limit:
@@ -70,10 +82,13 @@ def main():
                         zdalny = int(odp.get("rozmiar", 0))
                         continue
                     if kod != 200:
-                        sys.exit(f"Serwer odpowiedzial {kod} przy wysylce {sesja}/{plik}: {odp}")
+                        bledy.append(f"{sesja}/{plik}: {kod} {odp}")
+                        break
                     zdalny = int(odp["rozmiar"])
                     wyslano += len(dane)
     print(f"wyslano {wyslano} bajtow")
+    if bledy:
+        sys.exit("Bledy:\n  " + "\n  ".join(bledy[:10]))
 
 
 if __name__ == "__main__":
