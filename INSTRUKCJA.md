@@ -122,14 +122,19 @@ albo pod adresem IP z listy urządzeń podłączonych do hotspotu, z dopiskiem `
 6. Na każdej kondygnacji zmierz dalmierzem 3–4 długie wymiary kontrolne oraz grubość ściany zewnętrznej w ościeżu okna.
 7. Skanuj po lekcjach — ludzie w kadrze psują mapę.
 
-### Budynek, kondygnacja, pomieszczenia, sesje
+### Budynki, kondygnacje, pomieszczenia, poprawki
 
-- Przed START wpisuje się **budynek** i **kondygnację**; z nich powstaje nazwa sesji, a obie wartości trafiają do `info.txt`
-  i do każdego wiersza `pomieszczenia.csv`. Ostatnie wartości są pamiętane.
-- W trakcie nagrywania kondygnację zmienia się przyciskiem **Zmień** (zapisuje znacznik `KONDYGNACJA …`), bez przerywania nagrania.
-- Pomieszczenie można zapisać **bez opraw** (ilość 0 lub puste pole) — zapisuje się sama nazwa i uwagi.
-- **Zapisane sesje**: lista z rozmiarem, podgląd (`info`, pomieszczenia, znaczniki) i usuwanie z podwójnym potwierdzeniem.
-  Sesji w trakcie nagrywania usunąć się nie da; usunięcie dotyczy tylko karty maliny, kopia na serwerze zostaje.
+- Przed START wybiera się **budynek** z listy wcześniej użytych albo wpisuje nowy, oraz **kondygnację** (skróty: piwnica, parter,
+  1 piętro…). Obie wartości trafiają do `info.txt` i do każdego wiersza `pomieszczenia.csv`.
+- W trakcie nagrywania kondygnację zmienia się przyciskiem **Zmień** (znacznik `KONDYGNACJA …`), bez przerywania nagrania.
+- Formularz oświetlenia: 1. liczba opraw, 2. liczba punktów w oprawie, 3. moc punktu. Liczba opraw 0 zapisuje samo pomieszczenie.
+  Nazwę można pominąć — wpis dostaje nazwę „bez nazwy N", a miejsce i tak wyznacza czas w nagraniu.
+- **Zapisane dane** są pogrupowane: budynek → kondygnacje (nagrania). Przy budynku suma nagrań, pomieszczeń, opraw i mocy
+  oraz **Usuń budynek**; przy nagraniu **Podgląd** i **Usuń** (zawsze z podwójnym potwierdzeniem; aktywnego nagrania usunąć się nie da).
+- W podglądzie każdy wpis pomieszczenia i każdy ręczny znacznik ma **Edytuj** i **Usuń**. Pliki są tylko dopisywane:
+  poprawka to nowy wiersz z tym samym `czas_ns` i `wpis=poprawka` (obowiązuje ostatni), usunięcie to `wpis=usuniety`;
+  w `znaczniki.txt` są to wiersze `EDYCJA <id> <tekst>` i `USUNIETO <id>`. Dzięki temu kopia na serwer zawsze się zgadza.
+- Usuwanie z karty nie usuwa kopii na serwerze.
 
 ### Przekrój pionowy (wysokości) — automatycznie
 

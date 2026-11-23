@@ -389,38 +389,133 @@ def znacznik(opis, licz=True):
     return True
 
 
-def pomieszczenie(nr, typ, punktow, opraw, uwagi, moc=""):
-    """Dopisuje wiersz do pomieszczenia.csv w katalogu sesji (inwentaryzacja oswietlenia)."""
+KOL_POM = ("czas_ns;godzina;pomieszczenie;rodzaj_oprawy;punktow_w_oprawie;liczba_opraw;punktow_razem;uwagi;"
+           "wysokosc_wzgl_m;budynek;kondygnacja;moc_punktu_W;moc_razem_W;wpis")
+ZN_SYSTEMOWE = ("AUTO_", "PRZEKROJ_", "PAUZA_", "KONDYGNACJA ", "POM ", "EDYCJA ", "USUNIETO ")
+
+
+def _liczba(t):
+    try:
+        return float(str(t or 0).replace(",", "."))
+    except ValueError:
+        return 0.0
+
+
+def wiersze_pom(kat):
+    """Aktualny stan pomieszczen sesji. Plik jest tylko dopisywany: poprawka to nowy wiersz z tym samym czas_ns
+    (wygrywa ostatni), usuniecie to wiersz z wpis=usuniety. Dzieki temu kopia na serwer zawsze sie zgadza."""
+    try:
+        with open(os.path.join(kat, "pomieszczenia.csv"), encoding="utf-8-sig") as f:
+            linie = f.read().splitlines()[1:]
+    except OSError:
+        return []
+    stan = {}
+    for w in linie:
+        k = (w.split(";") + [""] * 14)[:14]
+        if not k[0].isdigit():
+            continue
+        if k[13] == "usuniety":
+            stan.pop(k[0], None)
+            continue
+        poprz = stan.pop(k[0], None) if k[13] == "poprawka" and k[0] in stan else None
+        rek = {"id": k[0], "godz": k[1], "nr": k[2], "typ": k[3], "punktow": int(_liczba(k[4])), "opraw": int(_liczba(k[5])),
+               "uwagi": k[7], "wys": k[8], "bud": k[9], "kond": k[10], "moc": _liczba(k[11]), "moc_razem": _liczba(k[12])}
+        if poprz is not None:                       # poprawka zostaje na miejscu pierwotnego wpisu
+            stan = {**{a: b for a, b in stan.items() if int(a) < int(k[0])}, k[0]: rek,
+                    **{a: b for a, b in stan.items() if int(a) > int(k[0])}}
+        else:
+            stan[k[0]] = rek
+    return list(stan.values())
+
+
+def znaczniki_stan(kat):
+    """Aktualny stan znacznikow: uwzglednia dopisane wiersze 'EDYCJA <id> <tekst>' i 'USUNIETO <id>'."""
+    try:
+        with open(os.path.join(kat, "znaczniki.txt"), encoding="utf-8") as f:
+            linie = f.read().splitlines()
+    except OSError:
+        return []
+    stan = {}
+    for w in linie:
+        cz = w.split("\t")
+        if len(cz) < 2 or not cz[0].isdigit():
+            continue
+        opis = cz[1]
+        if opis.startswith("EDYCJA "):
+            _, idz, *reszta = opis.split(" ", 2)
+            if idz in stan:
+                stan[idz]["opis"] = reszta[0] if reszta else ""
+        elif opis.startswith("USUNIETO "):
+            stan.pop(opis.split(" ", 1)[1].strip(), None)
+        else:
+            stan[cz[0]] = {"id": cz[0], "godz": datetime.fromtimestamp(int(cz[0]) / 1e9).strftime("%H:%M:%S"),
+                           "opis": opis, "sys": opis.startswith(ZN_SYSTEMOWE)}
+    return list(stan.values())
+
+
+def _dopisz_znacznik(kat, opis):
+    with open(os.path.join(kat, "znaczniki.txt"), "a", encoding="utf-8") as f:
+        f.write(f"{time.time_ns()}\t{opis}\t\n")
+
+
+def znacznik_zmien(n, idz, opis=None):
+    """opis=None usuwa znacznik, inaczej zmienia jego tresc. Dotyczy tylko znacznikow wpisanych recznie."""
+    kat = sesja_sciezka(n)
+    if not kat:
+        return "Nie ma takiej sesji"
+    with LOCK:
+        z = next((x for x in znaczniki_stan(kat) if x["id"] == idz), None)
+        if not z:
+            return "Nie ma takiego znacznika"
+        if z["sys"]:
+            return "Znaczników systemowych nie można zmieniać"
+        _dopisz_znacznik(kat, f"USUNIETO {idz}" if opis is None else f"EDYCJA {idz} {czysc(opis, 500)}")
+    return None
+
+
+def pomieszczenie(nr, typ, punktow, opraw, uwagi, moc="", n=None, idp=None, usun=False):
+    """Dopisuje wiersz do pomieszczenia.csv (inwentaryzacja oswietlenia). Z n i idp: poprawka albo usuniecie wpisu."""
     try:
         opraw = int(opraw or 0)
         punktow = int(punktow or 0)
         moc = float(str(moc or 0).replace(",", "."))
     except ValueError:
         return "Liczba opraw, liczba punktów i moc muszą być liczbami"
-    if moc < 0:
+    if moc < 0 or opraw < 0 or punktow < 0:
         return "Liczby nie mogą być ujemne"
-    if opraw < 0 or punktow < 0:
-        return "Liczby nie mogą być ujemne"
-    if not czysc(nr):
-        return "Podaj nazwę lub numer pomieszczenia"
     if opraw == 0:
         typ, punktow, moc = "", 0, 0.0            # pomieszczenie bez opraw: sama nazwa i uwagi
     moc_razem = moc * max(punktow, 1) * opraw
     lw = lambda x: (f"{x:.1f}".rstrip("0").rstrip(".").replace(".", ",")) if x else ""
     with LOCK:
-        if not STAN["nagrywa"]:
-            return "Zapis pomieszczeń działa tylko podczas nagrywania"
-        sciezka = os.path.join(STAN["katalog"], "pomieszczenia.csv")
+        if idp:
+            kat = sesja_sciezka(n)
+            stary = next((x for x in wiersze_pom(kat) if x["id"] == idp), None) if kat else None
+            if not stary:
+                return "Nie ma takiego wpisu"
+            czas, godz, wys, bud, kond = idp, stary["godz"], stary["wys"], stary["bud"], stary["kond"]
+            wpis = "usuniety" if usun else "poprawka"
+            if usun:
+                nr, typ, uwagi, punktow, opraw, moc, moc_razem = stary["nr"], stary["typ"], stary["uwagi"], 0, 0, 0, 0
+        else:
+            if not STAN["nagrywa"]:
+                return "Zapis pomieszczeń działa tylko podczas nagrywania"
+            kat, czas, godz, wpis = STAN["katalog"], str(time.time_ns()), datetime.now().strftime("%H:%M:%S"), ""
+            if not czysc(nr):                     # bez nazwy: miejsce i tak wyznacza znacznik czasu w nagraniu
+                nr = f"bez nazwy {len(wiersze_pom(kat)) + 1}"
+            wys = "" if STAN["wys"] is None else f"{STAN['wys']:.1f}".replace(".", ",")
+            bud, kond = STAN["budynek"], STAN["kondygnacja"]
+        sciezka = os.path.join(kat, "pomieszczenia.csv")
         nowy = not os.path.exists(sciezka)
         with open(sciezka, "a", encoding="utf-8-sig" if nowy else "utf-8") as f:
             if nowy:
-                f.write("czas_ns;godzina;pomieszczenie;rodzaj_oprawy;punktow_w_oprawie;liczba_opraw;punktow_razem;uwagi;wysokosc_wzgl_m;budynek;kondygnacja;moc_punktu_W;moc_razem_W\n")
-            wys = "" if STAN["wys"] is None else f"{STAN['wys']:.1f}".replace(".", ",")
-            f.write(f"{time.time_ns()};{datetime.now().strftime('%H:%M:%S')};{czysc(nr)};{czysc(typ)};"
-                    f"{punktow or ''};{opraw};{punktow * opraw or ''};{czysc(uwagi)};{wys};"
-                    f"{STAN['budynek']};{STAN['kondygnacja']};{lw(moc)};{lw(moc_razem)}\n")
-        STAN["pom"].append({"nr": czysc(nr), "typ": czysc(typ), "punktow": punktow, "opraw": opraw, "moc": moc, "moc_razem": moc_razem})
-    znacznik(f"POM {czysc(nr)}", licz=True)
+                f.write(KOL_POM + "\n")
+            f.write(f"{czas};{godz};{czysc(nr)};{czysc(typ)};{punktow or ''};{opraw};{punktow * opraw or ''};{czysc(uwagi)};{wys};"
+                    f"{bud};{kond};{lw(moc)};{lw(moc_razem)};{wpis}\n")
+        if STAN["nagrywa"] and os.path.abspath(kat) == os.path.abspath(STAN["katalog"]):
+            STAN["pom"] = wiersze_pom(kat)
+    if not idp:
+        znacznik(f"POM {czysc(nr)}", licz=True)
     return None
 
 
@@ -443,45 +538,55 @@ def sesja_sciezka(n):
     return p if os.path.isdir(p) else None
 
 
+def info_sesji(p):
+    d = {}
+    try:
+        with open(os.path.join(p, "info.txt"), encoding="utf-8") as f:
+            for w in f:
+                if "=" in w:
+                    k, v = w.rstrip("\n").split("=", 1)
+                    d[k] = v
+    except OSError:
+        pass
+    return d
+
+
 def lista_sesji():
     wyn = []
     for n in sorted(os.listdir(ARGS.katalog), reverse=True):
         p = sesja_sciezka(n)
         if not p:
             continue
-        def linie(plik):
-            try:
-                with open(os.path.join(p, plik), encoding="utf-8-sig") as f:
-                    return sum(1 for _ in f)
-            except OSError:
-                return 0
+        inf, pom = info_sesji(p), wiersze_pom(p)
         wyn.append({"n": n, "mb": round(sum(os.path.getsize(os.path.join(p, x)) for x in os.listdir(p)) / 1e6, 1),
-                    "zn": linie("znaczniki.txt"), "pom": max(0, linie("pomieszczenia.csv") - 1),
+                    "bud": inf.get("budynek", ""), "kond": inf.get("kondygnacja", ""),
+                    "data": n[6:8] + "." + n[4:6] + "." + n[:4] + " " + n[9:11] + ":" + n[11:13] if n[:8].isdigit() else "",
+                    "zn": sum(1 for z in znaczniki_stan(p) if not z["sys"]), "pom": len(pom),
+                    "opraw": sum(x["opraw"] for x in pom), "w": round(sum(x["moc_razem"] for x in pom)),
                     "aktywna": STAN["nagrywa"] and os.path.abspath(p) == os.path.abspath(STAN["katalog"])})
     return wyn
+
+
+def usun_budynek(b):
+    """Usuwa z karty wszystkie sesje danego budynku (poza wlasnie nagrywana)."""
+    ile = 0
+    for x in lista_sesji():
+        if x["bud"] == b and not x["aktywna"]:
+            if usun_sesje(x["n"]) is None:
+                ile += 1
+    return ile
 
 
 def sesja_tresc(n):
     p = sesja_sciezka(n)
     if not p:
         return None
-    def czytaj(plik):
-        try:
-            with open(os.path.join(p, plik), encoding="utf-8-sig") as f:
-                return f.read()[-20000:]
-        except OSError:
-            return ""
-    zn = []
-    for w in czytaj("znaczniki.txt").splitlines():
-        cz = w.split("\t")
-        try:
-            zn.append(datetime.fromtimestamp(int(cz[0]) / 1e9).strftime("%H:%M:%S") + "  " + (cz[1] if len(cz) > 1 else ""))
-        except ValueError:
-            zn.append(w)
-    pom = [w.split(";") for w in czytaj("pomieszczenia.csv").splitlines()[1:]]
-    return {"n": n, "info": czytaj("info.txt"), "znaczniki": zn,
-            "pom": [{"godz": w[1], "nr": w[2], "typ": w[3], "pkt": w[4], "opraw": w[5], "uwagi": w[7],
-                     "kond": w[10] if len(w) > 10 else "", "moc": w[11] if len(w) > 11 else ""} for w in pom if len(w) >= 8]}
+    try:
+        with open(os.path.join(p, "info.txt"), encoding="utf-8") as f:
+            info = f.read()[-4000:]
+    except OSError:
+        info = ""
+    return {"n": n, "info": info, "znaczniki": znaczniki_stan(p), "pom": wiersze_pom(p)}
 
 
 def usun_sesje(n):
@@ -533,7 +638,7 @@ body{margin:0;font-family:system-ui,sans-serif;background:#111;color:#eee;font-s
 #prk small{display:block;font-weight:400;font-size:14px}
 .lst{padding:2px 10px;font-size:14px;line-height:1.5}
 .lst .r{display:flex;gap:8px;align-items:center;border-bottom:1px solid #333;padding:6px 0}
-.lst .r span{flex:1;min-width:0;word-break:break-all}
+.lst .r span{flex:1;min-width:0;overflow-wrap:anywhere}
 .lst .r button{flex:0 0 auto;min-height:40px;font-size:14px;font-weight:400;padding:0 12px;background:#444}
 .lst pre{white-space:pre-wrap;word-break:break-word;background:#1a1a1a;padding:8px;border-radius:8px;font-size:12px;margin:6px 0}
 #kom{padding:4px 10px;color:#fb3;font-size:13px}
@@ -568,9 +673,12 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
  <select id="zas"><option value="3">3 m</option><option value="6" selected>6 m</option><option value="12">12 m</option><option value="20">20 m</option></select></div>
 <div id="kom"></div>
 
-<div class="w"><input id="bud" placeholder="budynek, np. SP162" autocomplete="off"></div>
+<div class="et">Budynek (wybierz z listy albo wpisz nowy)</div>
+<div class="w"><input id="bud" list="budl" placeholder="budynek, np. SP162 Kraków" autocomplete="off"><datalist id="budl"></datalist></div>
+<div class="et">Kondygnacja</div>
 <div class="w"><input id="kon" placeholder="kondygnacja, np. parter, +1, -1" autocomplete="off">
  <button id="bk" class="sz" style="flex:0 0 96px;display:none" onclick="cmd('kondygnacja?k='+encodeURIComponent($('kon').value),wibr)">Zmień</button></div>
+<div class="chips"><button class="chip" onclick="$('kon').value='piwnica'">piwnica</button><button class="chip" onclick="$('kon').value='parter'">parter</button><button class="chip" onclick="$('kon').value='1 piętro'">1 piętro</button><button class="chip" onclick="$('kon').value='2 piętro'">2 piętro</button><button class="chip" onclick="$('kon').value='3 piętro'">3 piętro</button><button class="chip" onclick="$('kon').value='poddasze'">poddasze</button></div>
 <div class="w"><button id="bs" onclick="cmd('start?budynek='+encodeURIComponent($('bud').value)+'&kondygnacja='+encodeURIComponent($('kon').value))">START</button>
  <button id="bp" onclick="if(confirm('Zakończyć nagranie?'))cmd('stop')">STOP</button></div>
 <div class="w"><button id="bpa" onclick="cmd('pauza')">PAUZA (schylam się / kucam)</button></div>
@@ -588,28 +696,30 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 <div class="w"><button class="nb" onclick="zapZn()">ZAPISZ ZNACZNIK</button></div>
 
 <h2>Pomieszczenie – nazwa i oświetlenie</h2>
-<div class="w"><input id="pnr" placeholder="pomieszczenie, np. sala 12" autocomplete="off"></div>
+<div class="w"><input id="pnr" placeholder="pomieszczenie, np. sala 12 (można zostawić puste)" autocomplete="off"></div>
 <div class="et">Rodzaj oprawy</div>
 <div class="w seg" id="ptyp"><button class="on" onclick="typ(this)">świetlówki</button><button onclick="typ(this)">LED</button>
  <button onclick="typ(this)">żarówki</button><button onclick="typ(this)">inne</button></div>
-<div class="et">Punktów świetlnych w jednej oprawie</div>
+<div class="et">1. Liczba opraw w pomieszczeniu (0 = sama nazwa, bez oświetlenia)</div>
+<div class="w"><div class="licz"><button onclick="krok('popr',-1)">−</button>
+ <input id="popr" type="number" inputmode="numeric" placeholder="0"><button onclick="krok('popr',1)">+</button></div></div>
+<div class="et">2. Liczba punktów świetlnych w jednej oprawie</div>
 <div class="w"><div class="licz"><button onclick="krok('ppkt',-1)">−</button>
  <input id="ppkt" type="number" inputmode="numeric" placeholder="0"><button onclick="krok('ppkt',1)">+</button></div></div>
-<div class="et">Moc jednego punktu świetlnego [W]</div>
+<div class="et">3. Moc jednego punktu [W]</div>
 <div class="w"><div class="licz"><button onclick="krok('pmoc',-1)">−</button>
  <input id="pmoc" type="number" inputmode="decimal" placeholder="0"><button onclick="krok('pmoc',1)">+</button></div></div>
 <div class="chips"><button class="chip" onclick="$('pmoc').value=9">9 W</button><button class="chip" onclick="$('pmoc').value=18">18 W</button>
  <button class="chip" onclick="$('pmoc').value=36">36 W</button><button class="chip" onclick="$('pmoc').value=58">58 W</button>
  <button class="chip" onclick="$('pmoc').value=60">60 W</button><button class="chip" onclick="$('pmoc').value=100">100 W</button></div>
-<div class="et">Ilość opraw w pomieszczeniu (0 = zapis samej nazwy, bez oświetlenia)</div>
-<div class="w"><div class="licz"><button onclick="krok('popr',-1)">−</button>
- <input id="popr" type="number" inputmode="numeric" placeholder="0"><button onclick="krok('popr',1)">+</button></div></div>
 <div class="w"><textarea id="puw" style="min-height:64px" placeholder="uwagi, np. 4×18 W, 2 nie świecą"></textarea></div>
-<div class="w"><button class="nb" onclick="zapPom()">ZAPISZ POMIESZCZENIE</button></div>
-<div id="plista"></div>
+<div id="edb" class="lst" style="display:none;color:#fb3"></div>
+<div class="w"><button class="nb" id="bzp" onclick="zapPom()">ZAPISZ POMIESZCZENIE</button></div>
+<div id="plista" class="lst"></div>
+<div class="w" id="bed" style="display:none"><button class="sz" onclick="sesja(encodeURIComponent(aktN))">Popraw / usuń wpisy tej sesji</button></div>
 
-<h2>Zapisane sesje</h2>
-<div class="w"><button class="sz" onclick="sesje()">Pokaż / odśwież listę sesji</button></div>
+<h2>Zapisane dane – budynki i kondygnacje</h2>
+<div class="w"><button class="sz" onclick="sesje()">Pokaż / odśwież</button></div>
 <div id="sl" class="lst"></div><div id="sd" class="lst"></div>
 
 <h2>Stan</h2>
@@ -638,19 +748,49 @@ function zapZn(){cmd('znacznik?opis='+encodeURIComponent($('opis').value),()=>{$
 function szybki(t){cmd('znacznik?opis='+encodeURIComponent(t),wibr)}
 function krok(id,d){const e=$(id);e.value=Math.max(0,(parseInt(e.value)||0)+d)}
 function typ(b){for(const x of $('ptyp').children)x.className='';b.className='on'}
+let ed=null,aktN='',otw='';
 function zapPom(){const e=encodeURIComponent,t=$('ptyp').querySelector('.on').textContent;
- cmd('pomieszczenie?nr='+e($('pnr').value)+'&typ='+e(t)+'&punktow='+e($('ppkt').value)+'&opraw='+e($('popr').value)+'&moc='+e($('pmoc').value)+'&uwagi='+e($('puw').value),
- ()=>{$('popr').value='';$('puw').value='';wibr()})}
+ cmd('pomieszczenie?nr='+e($('pnr').value)+'&typ='+e(t)+'&punktow='+e($('ppkt').value)+'&opraw='+e($('popr').value)+'&moc='+e($('pmoc').value)+'&uwagi='+e($('puw').value)+
+ (ed?'&n='+e(ed.n)+'&id='+ed.id:''),()=>{$('popr').value='';$('puw').value='';wibr();if(ed){const n=ed.n;koniecEd();sesja(e(n))}})}
+function koniecEd(){ed=null;$('edb').style.display='none';$('bzp').textContent='ZAPISZ POMIESZCZENIE';$('pnr').value='';$('popr').value='';$('puw').value=''}
+function edPom(i){const p=podgl.pom[i];ed={n:podgl.n,id:p.id};$('pnr').value=p.nr;$('ppkt').value=p.punktow||'';$('pmoc').value=p.moc||'';$('popr').value=p.opraw;$('puw').value=p.uwagi;
+ for(const b of $('ptyp').children)b.className=(b.textContent==p.typ||(!p.typ&&b==$('ptyp').children[0]))?'on':'';
+ $('edb').style.display='block';$('edb').innerHTML='Poprawiasz wpis: <b>'+esc(p.nr)+'</b> ('+p.godz+') &nbsp; <a href="#" style="color:#9cf" onclick="koniecEd();return false">anuluj</a>';
+ $('bzp').textContent='ZAPISZ POPRAWKĘ';$('pnr').scrollIntoView({behavior:'smooth',block:'center'})}
+function usPom(i){const p=podgl.pom[i];if(!confirm('Usunąć wpis pomieszczenia „'+p.nr+'”?'))return;
+ cmd('pomieszczenie?usun=1&n='+encodeURIComponent(podgl.n)+'&id='+p.id,()=>sesja(encodeURIComponent(podgl.n)))}
+function edZn(i){const z=podgl.znaczniki[i],t=prompt('Treść znacznika:',z.opis);if(t===null)return;
+ cmd('znacznik_zmien?n='+encodeURIComponent(podgl.n)+'&id='+z.id+'&opis='+encodeURIComponent(t),()=>sesja(encodeURIComponent(podgl.n)))}
+function usZn(i){const z=podgl.znaczniki[i];if(!confirm('Usunąć znacznik „'+z.opis+'”?'))return;
+ cmd('znacznik_zmien?usun=1&n='+encodeURIComponent(podgl.n)+'&id='+z.id,()=>sesja(encodeURIComponent(podgl.n)))}
+function opisPom(p){return (p.opraw?p.opraw+' × '+esc(p.typ)+(p.punktow?' ('+p.punktow+' pkt)':'')+(p.moc?' × '+p.moc+' W = '+Math.round(p.moc_razem)+' W':''):'bez opraw')}
+let podgl=null;
 let kopOK=false,ustW=false;
 function esc(t){return String(t).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))}
-function sesje(){fetch('/sesje').then(r=>r.json()).then(l=>{$('sd').innerHTML='';$('sl').innerHTML=l.length?l.map(x=>
- '<div class="r"><span><b>'+esc(x.n)+'</b><br>'+x.mb+' MB · znaczniki: '+x.zn+' · pomieszczenia: '+x.pom+(x.aktywna?' · <b class="ok">NAGRYWA</b>':'')+'</span>'+
- '<button data-n="'+encodeURIComponent(x.n)+'" onclick="sesja(this.dataset.n)">Podgląd</button>'+
- (x.aktywna?'':'<button data-n="'+encodeURIComponent(x.n)+'" style="background:#933" onclick="usun(this.dataset.n)">Usuń</button>')+'</div>').join(''):'brak sesji'})}
-function sesja(n){fetch('/sesja?n='+n).then(r=>r.json()).then(t=>{if(t.blad){alert(t.blad);return}
- $('sd').innerHTML='<b>'+esc(t.n)+'</b><pre>'+esc(t.info)+'</pre><b>Pomieszczenia ('+t.pom.length+')</b><pre>'+
- (esc(t.pom.map(p=>p.godz+'  '+(p.kond?'['+p.kond+'] ':'')+p.nr+' – '+(+p.opraw?p.opraw+' × '+p.typ+(p.pkt?' ('+p.pkt+' pkt)':'')+(p.moc?' × '+p.moc+' W':''):'bez opraw')+(p.uwagi?' · '+p.uwagi:'')).join('\n'))||'brak')+
- '</pre><b>Znaczniki ('+t.znaczniki.length+')</b><pre>'+(esc(t.znaczniki.join('\n'))||'brak')+'</pre>';$('sd').scrollIntoView({behavior:'smooth'})})}
+let rozw={};
+function sesje(){fetch('/sesje').then(r=>r.json()).then(l=>{$('sd').innerHTML='';otw='';const g={};
+ for(const x of l){const b=x.bud||'(bez nazwy budynku)';(g[b]=g[b]||[]).push(x)}
+ $('budl').innerHTML=Object.keys(g).filter(b=>b[0]!='(').map(b=>'<option value="'+esc(b).replace(/"/g,'&quot;')+'">').join('');
+ const B=Object.keys(g);window._bud=B;
+ $('sl').innerHTML=B.length?B.map((b,bi)=>{const w=g[b],sum=k=>w.reduce((a,x)=>a+x[k],0),o=rozw[b];
+  return '<div class="r" style="background:#1c2430;padding:8px;border-radius:8px;margin-top:6px"><span onclick="rozw[_bud['+bi+']]=!rozw[_bud['+bi+']];sesje()"><b>'+(o?'▾ ':'▸ ')+esc(b)+'</b><br>'+
+   'nagrań: '+w.length+' · '+sum('mb').toFixed(1)+' MB · pomieszczeń: '+sum('pom')+' · opraw: '+sum('opraw')+(sum('w')?' · '+sum('w')+' W':'')+'</span>'+
+   (b[0]=='('?'':'<button style="background:#933" onclick="usunBud('+bi+')">Usuń budynek</button>')+'</div>'+
+   (o?w.slice().sort((a,c)=>(a.kond||'').localeCompare(c.kond||'')||a.n.localeCompare(c.n)).map(x=>
+   '<div class="r" style="padding-left:14px"><span><b>'+esc(x.kond||x.n)+'</b> · '+x.data+(x.aktywna?' · <b class="ok">NAGRYWA</b>':'')+'<br>'+x.mb+' MB · znaczniki: '+x.zn+' · pomieszczenia: '+x.pom+(x.w?' · '+x.w+' W':'')+'</span>'+
+   '<button data-n="'+encodeURIComponent(x.n)+'" onclick="sesja(this.dataset.n)">Podgląd</button>'+
+   (x.aktywna?'':'<button data-n="'+encodeURIComponent(x.n)+'" style="background:#933" onclick="usun(this.dataset.n)">Usuń</button>')+'</div>').join(''):'')}).join(''):'brak zapisanych danych'})}
+function usunBud(bi){const b=_bud[bi];
+ if(!confirm('Usunąć z karty WSZYSTKIE nagrania budynku\n'+b+' ?\n\n'+(kopOK?'Kopia na serwerze zostaje.':'UWAGA: brak potwierdzonej kopii na serwerze – dane mogą przepaść bezpowrotnie!')))return;
+ if(!confirm('Na pewno usunąć cały budynek „'+b+'”? Tego nie da się cofnąć.'))return;cmd('usun_budynek?b='+encodeURIComponent(b),sesje)}
+function sesja(n){fetch('/sesja?n='+n).then(r=>r.json()).then(t=>{if(t.blad){alert(t.blad);return}podgl=t;
+ const prz='<button onclick="';
+ $('sd').innerHTML='<b>'+esc(t.n)+'</b><pre>'+esc(t.info)+'</pre><b>Pomieszczenia ('+t.pom.length+')</b>'+
+ (t.pom.map((p,i)=>'<div class="r"><span>'+p.godz+' '+(p.kond?'['+esc(p.kond)+'] ':'')+'<b>'+esc(p.nr)+'</b> – '+opisPom(p)+(p.uwagi?'<br>'+esc(p.uwagi):'')+'</span>'+
+  prz+'edPom('+i+')">Edytuj</button>'+prz+'usPom('+i+')" style="background:#933">Usuń</button></div>').join('')||'<div>brak</div>')+
+ '<br><b>Znaczniki</b>'+(t.znaczniki.map((z,i)=>'<div class="r"><span'+(z.sys?' style="color:#888"':'')+'>'+z.godz+' '+esc(z.opis)+'</span>'+
+  (z.sys?'':prz+'edZn('+i+')">Edytuj</button>'+prz+'usZn('+i+')" style="background:#933">Usuń</button>')+'</div>').join('')||'<div>brak</div>');
+ if(otw!=t.n){otw=t.n;$('sd').scrollIntoView({behavior:'smooth'})}})}
 function usun(n){const nz=decodeURIComponent(n);
  if(!confirm('Usunąć z karty sesję\n'+nz+' ?\n\n'+(kopOK?'Kopia na serwerze zostaje.':'UWAGA: brak potwierdzonej kopii na serwerze – dane mogą przepaść bezpowrotnie!')))return;
  if(!confirm('Na pewno? Tego nie da się cofnąć.'))return;cmd('usun?n='+n,sesje)}
@@ -685,9 +825,9 @@ function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);przekroj(s);
   kl($('pen'),p.wynik=='BRAK'?'BRAK PENDRIVE':!p.ok?'BŁĄD':st?'brak od '+Math.round(p.wiek/60)+' min':'OK',p.ok&&!st?'ok':'zle');
   $('pen2').textContent=p.ok?'ostatnia '+(p.wiek<90?p.wiek+' s':Math.round(p.wiek/60)+' min')+' temu':'dane są na karcie'}
  $('plista').innerHTML=(s.pom_n?'<b>Pomieszczeń: '+s.pom_sal+', opraw: '+s.pom_opraw+', punktów świetlnych: '+s.pom_pkt+(s.pom_w?', moc: '+s.pom_w+' W':'')+'</b><br>':'')+
-  (s.pom||[]).slice().reverse().map(x=>esc(x.nr)+' – '+(x.opraw?x.opraw+' × '+x.typ+(x.punktow?' ('+x.punktow+' pkt)':'')+(x.moc?' × '+x.moc+' W = '+Math.round(x.moc_razem)+' W':''):'bez opraw')).join('<br>');
+  (s.pom||[]).slice().reverse().map(x=>esc(x.nr)+' – '+opisPom(x)).join('<br>');aktN=s.sesja_n||'';$('bed').style.display=aktN?'':'none';
  $('kom').textContent=s.komunikat||''}).catch(()=>{$('kom').textContent='Brak połączenia z Raspberry Pi'})}
-setInterval(odswiez,500);odswiez();
+setInterval(odswiez,500);odswiez();sesje();
 </script></body></html>"""
 
 
@@ -715,6 +855,7 @@ class Handler(BaseHTTPRequestHandler):
                                           "budynek", "kondygnacja")}
                 s["obrot"] = STAN["obrot"]
                 s["pom"] = STAN["pom"][-5:]
+                s["sesja_n"] = os.path.basename(STAN["katalog"]) if STAN["nagrywa"] else ""
                 s["pom_n"] = len(STAN["pom"])
                 s["pom_w"] = round(sum(x.get("moc_razem", 0) for x in STAN["pom"]))
                 s["pom_opraw"] = sum(x["opraw"] for x in STAN["pom"])
@@ -769,10 +910,17 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": ok} if ok else {"blad": "Znacznik działa tylko podczas nagrywania"})
         elif u.path == "/pomieszczenie":
             g = lambda k: q.get(k, [""])[0]
-            blad = pomieszczenie(g("nr"), g("typ"), g("punktow"), g("opraw"), g("uwagi"), g("moc"))
+            blad = pomieszczenie(g("nr"), g("typ"), g("punktow"), g("opraw"), g("uwagi"), g("moc"),
+                                 n=g("n") or None, idp=g("id") or None, usun=g("usun") == "1")
+            self._json({"blad": blad} if blad else {"ok": True})
+        elif u.path == "/znacznik_zmien":
+            g = lambda k: q.get(k, [None])[0]
+            blad = znacznik_zmien(g("n") or "", g("id") or "", None if g("usun") == "1" else (g("opis") or ""))
             self._json({"blad": blad} if blad else {"ok": True})
         elif u.path == "/kondygnacja":
             self._json({"ok": zmien_kondygnacje(q.get("k", [""])[0])})
+        elif u.path == "/usun_budynek":
+            self._json({"ok": True, "usunieto": usun_budynek(q.get("b", [""])[0])})
         elif u.path == "/usun":
             blad = usun_sesje(q.get("n", [""])[0])
             self._json({"blad": blad} if blad else {"ok": True})
