@@ -521,7 +521,7 @@ def main():
         srv = ThreadingHTTPServer(("0.0.0.0", ARGS.port), Handler)
     except OSError as e:
         sys.exit(f"Nie moge otworzyc portu {ARGS.port}: {e}\n"
-                 "Prawdopodobnie dziala juz inna kopia rejestratora. Zamknij ja: pkill -f skan_web.py\n"
+                 "Prawdopodobnie dziala juz inna kopia rejestratora. Zamknij ja: pkill -9 -f skan_web.py\n"
                  "(albo, przy wlaczonym autostarcie: sudo systemctl stop skaner)")
     print(f"Podglad: http://<adres-IP>:{ARGS.port}   (Ctrl+C konczy)")
     try:

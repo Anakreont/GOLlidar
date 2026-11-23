@@ -9,7 +9,14 @@ if systemctl is-active --quiet skaner 2>/dev/null; then
     echo "Usluga skaner zrestartowana. Podglad: http://$(hostname -I | awk '{print $1}'):8080"
     exit 0
 fi
-pkill -f skan_web.py 2>/dev/null && sleep 1
+# stara kopia moze byc uspiona (Ctrl+Z) - wtedy zwykly sygnal do niej nie dociera
+if pgrep -f skan_web.py >/dev/null; then
+    pkill -CONT -f skan_web.py 2>/dev/null
+    pkill -TERM -f skan_web.py 2>/dev/null
+    sleep 1
+    pkill -KILL -f skan_web.py 2>/dev/null
+    sleep 0.5
+fi
 git pull --ff-only
 echo "Podglad: http://$(hostname -I | awk '{print $1}'):8080"
 exec python3 skan_web.py "$@"
