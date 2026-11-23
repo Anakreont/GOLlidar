@@ -845,9 +845,9 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
  <select id="zas"><option value="3">3 m</option><option value="6" selected>6 m</option><option value="12">12 m</option><option value="20">20 m</option></select></div>
 <div id="pkt" style="display:none;background:#1c2430;padding:4px 0 6px">
 <div class="et" id="pktet"></div>
-<div class="w"><input id="popis" placeholder="co to jest, np. pion c.o." autocomplete="off"><input id="psr" type="number" inputmode="numeric" placeholder="Ø mm" style="flex:0 0 96px;width:96px"></div>
-<div class="chips"><button class="chip" onclick="$('popis').value='pion c.o.'">pion c.o.</button><button class="chip" onclick="$('popis').value='pion wod-kan'">pion wod-kan</button><button class="chip" onclick="$('popis').value='pion went.'">pion went.</button><button class="chip" onclick="$('popis').value='rozdzielnica'">rozdzielnica</button><button class="chip" onclick="$('popis').value='hydrant'">hydrant</button><button class="chip" onclick="$('popis').value='komin'">komin</button></div>
-<div class="w"><button class="nb" onclick="zapPkt()">ZAPISZ PUNKT</button><button class="sz" style="flex:0 0 34%" onclick="sel=null;$('pkt').style.display='none'">Anuluj</button></div>
+<div class="chips zaw"><button class="chip" onclick="$('popis').value='pion';zapPkt()">pion</button><button class="chip" onclick="$('popis').value='grzejnik';zapPkt()">grzejnik</button><button class="chip" onclick="$('popis').value='okno';zapPkt()">okno</button><button class="chip" onclick="$('popis').value='szafa';zapPkt()">szafa</button><button class="chip" onclick="$('popis').value='drzwi';zapPkt()">drzwi</button><button class="chip" onclick="$('popis').value='rozdzielnica';zapPkt()">rozdzielnica</button></div>
+<div class="w"><input id="psr" type="number" inputmode="numeric" placeholder="Ø mm" style="flex:0 0 92px;width:92px"><input id="popis" placeholder="inny opis" autocomplete="off">
+ <button class="nb" style="flex:0 0 84px" onclick="zapPkt()">Zapisz</button><button class="sz" style="flex:0 0 46px" onclick="sel=null;$('pkt').style.display='none'">✕</button></div>
 </div>
 <div class="w nrec"><input id="bud" list="budl" placeholder="budynek (z listy albo nowy)" autocomplete="off"><datalist id="budl"></datalist></div>
 <div class="w"><input id="kon" placeholder="kondygnacja" autocomplete="off">
@@ -1045,7 +1045,7 @@ c.addEventListener('click',ev=>{if(!ostS||!ostS.nagrywa){return}const r=c.getBou
  sel=najl?{kat:najl[0],odl:najl[1],lid:true}:{kat:(Math.atan2(x,y)*180/Math.PI+360)%360,odl:Math.round(Math.hypot(x,y)*1000),lid:false};
  $('pkt').style.display='block';$('pktet').textContent='Punkt: '+(sel.odl/1000).toFixed(2)+' m od skanera, kierunek '+sel.kat.toFixed(0)+'°'+(sel.lid?' (przyciągnięty do pomiaru)':' (wolne miejsce)');wibr()});
 function zapPkt(){if(!sel)return;const o=($('popis').value||'punkt')+($('psr').value?' Ø'+$('psr').value:'');
- cmd('znacznik?opis='+encodeURIComponent('PUNKT kat='+sel.kat.toFixed(1)+' odl='+sel.odl+' '+o),()=>{sel=null;$('pkt').style.display='none';$('psr').value='';wibr()})}
+ cmd('znacznik?opis='+encodeURIComponent('PUNKT kat='+sel.kat.toFixed(1)+' odl='+sel.odl+' '+o),()=>{sel=null;$('pkt').style.display='none';$('psr').value='';$('popis').value='';wibr()})}
 function rys(s){ostS=s;const dp=devicePixelRatio||1,W=c.width=c.clientWidth*dp,H=c.height=c.clientHeight*dp;
  const R=+$('zas').value,sk=Math.min(W,H)/2/R,cx=W/2,cy=H/2;g.fillStyle='#000';g.fillRect(0,0,W,H);
  g.strokeStyle='#263';g.fillStyle='#484';g.lineWidth=1;g.font=11*dp+'px sans-serif';
