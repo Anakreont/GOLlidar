@@ -250,14 +250,16 @@ def znacznik(opis, licz=True):
     return True
 
 
-def pomieszczenie(nr, opraw, typ, moc, uwagi):
+def pomieszczenie(nr, typ, punktow, opraw, uwagi):
     """Dopisuje wiersz do pomieszczenia.csv w katalogu sesji (inwentaryzacja oswietlenia)."""
-    czysc = lambda t: str(t).replace(";", ",").replace("\n", " ").strip()[:120]
+    czysc = lambda t: str(t).replace(";", ",").replace("\n", " ").replace("\r", " ").strip()[:200]
     try:
         opraw = int(opraw or 0)
-        moc = float(str(moc or 0).replace(",", "."))
+        punktow = int(punktow or 0)
     except ValueError:
-        return "Liczba opraw i moc muszą być liczbami"
+        return "Liczba opraw i liczba punktów muszą być liczbami całkowitymi"
+    if opraw <= 0:
+        return "Podaj liczbę opraw"
     with LOCK:
         if not STAN["nagrywa"]:
             return "Zapis pomieszczeń działa tylko podczas nagrywania"
@@ -265,12 +267,11 @@ def pomieszczenie(nr, opraw, typ, moc, uwagi):
         nowy = not os.path.exists(sciezka)
         with open(sciezka, "a", encoding="utf-8-sig" if nowy else "utf-8") as f:
             if nowy:
-                f.write("czas_ns;godzina;pomieszczenie;liczba_opraw;typ_oprawy;moc_oprawy_W;moc_razem_W;uwagi;wysokosc_wzgl_m\n")
+                f.write("czas_ns;godzina;pomieszczenie;rodzaj_oprawy;punktow_w_oprawie;liczba_opraw;punktow_razem;uwagi;wysokosc_wzgl_m\n")
             wys = "" if STAN["wys"] is None else f"{STAN['wys']:.1f}".replace(".", ",")
-            pl = lambda x: str(round(x, 1)).replace(".", ",")
-            f.write(f"{time.time_ns()};{datetime.now().strftime('%H:%M:%S')};{czysc(nr)};{opraw};{czysc(typ)};"
-                    f"{pl(moc)};{pl(opraw * moc)};{czysc(uwagi)};{wys}\n")
-        STAN["pom"].append({"nr": czysc(nr), "opraw": opraw, "typ": czysc(typ), "moc": moc})
+            f.write(f"{time.time_ns()};{datetime.now().strftime('%H:%M:%S')};{czysc(nr)};{czysc(typ)};"
+                    f"{punktow or ''};{opraw};{punktow * opraw or ''};{czysc(uwagi)};{wys}\n")
+        STAN["pom"].append({"nr": czysc(nr), "typ": czysc(typ), "punktow": punktow, "opraw": opraw})
     znacznik(f"POM {czysc(nr)}", licz=True)
     return None
 
@@ -320,6 +321,10 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 #bs{background:#1f9d68}#bp{background:#c33}#bpa{background:#b70}.nb{background:#2b62c9}.sz{background:#444;font-weight:400;font-size:16px}
 .chip{flex:0 0 auto;min-height:44px;font-size:15px;font-weight:400;background:#333;padding:0 14px;border-radius:22px}
 .chips{padding:5px 8px;display:flex;gap:8px;overflow-x:auto}
+.seg button{min-height:52px;font-size:16px;font-weight:400;background:#2a2a2a;border:1px solid #444}
+.seg button.on{background:#2b62c9;border-color:#2b62c9;font-weight:600}
+.seg{gap:6px}
+.et{font-size:13px;color:#aaa;padding:6px 12px 0}
 .licz{display:flex;gap:8px;align-items:stretch;flex:1}
 .licz button{flex:0 0 56px;background:#444;font-size:26px}
 .licz input{text-align:center}
@@ -356,11 +361,15 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 
 <h2>Pomieszczenie – oświetlenie</h2>
 <div class="w"><input id="pnr" placeholder="pomieszczenie, np. sala 12" autocomplete="off"></div>
-<div class="w"><div class="licz"><button onclick="krok(-1)">−</button>
- <input id="popr" type="number" inputmode="numeric" placeholder="liczba opraw"><button onclick="krok(1)">+</button></div></div>
-<div class="w"><select id="ptyp"><option>świetlówki T8</option><option>świetlówki T5</option><option>panel LED</option>
- <option>tuby LED</option><option>świetlówki kompaktowe</option><option>żarowe / halogen</option><option>inne</option></select></div>
-<div class="w"><input id="pmoc" type="number" inputmode="decimal" placeholder="moc jednej oprawy [W]"></div>
+<div class="et">Rodzaj oprawy</div>
+<div class="w seg" id="ptyp"><button class="on" onclick="typ(this)">świetlówki</button><button onclick="typ(this)">LED</button>
+ <button onclick="typ(this)">żarówki</button><button onclick="typ(this)">inne</button></div>
+<div class="et">Punktów świetlnych w jednej oprawie</div>
+<div class="w"><div class="licz"><button onclick="krok('ppkt',-1)">−</button>
+ <input id="ppkt" type="number" inputmode="numeric" placeholder="0"><button onclick="krok('ppkt',1)">+</button></div></div>
+<div class="et">Ilość opraw w pomieszczeniu</div>
+<div class="w"><div class="licz"><button onclick="krok('popr',-1)">−</button>
+ <input id="popr" type="number" inputmode="numeric" placeholder="0"><button onclick="krok('popr',1)">+</button></div></div>
 <div class="w"><textarea id="puw" style="min-height:64px" placeholder="uwagi, np. 4×18 W, 2 nie świecą"></textarea></div>
 <div class="w"><button class="nb" onclick="zapPom()">ZAPISZ POMIESZCZENIE</button></div>
 <div id="plista"></div>
@@ -378,9 +387,11 @@ function cmd(u,ok){fetch('/'+u,{method:'POST'}).then(r=>r.json()).then(j=>{if(j.
 function wibr(){if(navigator.vibrate)navigator.vibrate(40)}
 function zapZn(){cmd('znacznik?opis='+encodeURIComponent($('opis').value),()=>{$('opis').value='';wibr()})}
 function szybki(t){cmd('znacznik?opis='+encodeURIComponent(t),wibr)}
-function krok(d){const e=$('popr');e.value=Math.max(0,(parseInt(e.value)||0)+d)}
-function zapPom(){const e=encodeURIComponent;cmd('pomieszczenie?nr='+e($('pnr').value)+'&opraw='+e($('popr').value)+'&typ='+e($('ptyp').value)+'&moc='+e($('pmoc').value)+'&uwagi='+e($('puw').value),
- ()=>{$('pnr').value='';$('popr').value='';$('puw').value='';wibr()})}
+function krok(id,d){const e=$(id);e.value=Math.max(0,(parseInt(e.value)||0)+d)}
+function typ(b){for(const x of $('ptyp').children)x.className='';b.className='on'}
+function zapPom(){const e=encodeURIComponent,t=$('ptyp').querySelector('.on').textContent;
+ cmd('pomieszczenie?nr='+e($('pnr').value)+'&typ='+e(t)+'&punktow='+e($('ppkt').value)+'&opraw='+e($('popr').value)+'&uwagi='+e($('puw').value),
+ ()=>{$('popr').value='';$('puw').value='';wibr()})}
 function rys(s){const dp=devicePixelRatio||1,W=c.width=c.clientWidth*dp,H=c.height=c.clientHeight*dp;
  const R=+$('zas').value,sk=Math.min(W,H)/2/R,cx=W/2,cy=H/2;g.fillStyle='#000';g.fillRect(0,0,W,H);
  g.strokeStyle='#263';g.fillStyle='#484';g.lineWidth=1;g.font=11*dp+'px sans-serif';
@@ -401,8 +412,8 @@ function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);
  if(s.wys===null){kl($('wys'),s.baro_wl?'BRAK':'wył.',s.baro_wl?'zle':'');$('wys2').textContent=''}else{kl($('wys'),(s.wys>=0?'+':'')+s.wys.toFixed(1)+' m');$('wys2').textContent='temp. '+s.temp.toFixed(0)+' °C'}
  $('roz').textContent=(s.rozmiar/1e6).toFixed(1)+' MB';$('zn').textContent='znaczniki: '+s.znaczniki;$('ses').textContent=s.nazwa||'';
  kl($('dysk'),(s.wolne/1e9).toFixed(1)+' GB',s.wolne<1e9?'zle':'ok');
- $('plista').innerHTML=(s.pom_n?'<b>Pomieszczeń: '+s.pom_n+', opraw: '+s.pom_opraw+', moc: '+(s.pom_moc/1000).toFixed(2)+' kW</b><br>':'')+
-  (s.pom||[]).slice().reverse().map(x=>x.nr+' – '+x.opraw+' × '+x.typ+(x.moc?' '+x.moc+' W':'')).join('<br>');
+ $('plista').innerHTML=(s.pom_n?'<b>Pomieszczeń: '+s.pom_sal+', opraw: '+s.pom_opraw+', punktów świetlnych: '+s.pom_pkt+'</b><br>':'')+
+  (s.pom||[]).slice().reverse().map(x=>x.nr+' – '+x.opraw+' × '+x.typ+(x.punktow?' ('+x.punktow+' pkt)':'')).join('<br>');
  $('kom').textContent=s.komunikat||''}).catch(()=>{$('kom').textContent='Brak połączenia z Raspberry Pi'})}
 setInterval(odswiez,500);odswiez();
 </script></body></html>"""
@@ -432,7 +443,8 @@ class Handler(BaseHTTPRequestHandler):
                 s["pom"] = STAN["pom"][-5:]
                 s["pom_n"] = len(STAN["pom"])
                 s["pom_opraw"] = sum(x["opraw"] for x in STAN["pom"])
-                s["pom_moc"] = sum(x["opraw"] * x["moc"] for x in STAN["pom"])
+                s["pom_pkt"] = sum(x["opraw"] * x["punktow"] for x in STAN["pom"])
+                s["pom_sal"] = len({x["nr"] for x in STAN["pom"]})
                 s["czas"] = teraz - STAN["t_start"] if STAN["nagrywa"] else 0
                 s["rozmiar"] = sum(STAN["bajty"].values())
                 s["lidar_ok"] = teraz - STAN["ost"]["lidar"] < 1.5
@@ -467,7 +479,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": ok} if ok else {"blad": "Znacznik działa tylko podczas nagrywania"})
         elif u.path == "/pomieszczenie":
             g = lambda k: q.get(k, [""])[0]
-            blad = pomieszczenie(g("nr"), g("opraw"), g("typ"), g("moc"), g("uwagi"))
+            blad = pomieszczenie(g("nr"), g("typ"), g("punktow"), g("opraw"), g("uwagi"))
             self._json({"blad": blad} if blad else {"ok": True})
         elif u.path == "/pauza":
             r = pauza()

@@ -44,8 +44,8 @@ normalnej pozycji naciśnij WZNÓW. Surowe dane zapisują się dalej, ale odcine
 Wznawiaj mniej więcej w tym samym miejscu i zwrócony w tę samą stronę, w której zacząłeś pauzę.
 Przechył powyżej 15° jest oznaczany automatycznie (na kafelku „Zapis" pojawia się „PRZECHYŁ!").
 
-**ZAPISZ POMIESZCZENIE** – inwentaryzacja oświetlenia: nazwa lub numer pomieszczenia, liczba opraw, typ, moc jednej
-oprawy i uwagi. Każdy zapis trafia do `pomieszczenia.csv` w katalogu sesji (otwiera się w Excelu) i jednocześnie
+**ZAPISZ POMIESZCZENIE** – inwentaryzacja oświetlenia: nazwa lub numer pomieszczenia, rodzaj oprawy (świetlówki, LED,
+żarówki, inne), liczba punktów świetlnych w oprawie, ilość opraw i uwagi (np. moc). Każdy zapis trafia do `pomieszczenia.csv` w katalogu sesji (otwiera się w Excelu) i jednocześnie
 stawia znacznik czasu, więc pomieszczenie zostanie podpisane na rzucie. Kilka typów opraw w jednej sali zapisz jako
 osobne wiersze z tą samą nazwą pomieszczenia.
 
