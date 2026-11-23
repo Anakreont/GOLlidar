@@ -1,8 +1,11 @@
 # Skopiuj do sync.conf i uzupelnij. Plik sync.conf nie trafia do repozytorium.
 
+# --- Kopia na pendrive wpiety w Raspberry Pi (dziala bez sieci, niezaleznie od wariantow nizej)
+# PENDRIVE="/media/pendrive"
+
 # --- Wariant A (zalecany): wysylka przez HTTPS do BMS API (endpoint z serwer/lidar_upload.py)
-URL="https://adres-api"
-TOKEN="tu-wklej-LIDAR_TOKEN"
+# URL="https://adres-api"
+# TOKEN="tu-wklej-LIDAR_TOKEN"
 
 # --- Wariant B: rsync przez SSH (uzywany, gdy URL jest pusty)
 # CEL="uzytkownik@adres-serwera:/home/uzytkownik/skany-lidar/"

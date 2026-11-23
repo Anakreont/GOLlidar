@@ -157,6 +157,25 @@ Godzina nagrania to ok. 80 MB. Zestaw pobiera ok. 4–4,5 W; powerbank 10 000 mA
 (ok. 80 MB na godzinę nagrania). Stan kopii widać na stronie w sekcji „Stan". Dane zawsze najpierw trafiają na kartę SD;
 kopia jest dodatkowym zabezpieczeniem i przy braku zasięgu sama nadrabia zaległości.
 
+### Kopia na pendrive (bez sieci, zalecana zawsze)
+
+Zwykły pendrive (FAT32 lub exFAT) wpięty w Raspberry Pi; co minutę dopisywane są na niego nowe dane. Chroni przed
+uszkodzeniem karty SD także tam, gdzie nie ma zasięgu.
+
+```bash
+sudo mkdir -p /media/pendrive
+echo "/dev/sda1 /media/pendrive auto nofail,noatime,uid=$(id -u),gid=$(id -g) 0 0" | sudo tee -a /etc/fstab
+sudo mount /media/pendrive && df -h /media/pendrive
+cd ~/skaner && [ -f sync.conf ] || cp sync.conf.example sync.conf
+nano sync.conf                                   # odkomentowac PENDRIVE="/media/pendrive"
+./sync.sh && cat ~/skany/.sync_pendrive          # czas i OK
+sudo cp skaner-sync.service skaner-sync.timer /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now skaner-sync.timer
+```
+
+Pendrive wpinać przed włączeniem maliny. Strona pokazuje stan w kafelku „Kopia na pendrive" (OK / BRAK PENDRIVE / BŁĄD).
+Kopia na pendrive i kopia na serwer działają niezależnie; można mieć obie.
+
 ### Wariant A (zalecany): HTTPS do BMS API przez istniejący tunel
 
 Raspberry Pi wysyła dane zwykłym HTTPS na adres API — nie potrzeba SSH, VPN ani tunelu na samej malinie.
