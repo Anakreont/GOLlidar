@@ -35,6 +35,7 @@ STAN = {
     "wys": None, "p0": None, "temp": None,
     "znaczniki": 0, "komunikat": "",
     "pauza": False, "auto_pauza": False,
+    "pom": [],                 # pomieszczenia zapisane w biezacej sesji
 }
 PROG_PRZECHYLU = 15.0          # stopnie; powyzej tego skany sa oznaczane jako do pominiecia
 PLIKI = {}                      # nazwa strumienia -> otwarty plik (gdy nagrywa)
@@ -219,7 +220,7 @@ def start(nazwa):
         kal = STAN.get("_baro_kal")
         if kal:
             PLIKI["baro"].write(struct.pack("<QH", time.time_ns(), len(kal)) + kal)
-        STAN.update(nagrywa=True, nazwa=nazwa, katalog=kat, t_start=time.time(), znaczniki=0, max_przechyl=0.0)
+        STAN.update(nagrywa=True, nazwa=nazwa, katalog=kat, t_start=time.time(), znaczniki=0, max_przechyl=0.0, pom=[])
     return True
 
 
@@ -247,6 +248,31 @@ def znacznik(opis, licz=True):
         if licz:
             STAN["znaczniki"] += 1
     return True
+
+
+def pomieszczenie(nr, opraw, typ, moc, uwagi):
+    """Dopisuje wiersz do pomieszczenia.csv w katalogu sesji (inwentaryzacja oswietlenia)."""
+    czysc = lambda t: str(t).replace(";", ",").replace("\n", " ").strip()[:120]
+    try:
+        opraw = int(opraw or 0)
+        moc = float(str(moc or 0).replace(",", "."))
+    except ValueError:
+        return "Liczba opraw i moc muszą być liczbami"
+    with LOCK:
+        if not STAN["nagrywa"]:
+            return "Zapis pomieszczeń działa tylko podczas nagrywania"
+        sciezka = os.path.join(STAN["katalog"], "pomieszczenia.csv")
+        nowy = not os.path.exists(sciezka)
+        with open(sciezka, "a", encoding="utf-8-sig" if nowy else "utf-8") as f:
+            if nowy:
+                f.write("czas_ns;godzina;pomieszczenie;liczba_opraw;typ_oprawy;moc_oprawy_W;moc_razem_W;uwagi;wysokosc_wzgl_m\n")
+            wys = "" if STAN["wys"] is None else f"{STAN['wys']:.1f}".replace(".", ",")
+            pl = lambda x: str(round(x, 1)).replace(".", ",")
+            f.write(f"{time.time_ns()};{datetime.now().strftime('%H:%M:%S')};{czysc(nr)};{opraw};{czysc(typ)};"
+                    f"{pl(moc)};{pl(opraw * moc)};{czysc(uwagi)};{wys}\n")
+        STAN["pom"].append({"nr": czysc(nr), "opraw": opraw, "typ": czysc(typ), "moc": moc})
+    znacznik(f"POM {czysc(nr)}", licz=True)
+    return None
 
 
 def pauza():
@@ -301,11 +327,22 @@ input{flex:2;min-width:0;background:#333;color:#fff}select{background:#333;color
 <div class="r"><button id="bpa" onclick="cmd('pauza')">PAUZA (schylam się / kucam)</button></div>
 <div class="r"><input id="opis" placeholder="opis znacznika, np. sala 12">
  <button id="bz" onclick="cmd('znacznik?opis='+encodeURIComponent(opis.value));opis.value=''">ZNACZNIK</button></div>
+<div class="r" style="border-top:1px solid #333;margin-top:6px;padding-top:10px">
+ <input id="pnr" placeholder="pomieszczenie, np. sala 12" style="flex:3">
+ <input id="popr" type="number" inputmode="numeric" placeholder="opraw" style="flex:1"></div>
+<div class="r"><select id="ptyp" style="flex:3"><option>świetlówki T8</option><option>świetlówki T5</option><option>panel LED</option>
+ <option>tuby LED</option><option>świetlówki kompaktowe</option><option>żarowe / halogen</option><option>inne</option></select>
+ <input id="pmoc" type="number" inputmode="decimal" placeholder="W / oprawę" style="flex:2"></div>
+<div class="r"><input id="puw" placeholder="uwagi, np. 4x18 W, 2 nie świecą">
+ <button id="bz2" style="background:#36c" onclick="zapPom()">ZAPISZ POMIESZCZENIE</button></div>
+<div id="plista" style="padding:2px 8px 8px;font-size:13px;color:#bbb"></div>
 <div class="r"><button class="bw" onclick="if(confirm('Zerować wysokość w tym miejscu?'))cmd('zeruj')">Zeruj wysokość</button>
  <button class="bw" onclick="if(confirm('Zatrzymać zapis i wyłączyć Raspberry Pi?'))cmd('wylacz')">Wyłącz RPi</button></div>
 <script>
 const c=document.getElementById('c'),g=c.getContext('2d');
 function cmd(u){fetch('/'+u,{method:'POST'}).then(r=>r.json()).then(j=>{if(j.blad)alert(j.blad)})}
+function zapPom(){const e=encodeURIComponent;fetch('/pomieszczenie?nr='+e(pnr.value)+'&opraw='+e(popr.value)+'&typ='+e(ptyp.value)+'&moc='+e(pmoc.value)+'&uwagi='+e(puw.value),{method:'POST'})
+ .then(r=>r.json()).then(j=>{if(j.blad)alert(j.blad);else{pnr.value='';popr.value='';puw.value=''}})}
 function rys(s){const W=c.width=c.clientWidth*devicePixelRatio,H=c.height=c.clientHeight*devicePixelRatio;
  const R=+zas.value,sk=Math.min(W,H)/2/R,cx=W/2,cy=H/2;g.fillStyle='#000';g.fillRect(0,0,W,H);
  g.strokeStyle='#263';g.fillStyle='#484';g.lineWidth=1;g.font=11*devicePixelRatio+'px sans-serif';
@@ -325,6 +362,8 @@ function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);
  if(s.wys===null){kl(wys,s.baro_wl?'BRAK':'wył.',s.baro_wl?'zle':'')}else{kl(wys,(s.wys>=0?'+':'')+s.wys.toFixed(1)+' m');wys2.textContent=s.temp.toFixed(0)+' °C'}
  roz.textContent=(s.rozmiar/1e6).toFixed(1)+' MB';zn.textContent='znaczniki: '+s.znaczniki;
  kl(dysk,(s.wolne/1e9).toFixed(1)+' GB',s.wolne<1e9?'zle':'ok');imu2.textContent=s.imu_ok?'IMU OK':'';
+ plista.innerHTML=(s.pom_n?'<b>Pomieszczeń: '+s.pom_n+', opraw: '+s.pom_opraw+', moc: '+(s.pom_moc/1000).toFixed(2)+' kW</b><br>':'')+
+  (s.pom||[]).slice().reverse().map(x=>x.nr+' – '+x.opraw+' × '+x.typ+(x.moc?' '+x.moc+' W':'')).join('<br>');
  kom.textContent=s.komunikat||''}).catch(()=>{kom.textContent='Brak połączenia z Raspberry Pi'})}
 function fmt(t){const m=Math.floor(t/60),s=Math.floor(t%60);return m+':'+(s<10?'0':'')+s}
 setInterval(odswiez,500);odswiez();
@@ -352,6 +391,10 @@ class Handler(BaseHTTPRequestHandler):
                 s = {k: STAN[k] for k in ("nagrywa", "nazwa", "hz", "pkt_obrot", "yaw", "pitch", "roll",
                                           "max_przechyl", "wys", "temp", "znaczniki", "komunikat", "pauza", "auto_pauza")}
                 s["obrot"] = STAN["obrot"]
+                s["pom"] = STAN["pom"][-5:]
+                s["pom_n"] = len(STAN["pom"])
+                s["pom_opraw"] = sum(x["opraw"] for x in STAN["pom"])
+                s["pom_moc"] = sum(x["opraw"] * x["moc"] for x in STAN["pom"])
                 s["czas"] = teraz - STAN["t_start"] if STAN["nagrywa"] else 0
                 s["rozmiar"] = sum(STAN["bajty"].values())
                 s["lidar_ok"] = teraz - STAN["ost"]["lidar"] < 1.5
@@ -384,6 +427,10 @@ class Handler(BaseHTTPRequestHandler):
         elif u.path == "/znacznik":
             ok = znacznik(q.get("opis", [""])[0])
             self._json({"ok": ok} if ok else {"blad": "Znacznik działa tylko podczas nagrywania"})
+        elif u.path == "/pomieszczenie":
+            g = lambda k: q.get(k, [""])[0]
+            blad = pomieszczenie(g("nr"), g("opraw"), g("typ"), g("moc"), g("uwagi"))
+            self._json({"blad": blad} if blad else {"ok": True})
         elif u.path == "/pauza":
             r = pauza()
             self._json({"ok": True, "pauza": r} if r is not None else {"blad": "Pauza działa tylko podczas nagrywania"})
