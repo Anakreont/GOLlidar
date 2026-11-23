@@ -36,6 +36,7 @@ STAN = {
     "znaczniki": 0, "komunikat": "",
     "pauza": False, "auto_pauza": False,
     "pom": [],                 # pomieszczenia zapisane w biezacej sesji
+    "budynek": "", "kondygnacja": "",
     "przechyl": None,          # kat odchylenia od pionu [st.]
     "prz_faza": 0,             # 0 brak, 1 trzymaj nieruchomo, 2 przekroj zapisany (postaw do pionu)
     "prz_zostalo": 0.0,        # sekundy do zapisania przekroju
@@ -317,15 +318,37 @@ def watek_baro(adres, bus_nr=1):
 
 
 # ----------------------------------------------------------------------------- sterowanie nagrywaniem
-def start(nazwa):
-    nazwa = "".join(ch if ch.isalnum() or ch in "-_+" else "_" for ch in (nazwa or "sesja"))[:60]
+def czysc(t, n=200):
+    return str(t).replace(";", ",").replace("\n", " ").replace("\r", " ").replace("\t", " ").strip()[:n]
+
+
+def ustawienia(nowe=None):
+    """Zapamietuje ostatni budynek i kondygnacje miedzy uruchomieniami."""
+    p = os.path.join(ARGS.katalog, ".ustawienia")
+    try:
+        with open(p, encoding="utf-8") as f:
+            u = json.load(f)
+    except (OSError, ValueError):
+        u = {}
+    if nowe:
+        u.update(nowe)
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(u, f, ensure_ascii=False)
+    return u
+
+
+def start(budynek, kondygnacja):
+    budynek, kondygnacja = czysc(budynek, 40), czysc(kondygnacja, 30)
+    nazwa = "_".join(x for x in (budynek, kondygnacja) if x) or "sesja"
+    nazwa = "".join(ch if ch.isalnum() or ch in "-_+" else "_" for ch in nazwa)[:60]
+    ustawienia({"budynek": budynek, "kondygnacja": kondygnacja})
     with LOCK:
         if STAN["nagrywa"]:
             return False
         kat = os.path.join(ARGS.katalog, datetime.now().strftime("%Y%m%d_%H%M%S_") + nazwa)
         os.makedirs(kat, exist_ok=True)
         with open(os.path.join(kat, "info.txt"), "w") as f:
-            f.write(f"nazwa={nazwa}\nstart={datetime.now().isoformat()}\n"
+            f.write(f"nazwa={nazwa}\nbudynek={budynek}\nkondygnacja={kondygnacja}\nstart={datetime.now().isoformat()}\n"
                     f"lidar={ARGS.lidar}@{ARGS.lidar_baud}\nimu={ARGS.imu}@{ARGS.imu_baud}\n"
                     f"baro=0x{ARGS.baro_adres:02x}\n")
         for s in ("lidar", "imu", "baro"):
@@ -334,7 +357,8 @@ def start(nazwa):
         kal = STAN.get("_baro_kal")
         if kal:
             PLIKI["baro"].write(struct.pack("<QH", time.time_ns(), len(kal)) + kal)
-        STAN.update(nagrywa=True, nazwa=nazwa, katalog=kat, t_start=time.time(), znaczniki=0, max_przechyl=0.0, pom=[], prz_nr=0, prz_wynik="", prz_faza=0)
+        STAN.update(nagrywa=True, nazwa=nazwa, katalog=kat, t_start=time.time(), znaczniki=0, max_przechyl=0.0, pom=[], prz_nr=0, prz_wynik="", prz_faza=0,
+                    budynek=budynek, kondygnacja=kondygnacja)
     return True
 
 
@@ -366,14 +390,17 @@ def znacznik(opis, licz=True):
 
 def pomieszczenie(nr, typ, punktow, opraw, uwagi):
     """Dopisuje wiersz do pomieszczenia.csv w katalogu sesji (inwentaryzacja oswietlenia)."""
-    czysc = lambda t: str(t).replace(";", ",").replace("\n", " ").replace("\r", " ").strip()[:200]
     try:
         opraw = int(opraw or 0)
         punktow = int(punktow or 0)
     except ValueError:
         return "Liczba opraw i liczba punktów muszą być liczbami całkowitymi"
-    if opraw <= 0:
-        return "Podaj liczbę opraw"
+    if opraw < 0 or punktow < 0:
+        return "Liczby nie mogą być ujemne"
+    if not czysc(nr):
+        return "Podaj nazwę lub numer pomieszczenia"
+    if opraw == 0:
+        typ, punktow = "", 0                      # pomieszczenie bez opraw: sama nazwa i uwagi
     with LOCK:
         if not STAN["nagrywa"]:
             return "Zapis pomieszczeń działa tylko podczas nagrywania"
@@ -381,12 +408,84 @@ def pomieszczenie(nr, typ, punktow, opraw, uwagi):
         nowy = not os.path.exists(sciezka)
         with open(sciezka, "a", encoding="utf-8-sig" if nowy else "utf-8") as f:
             if nowy:
-                f.write("czas_ns;godzina;pomieszczenie;rodzaj_oprawy;punktow_w_oprawie;liczba_opraw;punktow_razem;uwagi;wysokosc_wzgl_m\n")
+                f.write("czas_ns;godzina;pomieszczenie;rodzaj_oprawy;punktow_w_oprawie;liczba_opraw;punktow_razem;uwagi;wysokosc_wzgl_m;budynek;kondygnacja\n")
             wys = "" if STAN["wys"] is None else f"{STAN['wys']:.1f}".replace(".", ",")
             f.write(f"{time.time_ns()};{datetime.now().strftime('%H:%M:%S')};{czysc(nr)};{czysc(typ)};"
-                    f"{punktow or ''};{opraw};{punktow * opraw or ''};{czysc(uwagi)};{wys}\n")
+                    f"{punktow or ''};{opraw};{punktow * opraw or ''};{czysc(uwagi)};{wys};"
+                    f"{STAN['budynek']};{STAN['kondygnacja']}\n")
         STAN["pom"].append({"nr": czysc(nr), "typ": czysc(typ), "punktow": punktow, "opraw": opraw})
     znacznik(f"POM {czysc(nr)}", licz=True)
+    return None
+
+
+def zmien_kondygnacje(k):
+    k = czysc(k, 30)
+    with LOCK:
+        if not STAN["nagrywa"]:
+            STAN["kondygnacja"] = k
+            return True
+        STAN["kondygnacja"] = k
+    ustawienia({"kondygnacja": k})
+    return znacznik(f"KONDYGNACJA {k}", licz=False)
+
+
+def sesja_sciezka(n):
+    """Zwraca sciezke katalogu sesji albo None (ochrona przed wyjsciem poza katalog nagran)."""
+    if not n or n.startswith(".") or "/" in n or "\\" in n:
+        return None
+    p = os.path.join(ARGS.katalog, n)
+    return p if os.path.isdir(p) else None
+
+
+def lista_sesji():
+    wyn = []
+    for n in sorted(os.listdir(ARGS.katalog), reverse=True):
+        p = sesja_sciezka(n)
+        if not p:
+            continue
+        def linie(plik):
+            try:
+                with open(os.path.join(p, plik), encoding="utf-8-sig") as f:
+                    return sum(1 for _ in f)
+            except OSError:
+                return 0
+        wyn.append({"n": n, "mb": round(sum(os.path.getsize(os.path.join(p, x)) for x in os.listdir(p)) / 1e6, 1),
+                    "zn": linie("znaczniki.txt"), "pom": max(0, linie("pomieszczenia.csv") - 1),
+                    "aktywna": STAN["nagrywa"] and os.path.abspath(p) == os.path.abspath(STAN["katalog"])})
+    return wyn
+
+
+def sesja_tresc(n):
+    p = sesja_sciezka(n)
+    if not p:
+        return None
+    def czytaj(plik):
+        try:
+            with open(os.path.join(p, plik), encoding="utf-8-sig") as f:
+                return f.read()[-20000:]
+        except OSError:
+            return ""
+    zn = []
+    for w in czytaj("znaczniki.txt").splitlines():
+        cz = w.split("\t")
+        try:
+            zn.append(datetime.fromtimestamp(int(cz[0]) / 1e9).strftime("%H:%M:%S") + "  " + (cz[1] if len(cz) > 1 else ""))
+        except ValueError:
+            zn.append(w)
+    pom = [w.split(";") for w in czytaj("pomieszczenia.csv").splitlines()[1:]]
+    return {"n": n, "info": czytaj("info.txt"), "znaczniki": zn,
+            "pom": [{"godz": w[1], "nr": w[2], "typ": w[3], "pkt": w[4], "opraw": w[5], "uwagi": w[7],
+                     "kond": w[10] if len(w) > 10 else ""} for w in pom if len(w) >= 8]}
+
+
+def usun_sesje(n):
+    p = sesja_sciezka(n)
+    if not p:
+        return "Nie ma takiej sesji"
+    with LOCK:
+        if STAN["nagrywa"] and os.path.abspath(p) == os.path.abspath(STAN["katalog"]):
+            return "Nie można usunąć sesji, która właśnie się nagrywa"
+    shutil.rmtree(p)
     return None
 
 
@@ -426,6 +525,11 @@ body{margin:0;font-family:system-ui,sans-serif;background:#111;color:#eee;font-s
 #zas{position:absolute;right:6px;top:6px;width:auto;font-size:15px;padding:6px 8px;border-radius:8px;border:0;background:#333c;color:#fff}
 #prk{display:none;position:absolute;left:0;right:0;bottom:0;padding:12px 10px;text-align:center;font-size:20px;font-weight:700;color:#fff}
 #prk small{display:block;font-weight:400;font-size:14px}
+.lst{padding:2px 10px;font-size:14px;line-height:1.5}
+.lst .r{display:flex;gap:8px;align-items:center;border-bottom:1px solid #333;padding:6px 0}
+.lst .r span{flex:1;min-width:0;word-break:break-all}
+.lst .r button{flex:0 0 auto;min-height:40px;font-size:14px;font-weight:400;padding:0 12px;background:#444}
+.lst pre{white-space:pre-wrap;word-break:break-word;background:#1a1a1a;padding:8px;border-radius:8px;font-size:12px;margin:6px 0}
 #kom{padding:4px 10px;color:#fb3;font-size:13px}
 #kom:empty{display:none}
 .w{padding:5px 8px;display:flex;gap:8px}
@@ -458,8 +562,10 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
  <select id="zas"><option value="3">3 m</option><option value="6" selected>6 m</option><option value="12">12 m</option><option value="20">20 m</option></select></div>
 <div id="kom"></div>
 
-<div class="w"><input id="nazwa" placeholder="nazwa sesji, np. poziom_0_A" autocomplete="off"></div>
-<div class="w"><button id="bs" onclick="cmd('start?nazwa='+encodeURIComponent(nazwa.value))">START</button>
+<div class="w"><input id="bud" placeholder="budynek, np. SP162" autocomplete="off"></div>
+<div class="w"><input id="kon" placeholder="kondygnacja, np. parter, +1, -1" autocomplete="off">
+ <button id="bk" class="sz" style="flex:0 0 96px;display:none" onclick="cmd('kondygnacja?k='+encodeURIComponent($('kon').value),wibr)">Zmień</button></div>
+<div class="w"><button id="bs" onclick="cmd('start?budynek='+encodeURIComponent($('bud').value)+'&kondygnacja='+encodeURIComponent($('kon').value))">START</button>
  <button id="bp" onclick="if(confirm('Zakończyć nagranie?'))cmd('stop')">STOP</button></div>
 <div class="w"><button id="bpa" onclick="cmd('pauza')">PAUZA (schylam się / kucam)</button></div>
 
@@ -475,7 +581,7 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 </div>
 <div class="w"><button class="nb" onclick="zapZn()">ZAPISZ ZNACZNIK</button></div>
 
-<h2>Pomieszczenie – oświetlenie</h2>
+<h2>Pomieszczenie – nazwa i oświetlenie</h2>
 <div class="w"><input id="pnr" placeholder="pomieszczenie, np. sala 12" autocomplete="off"></div>
 <div class="et">Rodzaj oprawy</div>
 <div class="w seg" id="ptyp"><button class="on" onclick="typ(this)">świetlówki</button><button onclick="typ(this)">LED</button>
@@ -483,12 +589,16 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 <div class="et">Punktów świetlnych w jednej oprawie</div>
 <div class="w"><div class="licz"><button onclick="krok('ppkt',-1)">−</button>
  <input id="ppkt" type="number" inputmode="numeric" placeholder="0"><button onclick="krok('ppkt',1)">+</button></div></div>
-<div class="et">Ilość opraw w pomieszczeniu</div>
+<div class="et">Ilość opraw w pomieszczeniu (0 = zapis samej nazwy, bez oświetlenia)</div>
 <div class="w"><div class="licz"><button onclick="krok('popr',-1)">−</button>
  <input id="popr" type="number" inputmode="numeric" placeholder="0"><button onclick="krok('popr',1)">+</button></div></div>
 <div class="w"><textarea id="puw" style="min-height:64px" placeholder="uwagi, np. 4×18 W, 2 nie świecą"></textarea></div>
 <div class="w"><button class="nb" onclick="zapPom()">ZAPISZ POMIESZCZENIE</button></div>
 <div id="plista"></div>
+
+<h2>Zapisane sesje</h2>
+<div class="w"><button class="sz" onclick="sesje()">Pokaż / odśwież listę sesji</button></div>
+<div id="sl" class="lst"></div><div id="sd" class="lst"></div>
 
 <h2>Stan</h2>
 <div class="w"><div class="k"><small>Sesja</small><b id="roz">–</b><small id="zn"></small></div>
@@ -519,6 +629,19 @@ function typ(b){for(const x of $('ptyp').children)x.className='';b.className='on
 function zapPom(){const e=encodeURIComponent,t=$('ptyp').querySelector('.on').textContent;
  cmd('pomieszczenie?nr='+e($('pnr').value)+'&typ='+e(t)+'&punktow='+e($('ppkt').value)+'&opraw='+e($('popr').value)+'&uwagi='+e($('puw').value),
  ()=>{$('popr').value='';$('puw').value='';wibr()})}
+let kopOK=false,ustW=false;
+function esc(t){return String(t).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))}
+function sesje(){fetch('/sesje').then(r=>r.json()).then(l=>{$('sd').innerHTML='';$('sl').innerHTML=l.length?l.map(x=>
+ '<div class="r"><span><b>'+esc(x.n)+'</b><br>'+x.mb+' MB · znaczniki: '+x.zn+' · pomieszczenia: '+x.pom+(x.aktywna?' · <b class="ok">NAGRYWA</b>':'')+'</span>'+
+ '<button data-n="'+encodeURIComponent(x.n)+'" onclick="sesja(this.dataset.n)">Podgląd</button>'+
+ (x.aktywna?'':'<button data-n="'+encodeURIComponent(x.n)+'" style="background:#933" onclick="usun(this.dataset.n)">Usuń</button>')+'</div>').join(''):'brak sesji'})}
+function sesja(n){fetch('/sesja?n='+n).then(r=>r.json()).then(t=>{if(t.blad){alert(t.blad);return}
+ $('sd').innerHTML='<b>'+esc(t.n)+'</b><pre>'+esc(t.info)+'</pre><b>Pomieszczenia ('+t.pom.length+')</b><pre>'+
+ (t.pom.map(p=>p.godz+'  '+(p.kond?'['+p.kond+'] ':'')+p.nr+' – '+(+p.opraw?p.opraw+' × '+p.typ+(p.pkt?' ('+p.pkt+' pkt)':''):'bez opraw')+(p.uwagi?' · '+p.uwagi:'')).join('\n')||'brak')+
+ '</pre><b>Znaczniki ('+t.znaczniki.length+')</b><pre>'+(esc(t.znaczniki.join('\n'))||'brak')+'</pre>';$('sd').scrollIntoView({behavior:'smooth'})})}
+function usun(n){const nz=decodeURIComponent(n);
+ if(!confirm('Usunąć z karty sesję\n'+nz+' ?\n\n'+(kopOK?'Kopia na serwerze zostaje.':'UWAGA: brak potwierdzonej kopii na serwerze – dane mogą przepaść bezpowrotnie!')))return;
+ if(!confirm('Na pewno? Tego nie da się cofnąć.'))return;cmd('usun?n='+n,sesje)}
 function rys(s){const dp=devicePixelRatio||1,W=c.width=c.clientWidth*dp,H=c.height=c.clientHeight*dp;
  const R=+$('zas').value,sk=Math.min(W,H)/2/R,cx=W/2,cy=H/2;g.fillStyle='#000';g.fillRect(0,0,W,H);
  g.strokeStyle='#263';g.fillStyle='#484';g.lineWidth=1;g.font=11*dp+'px sans-serif';
@@ -530,6 +653,10 @@ function rys(s){const dp=devicePixelRatio||1,W=c.width=c.clientWidth*dp,H=c.heig
 function kl(e,t,k){e.textContent=t;e.className=k||''}
 function fmt(t){const m=Math.floor(t/60),s=Math.floor(t%60);return m+':'+(s<10?'0':'')+s}
 function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);przekroj(s);
+ kopOK=!!(s.kopia&&s.kopia.ok&&s.kopia.wiek<300);$('bk').style.display=s.nagrywa?'':'none';$('bud').disabled=s.nagrywa;
+ if(!ustW&&s.ust){ustW=true;if(!$('bud').value)$('bud').value=s.ust.budynek||'';if(!$('kon').value)$('kon').value=s.ust.kondygnacja||''}
+ if(s.nagrywa&&document.activeElement!=$('kon')&&!$('kon').dataset.e){$('bud').value=s.budynek;$('kon').value=s.kondygnacja;$('kon').dataset.e=1}
+ if(!s.nagrywa)delete $('kon').dataset.e;
  kl($('nag'),!s.nagrywa?'stop':s.pauza?'PAUZA':s.prz_faza?'PRZEKRÓJ':s.auto_pauza?'PRZECHYŁ':'● '+fmt(s.czas),!s.nagrywa?'uw':s.pauza?'uw':s.auto_pauza?'zle':'ok');
  $('bpa').textContent=s.pauza?'WZNÓW (stoję prosto)':'PAUZA (schylam się / kucam)';$('bpa').style.background=s.pauza?'#1f9d68':'#b70';
  $('bs').style.opacity=s.nagrywa?.35:1;$('bp').style.opacity=s.nagrywa?1:.35;
@@ -537,7 +664,7 @@ function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);przekroj(s);
  if(s.pitch===null){kl($('prz'),s.imu_wl?'BRAK':'wył.',s.imu_wl?'zle':'')}else{const m=s.przechyl;kl($('prz'),m.toFixed(1)+'°',m>15?'zle':m>8?'uw':'ok')}
  $('prz2').textContent=s.max_przechyl.toFixed(1)+'°';
  if(s.wys===null){kl($('wys'),s.baro_wl?'BRAK':'wył.',s.baro_wl?'zle':'');$('wys2').textContent=''}else{kl($('wys'),(s.wys>=0?'+':'')+s.wys.toFixed(1)+' m');$('wys2').textContent='temp. '+s.temp.toFixed(0)+' °C'}
- $('roz').textContent=(s.rozmiar/1e6).toFixed(1)+' MB';$('zn').textContent='znaczniki: '+s.znaczniki+(s.prz_nr?' · przekroje: '+s.prz_nr:'');$('ses').textContent=s.nazwa||'';
+ $('roz').textContent=(s.rozmiar/1e6).toFixed(1)+' MB';$('zn').textContent='znaczniki: '+s.znaczniki+(s.prz_nr?' · przekroje: '+s.prz_nr:'');$('ses').textContent=(s.nazwa||'')+(s.nagrywa&&s.kondygnacja?' · kond. '+s.kondygnacja:'');
  kl($('dysk'),(s.wolne/1e9).toFixed(1)+' GB',s.wolne<1e9?'zle':'ok');
  if(!s.kopia){kl($('kop'),'wyłączona');$('kop2').textContent=''}else{const w=s.kopia.wiek,st=w>300;
   kl($('kop'),s.kopia.ok?(st?'brak od '+Math.round(w/60)+' min':'OK'):'BŁĄD',s.kopia.ok&&!st?'ok':s.kopia.ok?'uw':'zle');
@@ -546,7 +673,7 @@ function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);przekroj(s);
   kl($('pen'),p.wynik=='BRAK'?'BRAK PENDRIVE':!p.ok?'BŁĄD':st?'brak od '+Math.round(p.wiek/60)+' min':'OK',p.ok&&!st?'ok':'zle');
   $('pen2').textContent=p.ok?'ostatnia '+(p.wiek<90?p.wiek+' s':Math.round(p.wiek/60)+' min')+' temu':'dane są na karcie'}
  $('plista').innerHTML=(s.pom_n?'<b>Pomieszczeń: '+s.pom_sal+', opraw: '+s.pom_opraw+', punktów świetlnych: '+s.pom_pkt+'</b><br>':'')+
-  (s.pom||[]).slice().reverse().map(x=>x.nr+' – '+x.opraw+' × '+x.typ+(x.punktow?' ('+x.punktow+' pkt)':'')).join('<br>');
+  (s.pom||[]).slice().reverse().map(x=>esc(x.nr)+' – '+(x.opraw?x.opraw+' × '+x.typ+(x.punktow?' ('+x.punktow+' pkt)':''):'bez opraw')).join('<br>');
  $('kom').textContent=s.komunikat||''}).catch(()=>{$('kom').textContent='Brak połączenia z Raspberry Pi'})}
 setInterval(odswiez,500);odswiez();
 </script></body></html>"""
@@ -572,7 +699,8 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 s = {k: STAN[k] for k in ("nagrywa", "nazwa", "hz", "pkt_obrot", "yaw", "pitch", "roll",
                                           "max_przechyl", "wys", "temp", "znaczniki", "komunikat", "pauza", "auto_pauza",
-                                          "przechyl", "prz_faza", "prz_zostalo", "prz_nr", "prz_wynik")}
+                                          "przechyl", "prz_faza", "prz_zostalo", "prz_nr", "prz_wynik",
+                                          "budynek", "kondygnacja")}
                 s["obrot"] = STAN["obrot"]
                 s["pom"] = STAN["pom"][-5:]
                 s["pom_n"] = len(STAN["pom"])
@@ -589,6 +717,8 @@ class Handler(BaseHTTPRequestHandler):
             if teraz - STAN["ost"]["baro"] > 3:
                 s["wys"] = None
             s["wolne"] = shutil.disk_usage(ARGS.katalog).free
+            if not s["nagrywa"]:
+                s["ust"] = ustawienia()
             for klucz, plik in (("kopia", ".sync_status"), ("pendrive", ".sync_pendrive")):   # stan kopii (sync.sh)
                 s[klucz] = None
                 try:
@@ -598,6 +728,11 @@ class Handler(BaseHTTPRequestHandler):
                 except (OSError, ValueError):
                     pass
             self._json(s)
+        elif u.path == "/sesje":
+            self._json(lista_sesji())
+        elif u.path == "/sesja":
+            t = sesja_tresc(parse_qs(u.query).get("n", [""])[0])
+            self._json(t if t else {"blad": "Nie ma takiej sesji"}, 200 if t else 404)
         elif u.path == "/":
             b = STRONA.encode()
             self.send_response(200)
@@ -612,7 +747,7 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         q = parse_qs(u.query)
         if u.path == "/start":
-            ok = start(q.get("nazwa", [""])[0])
+            ok = start(q.get("budynek", [""])[0], q.get("kondygnacja", [""])[0])
             self._json({"ok": ok} if ok else {"blad": "Nagrywanie już trwa"})
         elif u.path == "/stop":
             self._json({"ok": stop()})
@@ -622,6 +757,11 @@ class Handler(BaseHTTPRequestHandler):
         elif u.path == "/pomieszczenie":
             g = lambda k: q.get(k, [""])[0]
             blad = pomieszczenie(g("nr"), g("typ"), g("punktow"), g("opraw"), g("uwagi"))
+            self._json({"blad": blad} if blad else {"ok": True})
+        elif u.path == "/kondygnacja":
+            self._json({"ok": zmien_kondygnacje(q.get("k", [""])[0])})
+        elif u.path == "/usun":
+            blad = usun_sesje(q.get("n", [""])[0])
             self._json({"blad": blad} if blad else {"ok": True})
         elif u.path == "/pauza":
             r = pauza()
