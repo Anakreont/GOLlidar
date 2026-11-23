@@ -1,0 +1,6 @@
+# nagrania i dane pomiarowe - nie trafiaja do repozytorium
+skany/
+*.bin
+podglad.png
+__pycache__/
+*.pyc
