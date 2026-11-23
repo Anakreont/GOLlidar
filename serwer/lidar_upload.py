@@ -28,7 +28,7 @@ router = APIRouter(prefix="/lidar", tags=["lidar"])
 
 KATALOG = Path(os.environ.get("LIDAR_DIR", "/mnt/backup/lidar"))
 MAX_KAWALEK = 8 * 1024 * 1024
-PLIK_RE = re.compile(r"^[a-z0-9_]{1,40}\.(csv|txt|bin)$")       # pliki sesji; nowe rodzaje nie wymagaja zmian na serwerze
+PLIK_RE = re.compile(r"^[a-z0-9_]{1,40}\.(csv|txt|bin|jpg)$")       # pliki sesji; nowe rodzaje nie wymagaja zmian na serwerze
 SESJA_RE = re.compile(r"^[A-Za-z0-9_+\-]{1,100}$")
 _blokada = threading.Lock()
 

@@ -14,7 +14,7 @@ Na stronie: podglad biezacego obrotu LiDAR-u, przechyl, wysokosc, stan zapisu, p
 Start / Stop / Znacznik. Dane zapisywane sa w tym samym formacie co skan_log.py:
 ~/skany/<data>_<nazwa>/{lidar.bin,imu.bin,baro.bin,info.txt,znaczniki.txt}
 """
-import argparse, json, math, os, shutil, struct, subprocess, sys, threading, time
+import argparse, json, math, os, re, shutil, struct, subprocess, sys, threading, time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -28,8 +28,10 @@ except ImportError:
 LOCK = threading.Lock()
 STAN = {
     "nagrywa": False, "nazwa": "", "katalog": "", "t_start": 0.0,
-    "bajty": {"lidar": 0, "imu": 0, "baro": 0},
-    "ost": {"lidar": 0.0, "imu": 0.0, "baro": 0.0},        # czas ostatnich danych
+    "bajty": {"lidar": 0, "lidar2": 0, "imu": 0, "baro": 0},
+    "ost": {"lidar": 0.0, "lidar2": 0.0, "imu": 0.0, "baro": 0.0},        # czas ostatnich danych
+    "podglad": "lidar",        # ktory LiDAR jest poziomy (podglad na stronie, przekroje); drugi jest pionowy
+    "foto": 0,                 # liczba zdjec w biezacej sesji
     "obrot": [], "hz": 0.0, "pkt_obrot": 0,
     "yaw": None, "pitch": None, "roll": None, "max_przechyl": 0.0,
     "wys": None, "p0": None, "temp": None,
@@ -75,18 +77,19 @@ def zapisz(strumien, dane, t=None):
 
 
 # ----------------------------------------------------------------------------- LiDAR
-def watek_lidar(port, baud):
+def watek_lidar(port, baud, nazwa="lidar"):
     buf = bytearray()
     obrot, ost_kat, t_obr = [], None, time.time()
     while not KONIEC.is_set():
         try:
             with serial.Serial(port, baud, timeout=0.05) as s:
-                STAN["komunikat"] = ""
+                if STAN["podglad"] == nazwa:
+                    STAN["komunikat"] = ""
                 while not KONIEC.is_set():
                     d = s.read(4096)
                     if not d:
                         continue
-                    zapisz("lidar", d)
+                    zapisz(nazwa, d)
                     buf += d
                     while len(buf) >= 47:
                         if buf[0] != 0x54 or buf[1] != 0x2C:
@@ -109,17 +112,19 @@ def watek_lidar(port, baud):
                             if ost_kat is not None and kat < ost_kat - 180:
                                 teraz = time.time()
                                 with LOCK:
-                                    if STAN["prz_faza"] == 1 and len(STAN["prz_skany"]) < 40:
-                                        STAN["prz_skany"].append(obrot)
-                                    STAN["obrot"] = obrot
-                                    STAN["pkt_obrot"] = len(obrot)
-                                    STAN["hz"] = 1.0 / max(teraz - t_obr, 1e-3)
+                                    if STAN["podglad"] == nazwa:
+                                        if STAN["prz_faza"] == 1 and len(STAN["prz_skany"]) < 40:
+                                            STAN["prz_skany"].append(obrot)
+                                        STAN["obrot"] = obrot
+                                        STAN["pkt_obrot"] = len(obrot)
+                                        STAN["hz"] = 1.0 / max(teraz - t_obr, 1e-3)
                                 t_obr, obrot = teraz, []
                             ost_kat = kat
                             if odl > 30:
                                 obrot.append((round(kat, 1), odl))
         except (serial.SerialException, OSError) as e:
-            STAN["komunikat"] = f"LiDAR: {e}"
+            if STAN["podglad"] == nazwa:
+                STAN["komunikat"] = f"LiDAR: {e}"
             time.sleep(1)
 
 
@@ -353,14 +358,14 @@ def start(budynek, kondygnacja):
         with open(os.path.join(kat, "info.txt"), "w") as f:
             f.write(f"nazwa={nazwa}\nbudynek={budynek}\nkondygnacja={kondygnacja}\nstart={datetime.now().isoformat()}\n"
                     f"lidar={ARGS.lidar}@{ARGS.lidar_baud}\nimu={ARGS.imu}@{ARGS.imu_baud}\n"
-                    f"baro=0x{ARGS.baro_adres:02x}\n")
-        for s in ("lidar", "imu", "baro"):
+                    f"baro=0x{ARGS.baro_adres:02x}\nlidar2={ARGS.lidar2 or ''}\nlidar_poziomy={STAN['podglad']}\n")
+        for s in ("lidar", "imu", "baro") + (("lidar2",) if ARGS.lidar2 else ()):
             PLIKI[s] = open(os.path.join(kat, s + ".bin"), "ab")
             STAN["bajty"][s] = 0
         kal = STAN.get("_baro_kal")
         if kal:
             PLIKI["baro"].write(struct.pack("<QH", time.time_ns(), len(kal)) + kal)
-        STAN.update(nagrywa=True, nazwa=nazwa, katalog=kat, t_start=time.time(), znaczniki=0, max_przechyl=0.0, pom=[], grz=[], okn=[], prz_nr=0, prz_wynik="", prz_faza=0,
+        STAN.update(nagrywa=True, nazwa=nazwa, katalog=kat, t_start=time.time(), znaczniki=0, max_przechyl=0.0, pom=[], grz=[], okn=[], foto=0, prz_nr=0, prz_wynik="", prz_faza=0,
                     budynek=budynek, kondygnacja=kondygnacja)
     return True
 
@@ -393,7 +398,7 @@ def znacznik(opis, licz=True):
 
 KOL_POM = ("czas_ns;godzina;pomieszczenie;rodzaj_oprawy;punktow_w_oprawie;liczba_opraw;punktow_razem;uwagi;"
            "wysokosc_wzgl_m;budynek;kondygnacja;moc_punktu_W;moc_razem_W;wpis")
-ZN_SYSTEMOWE = ("AUTO_", "PRZEKROJ_", "PAUZA_", "KONDYGNACJA ", "POM ", "GRZ ", "OKN ", "EDYCJA ", "USUNIETO ")
+ZN_SYSTEMOWE = ("AUTO_", "PRZEKROJ_", "PAUZA_", "KONDYGNACJA ", "FOTO ", "LIDAR_POZIOMY ", "POM ", "GRZ ", "OKN ", "EDYCJA ", "USUNIETO ")
 KOL_OKN = "czas_ns;godzina;pomieszczenie;typ;rodzaj;szer_cm;wys_cm;rama;szyby;sztuk;uwagi;wysokosc_wzgl_m;budynek;kondygnacja;wpis"
 KOL_GRZ = "czas_ns;godzina;pomieszczenie;rodzaj;sztuk;zeberek;szerokosc_cm;dlugosc_cm;uwagi;wysokosc_wzgl_m;budynek;kondygnacja;wpis"
 
@@ -749,7 +754,8 @@ def sesja_tresc(n):
             info = f.read()[-4000:]
     except OSError:
         info = ""
-    return {"n": n, "info": info, "znaczniki": znaczniki_stan(p), "pom": wiersze_pom(p), "grz": wiersze_grz(p), "okn": wiersze_okn(p)}
+    return {"n": n, "info": info, "znaczniki": znaczniki_stan(p), "pom": wiersze_pom(p), "grz": wiersze_grz(p), "okn": wiersze_okn(p),
+            "foto": sorted(x for x in os.listdir(p) if re.fullmatch(r"foto_[0-9_]+\.jpg", x))}
 
 
 def usun_sesje(n):
@@ -760,6 +766,33 @@ def usun_sesje(n):
         if STAN["nagrywa"] and os.path.abspath(p) == os.path.abspath(STAN["katalog"]):
             return "Nie można usunąć sesji, która właśnie się nagrywa"
     shutil.rmtree(p)
+    return None
+
+
+def zamien_lidary():
+    """Zamienia role: ktory LiDAR jest poziomy (podglad), a ktory pionowy."""
+    if not ARGS.lidar2:
+        return "Drugi LiDAR nie jest włączony"
+    with LOCK:
+        STAN["podglad"] = "lidar2" if STAN["podglad"] == "lidar" else "lidar"
+        STAN["obrot"], p = [], STAN["podglad"]
+    ustawienia({"podglad": p})
+    znacznik(f"LIDAR_POZIOMY {p}", licz=False)
+    return None
+
+
+def zapisz_zdjecie(dane, opis):
+    """Zapisuje zdjecie JPEG z telefonu w katalogu sesji i dopisuje znacznik FOTO."""
+    if dane[:2] != b"\xff\xd8":
+        return "To nie jest zdjęcie JPEG"
+    with LOCK:
+        if not STAN["nagrywa"]:
+            return "Zdjęcia zapisują się tylko podczas nagrywania"
+        STAN["foto"] += 1
+        nazwa = f"foto_{datetime.now().strftime('%H%M%S')}_{STAN['foto']:03d}.jpg"
+        with open(os.path.join(STAN["katalog"], nazwa), "wb") as f:
+            f.write(dane)
+    znacznik(f"FOTO {nazwa} {czysc(opis, 120)}".strip(), licz=False)
     return None
 
 
@@ -791,6 +824,8 @@ STRONA = r"""<!doctype html><html lang="pl"><head><meta charset="utf-8">
 body{margin:0;font-family:system-ui,sans-serif;background:#111;color:#eee;font-size:16px;padding-bottom:76px}
 section{display:none}section.on{display:block}
 #tb{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;gap:3px;padding:6px 6px calc(6px + env(safe-area-inset-bottom));background:#181818;border-top:1px solid #333}
+#bfoto{position:fixed;right:10px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:7;flex:none;width:62px;height:62px;min-height:0;border-radius:31px;background:#2b62c9;font-size:26px;box-shadow:0 2px 8px #000a;padding:0}
+#bfoto small{position:absolute;right:-2px;top:-4px;background:#c33;border-radius:10px;font-size:12px;padding:1px 6px}#bfoto small:empty{display:none}
 .siatka{flex-wrap:wrap}.siatka button{flex:1 0 30%}
 #tb button{min-height:52px;font-size:13px;padding:0;background:#2a2a2a;border-radius:10px}#tb button.on{background:#2b62c9}
 body:not(.nagr) .rec{display:none!important}body.nagr .nrec{display:none!important}
@@ -930,10 +965,14 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
  <div class="k"><small>Kopia na pendrive</small><b id="pen">–</b><small id="pen2"></small></div></div>
 <div class="w"><div class="k"><small>LiDAR</small><b id="lid2">–</b></div>
  <div class="k"><small>Max przechył w sesji</small><b id="prz2">–</b><small id="wys2"></small></div></div>
+<div class="w" id="l2" style="display:none"><div class="k"><small>Drugi LiDAR (pionowy)</small><b id="l2s">–</b></div>
+ <button class="sz" onclick="if(confirm('Zamienić role LiDAR-ów? Podgląd w zakładce Skan ma pokazywać ten poziomy.'))cmd('zamien_lidary')">Zamień poziomy / pionowy</button></div>
 <div class="w"><button class="sz" onclick="if(confirm('Zerować wysokość w tym miejscu?'))cmd('zeruj')">Zeruj wysokość</button>
  <button class="sz" onclick="if(confirm('Zatrzymać zapis i wyłączyć Raspberry Pi?'))cmd('wylacz')">Wyłącz RPi</button></div>
 </section>
 
+<input type="file" id="fplik" accept="image/*" capture="environment" style="display:none" onchange="wyslijFoto(this)">
+<button id="bfoto" class="rec" onclick="$('fplik').click()">📷<small id="fn"></small></button>
 <nav id="tb"><button onclick="tab(1)">Skan</button><button onclick="tab(2)">Oprawy</button><button onclick="tab(5)">Grzejniki</button><button onclick="tab(6)">Okna</button><button onclick="tab(3)">Notatka</button><button onclick="tab(4)">Dane</button></nav>
 <script>
 const $=id=>document.getElementById(id),c=$('c'),g=c.getContext('2d');let ost=null;
@@ -961,6 +1000,12 @@ function zapPom(){const e=encodeURIComponent,t=$('ptyp').querySelector('.on').te
  cmd('pomieszczenie?nr='+e($('pnr').value)+'&typ='+e(t)+'&punktow='+e($('ppkt').value)+'&opraw='+e($('popr').value)+'&moc='+e($('pmoc').value)+'&uwagi='+e($('puw').value)+
  (ed?'&n='+e(ed.n)+'&id='+ed.id:''),()=>{$('popr').value='';$('puw').value='';wibr();if(ed){const n=ed.n;koniecEd();tab(4);sesja(e(n))}})}
 function koniecEd(){ed=null;$('edb').style.display='none';$('bzp').textContent='ZAPISZ POMIESZCZENIE';$('popr').value='';$('puw').value=''}
+function wyslijFoto(inp){const f=inp.files[0];inp.value='';if(!f)return;$('bfoto').style.opacity=.4;
+ const wyslij=b=>fetch('/zdjecie?opis='+encodeURIComponent($('pnr').value),{method:'POST',body:b}).then(r=>r.json()).then(j=>{$('bfoto').style.opacity=1;if(j.blad)alert(j.blad);else wibr()})
+  .catch(()=>{$('bfoto').style.opacity=1;alert('Nie udało się wysłać zdjęcia')});
+ const im=new Image();im.onload=()=>{const k=Math.min(1,1600/Math.max(im.width,im.height)),cv=document.createElement('canvas');cv.width=Math.round(im.width*k);cv.height=Math.round(im.height*k);
+  cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);URL.revokeObjectURL(im.src);cv.toBlob(b=>wyslij(b||f),'image/jpeg',.82)};
+ im.onerror=()=>wyslij(f);im.src=URL.createObjectURL(f)}
 let edo=null,typyL=[];
 function segO(b){for(const x of b.parentNode.children)x.className='';b.className='on'}
 function ustSeg(id,t){let z=false;for(const b of $(id).children){b.className=b.textContent==t?'on':'';z=z||b.textContent==t}if(!z)$(id).children[0].className='on'}
@@ -1029,6 +1074,7 @@ function sesja(n){fetch('/sesja?n='+n).then(r=>r.json()).then(t=>{if(t.blad){ale
  '<br><b>Grzejniki ('+(t.grz||[]).length+')</b>'+
  ((t.grz||[]).map((g,i)=>'<div class="r"><span>'+g.godz+' '+(g.kond?'['+esc(g.kond)+'] ':'')+'<b>'+esc(g.nr)+'</b> – '+opisGrz(g)+(g.uwagi?'<br>'+esc(g.uwagi):'')+'</span>'+
   prz+'edGrz('+i+')">Edytuj</button>'+prz+'usGrz('+i+')" style="background:#933">Usuń</button></div>').join('')||'<div>brak</div>')+
+ '<br><b>Zdjęcia ('+(t.foto||[]).length+')</b><div>'+((t.foto||[]).map(p=>'<a href="/foto?n='+encodeURIComponent(t.n)+'&p='+p+'" target="_blank" style="color:#9cf;display:inline-block;padding:6px 8px 6px 0">'+p.slice(5,7)+':'+p.slice(7,9)+':'+p.slice(9,11)+'</a>').join(' ')||'brak')+'</div>'+
  '<br><b>Okna i drzwi zewn. ('+(t.okn||[]).length+')</b>'+
  ((t.okn||[]).map((o,i)=>'<div class="r"><span>'+o.godz+' '+(o.kond?'['+esc(o.kond)+'] ':'')+'<b>'+esc(o.nr)+'</b> – '+opisOkn(o)+(o.uwagi?'<br>'+esc(o.uwagi):'')+'</span>'+
   prz+'edOkn('+i+')">Edytuj</button>'+prz+'usOkn('+i+')" style="background:#933">Usuń</button></div>').join('')||'<div>brak</div>')+
@@ -1065,7 +1111,8 @@ function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);przekroj(s);
  kl($('nag'),!s.nagrywa?'stop':s.pauza?'PAUZA':s.prz_faza?'PRZEKRÓJ':s.auto_pauza?'PRZECHYŁ':'● '+fmt(s.czas),!s.nagrywa?'uw':s.pauza?'uw':s.auto_pauza?'zle':'ok');
  $('bpa').textContent=s.pauza?'WZNÓW (stoję prosto)':'PAUZA (schylam się)';document.body.classList.toggle('nagr',s.nagrywa);$('bpa').style.background=s.pauza?'#1f9d68':'#b70';
  
- kl($('lid'),s.lidar_ok?s.hz.toFixed(1)+' Hz':'BRAK',s.lidar_ok?'ok':'zle');$('lid2').textContent=s.pkt_obrot+' pkt/obrót';
+ kl($('lid'),s.lidar_ok?s.hz.toFixed(1)+' Hz':'BRAK',s.lidar_ok?'ok':'zle');$('lid2').textContent=s.pkt_obrot+' pkt/obrót';$('fn').textContent=s.foto||'';
+ $('l2').style.display=s.lidar2_wl?'':'none';if(s.lidar2_wl)kl($('l2s'),s.lidar2_ok?'działa':'BRAK',s.lidar2_ok?'ok':'zle');
  if(s.pitch===null){kl($('prz'),s.imu_wl?'BRAK':'wył.',s.imu_wl?'zle':'')}else{const m=s.przechyl;kl($('prz'),m.toFixed(1)+'°',m>15?'zle':m>8?'uw':'ok')}
  $('prz2').textContent=s.max_przechyl.toFixed(1)+'°';
  if(s.wys===null){kl($('wys'),s.baro_wl?'BRAK':'wył.',s.baro_wl?'zle':'');$('wys2').textContent=''}else{kl($('wys'),(s.wys>=0?'+':'')+s.wys.toFixed(1)+' m');$('wys2').textContent='temp. '+s.temp.toFixed(0)+' °C'}
@@ -1122,7 +1169,12 @@ class Handler(BaseHTTPRequestHandler):
                 s["pom_sal"] = len({x["nr"] for x in STAN["pom"]})
                 s["czas"] = teraz - STAN["t_start"] if STAN["nagrywa"] else 0
                 s["rozmiar"] = sum(STAN["bajty"].values())
-                s["lidar_ok"] = teraz - STAN["ost"]["lidar"] < 1.5
+                s["lidar_ok"] = teraz - STAN["ost"][STAN["podglad"]] < 1.5
+                s["lidar2_wl"] = bool(ARGS.lidar2)
+                drugi = "lidar2" if STAN["podglad"] == "lidar" else "lidar"
+                s["lidar2_ok"] = teraz - STAN["ost"][drugi] < 1.5
+                s["podglad"] = STAN["podglad"]
+                s["foto"] = STAN["foto"]
                 s["imu_ok"] = teraz - STAN["ost"]["imu"] < 1.5
             s["imu_wl"], s["baro_wl"] = not ARGS.bez_imu, not ARGS.bez_baro
             if not s["imu_ok"]:
@@ -1141,6 +1193,20 @@ class Handler(BaseHTTPRequestHandler):
                 except (OSError, ValueError):
                     pass
             self._json(s)
+        elif u.path == "/foto":
+            qq = parse_qs(u.query)
+            kat, plik = sesja_sciezka(qq.get("n", [""])[0]), qq.get("p", [""])[0]
+            sc = os.path.join(kat, plik) if kat and re.fullmatch(r"foto_[0-9_]+\.jpg", plik) else ""
+            if not sc or not os.path.isfile(sc):
+                self._json({"blad": "Nie ma takiego zdjęcia"}, 404)
+                return
+            with open(sc, "rb") as f:
+                b = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(b)))
+            self.end_headers()
+            self.wfile.write(b)
         elif u.path == "/typy_okien":
             self._json(typy_okien(parse_qs(u.query).get("b", [""])[0]))
         elif u.path == "/sesje":
@@ -1190,6 +1256,19 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"blad": blad} if blad else {"ok": True})
         elif u.path == "/kondygnacja":
             self._json({"ok": zmien_kondygnacje(q.get("k", [""])[0])})
+        elif u.path == "/zdjecie":
+            try:
+                ile = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                ile = 0
+            if not 0 < ile <= 8 * 1024 * 1024:
+                self._json({"blad": "Zdjęcie jest puste albo za duże (limit 8 MB)"})
+                return
+            blad = zapisz_zdjecie(self.rfile.read(ile), q.get("opis", [""])[0])
+            self._json({"blad": blad} if blad else {"ok": True})
+        elif u.path == "/zamien_lidary":
+            blad = zamien_lidary()
+            self._json({"blad": blad} if blad else {"ok": True})
         elif u.path == "/usun_budynek":
             self._json({"ok": True, "usunieto": usun_budynek(q.get("b", [""])[0])})
         elif u.path == "/usun":
@@ -1215,6 +1294,7 @@ def main():
     ap = argparse.ArgumentParser(description="Rejestrator LiDAR z podgladem WWW")
     ap.add_argument("--lidar", default="/dev/ttyUSB0")
     ap.add_argument("--lidar-baud", type=int, default=230400)
+    ap.add_argument("--lidar2", default="auto", help="port drugiego (pionowego) LiDAR-u; auto = /dev/ttyUSB1, jesli istnieje; pusty = brak")
     ap.add_argument("--imu", default="/dev/ttyACM0")
     ap.add_argument("--imu-baud", type=int, default=115200)
     ap.add_argument("--bez-imu", action="store_true")
@@ -1224,7 +1304,13 @@ def main():
     ap.add_argument("--port", type=int, default=8080)
     ARGS = ap.parse_args()
     os.makedirs(ARGS.katalog, exist_ok=True)
+    if ARGS.lidar2 == "auto":
+        ARGS.lidar2 = "/dev/ttyUSB1" if os.path.exists("/dev/ttyUSB1") and ARGS.lidar != "/dev/ttyUSB1" else ""
     watki = [(watek_lidar, (ARGS.lidar, ARGS.lidar_baud)), (watek_flush, ())]
+    if ARGS.lidar2:
+        watki.append((watek_lidar, (ARGS.lidar2, ARGS.lidar_baud, "lidar2")))
+        if ustawienia().get("podglad") in ("lidar", "lidar2"):
+            STAN["podglad"] = ustawienia()["podglad"]
     if not ARGS.bez_imu:
         watki.append((watek_imu, (ARGS.imu, ARGS.imu_baud)))
     if not ARGS.bez_baro:

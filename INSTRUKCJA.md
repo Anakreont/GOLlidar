@@ -154,6 +154,15 @@ albo pod adresem IP z listy urządzeń podłączonych do hotspotu, z dopiskiem `
   pomiaru w promieniu 35 cm); po wpisaniu opisu i średnicy powstaje znacznik `PUNKT kat=… odl=… pion c.o. Ø50`,
   czyli położenie względem skanera w tej chwili. Stać nieruchomo od dotknięcia do zapisu.
 
+### Zdjęcia i drugi LiDAR
+
+- **Zdjęcia**: podczas nagrywania w prawym dolnym rogu jest przycisk aparatu. Zdjęcie jest zmniejszane w telefonie
+  (dłuższy bok 1600 px), zapisywane w sesji jako `foto_GGMMSS_NNN.jpg` i oznaczane znacznikiem `FOTO … (pomieszczenie)`,
+  więc przypina się do miejsca w skanie. Podgląd: zakładka Dane → Podgląd nagrania → Zdjęcia. Idą też na serwer.
+- **Drugi LiDAR (pionowy)**: drugi D500 wpięty do USB jest wykrywany przy starcie usługi (`/dev/ttyUSB1`) i nagrywany do
+  `lidar2.bin`. W zakładce Dane jest jego stan i przycisk „Zamień poziomy / pionowy" — podgląd w zakładce Skan ma pokazywać
+  LiDAR poziomy (obrys pomieszczenia). Wybór jest pamiętany.
+
 ### Przekrój pionowy (wysokości) — automatycznie
 
 W trakcie nagrywania można w dowolnym miejscu zmierzyć pionowy przekrój pomieszczenia:
