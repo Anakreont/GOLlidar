@@ -122,6 +122,15 @@ albo pod adresem IP z listy urządzeń podłączonych do hotspotu, z dopiskiem `
 6. Na każdej kondygnacji zmierz dalmierzem 3–4 długie wymiary kontrolne oraz grubość ściany zewnętrznej w ościeżu okna.
 7. Skanuj po lekcjach — ludzie w kadrze psują mapę.
 
+### Budynek, kondygnacja, pomieszczenia, sesje
+
+- Przed START wpisuje się **budynek** i **kondygnację**; z nich powstaje nazwa sesji, a obie wartości trafiają do `info.txt`
+  i do każdego wiersza `pomieszczenia.csv`. Ostatnie wartości są pamiętane.
+- W trakcie nagrywania kondygnację zmienia się przyciskiem **Zmień** (zapisuje znacznik `KONDYGNACJA …`), bez przerywania nagrania.
+- Pomieszczenie można zapisać **bez opraw** (ilość 0 lub puste pole) — zapisuje się sama nazwa i uwagi.
+- **Zapisane sesje**: lista z rozmiarem, podgląd (`info`, pomieszczenia, znaczniki) i usuwanie z podwójnym potwierdzeniem.
+  Sesji w trakcie nagrywania usunąć się nie da; usunięcie dotyczy tylko karty maliny, kopia na serwerze zostaje.
+
 ### Przekrój pionowy (wysokości) — automatycznie
 
 W trakcie nagrywania można w dowolnym miejscu zmierzyć pionowy przekrój pomieszczenia:

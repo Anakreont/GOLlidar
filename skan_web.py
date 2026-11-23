@@ -637,7 +637,7 @@ function sesje(){fetch('/sesje').then(r=>r.json()).then(l=>{$('sd').innerHTML=''
  (x.aktywna?'':'<button data-n="'+encodeURIComponent(x.n)+'" style="background:#933" onclick="usun(this.dataset.n)">Usuń</button>')+'</div>').join(''):'brak sesji'})}
 function sesja(n){fetch('/sesja?n='+n).then(r=>r.json()).then(t=>{if(t.blad){alert(t.blad);return}
  $('sd').innerHTML='<b>'+esc(t.n)+'</b><pre>'+esc(t.info)+'</pre><b>Pomieszczenia ('+t.pom.length+')</b><pre>'+
- (t.pom.map(p=>p.godz+'  '+(p.kond?'['+p.kond+'] ':'')+p.nr+' – '+(+p.opraw?p.opraw+' × '+p.typ+(p.pkt?' ('+p.pkt+' pkt)':''):'bez opraw')+(p.uwagi?' · '+p.uwagi:'')).join('\n')||'brak')+
+ (esc(t.pom.map(p=>p.godz+'  '+(p.kond?'['+p.kond+'] ':'')+p.nr+' – '+(+p.opraw?p.opraw+' × '+p.typ+(p.pkt?' ('+p.pkt+' pkt)':''):'bez opraw')+(p.uwagi?' · '+p.uwagi:'')).join('\n'))||'brak')+
  '</pre><b>Znaczniki ('+t.znaczniki.length+')</b><pre>'+(esc(t.znaczniki.join('\n'))||'brak')+'</pre>';$('sd').scrollIntoView({behavior:'smooth'})})}
 function usun(n){const nz=decodeURIComponent(n);
  if(!confirm('Usunąć z karty sesję\n'+nz+' ?\n\n'+(kopOK?'Kopia na serwerze zostaje.':'UWAGA: brak potwierdzonej kopii na serwerze – dane mogą przepaść bezpowrotnie!')))return;
