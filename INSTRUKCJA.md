@@ -49,6 +49,9 @@ Przechył powyżej 15° jest oznaczany automatycznie (na kafelku „Zapis" pojaw
 stawia znacznik czasu, więc pomieszczenie zostanie podpisane na rzucie. Kilka typów opraw w jednej sali zapisz jako
 osobne wiersze z tą samą nazwą pomieszczenia.
 
+Najprościej uruchamiać przez `./start.sh` (z tymi samymi opcjami): zamyka starą kopię, pobiera aktualizacje
+z GitHuba i startuje nową wersję. Program kończy się przez Ctrl+C (nie Ctrl+Z, które go tylko usypia).
+
 Autostart po włączeniu zasilania (wtedy SSH w terenie nie jest potrzebne):
 
 ```bash
