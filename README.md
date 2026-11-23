@@ -10,7 +10,12 @@ Zestaw: LiDAR D500 (LDROBOT STL-19P / LD19), IMU BNO085 w trybie UART-RVC, barom
 | `skan_log.py` | Rejestrator sterowany z terminala (wariant zapasowy) |
 | `sprawdz.py` | Kontrola nagrania: pakiety, obroty, zasięg, przechyły, wykryte poziomy |
 | `skaner.service` | Autostart `skan_web.py` po włączeniu zasilania (systemd) |
-| `INSTRUKCJA.md` | Podłączenie czujników, instalacja, sposób chodzenia |
+| `INSTRUKCJA.md` | Schemat połączeń, montaż głowicy, instalacja, obsługa strony, sposób chodzenia |
+| `start.sh` | Zamyka starą kopię, pobiera aktualizacje i uruchamia rejestrator |
+| `obudowa/` | Pliki STL głowicy do druku 3D (gwint 1/4") i generator |
+| `dokumentacja/` | Schemat połączeń i rysunki |
+
+![Schemat połączeń](dokumentacja/schemat_polaczen.png)
 
 Szybki start:
 
