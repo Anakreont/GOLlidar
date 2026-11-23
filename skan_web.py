@@ -34,7 +34,9 @@ STAN = {
     "yaw": None, "pitch": None, "roll": None, "max_przechyl": 0.0,
     "wys": None, "p0": None, "temp": None,
     "znaczniki": 0, "komunikat": "",
+    "pauza": False, "auto_pauza": False,
 }
+PROG_PRZECHYLU = 15.0          # stopnie; powyzej tego skany sa oznaczane jako do pominiecia
 PLIKI = {}                      # nazwa strumienia -> otwarty plik (gdy nagrywa)
 KONIEC = threading.Event()
 ARGS = None
@@ -128,8 +130,16 @@ def watek_imu(port, baud):
                         del buf[:19]
                         with LOCK:
                             STAN["yaw"], STAN["pitch"], STAN["roll"] = yaw / 100, pitch / 100, roll / 100
+                            m = max(abs(pitch), abs(roll)) / 100
                             if STAN["nagrywa"]:
-                                STAN["max_przechyl"] = max(STAN["max_przechyl"], abs(pitch) / 100, abs(roll) / 100)
+                                STAN["max_przechyl"] = max(STAN["max_przechyl"], m)
+                            zmiana = None
+                            if m > PROG_PRZECHYLU and not STAN["auto_pauza"]:
+                                STAN["auto_pauza"], zmiana = True, "AUTO_PRZECHYL_START"
+                            elif m < PROG_PRZECHYLU - 3 and STAN["auto_pauza"]:
+                                STAN["auto_pauza"], zmiana = False, "AUTO_PRZECHYL_KONIEC"
+                        if zmiana:
+                            znacznik(zmiana, licz=False)
         except (serial.SerialException, OSError):
             time.sleep(1)
 
@@ -220,6 +230,7 @@ def stop():
         for s in list(PLIKI):
             PLIKI.pop(s).close()
         STAN["nagrywa"] = False
+        STAN["pauza"] = False
         with open(os.path.join(STAN["katalog"], "info.txt"), "a") as f:
             f.write(f"koniec={datetime.now().isoformat()}\n" +
                     "".join(f"{k}_bajty={v}\n" for k, v in STAN["bajty"].items()) +
@@ -227,14 +238,26 @@ def stop():
     return True
 
 
-def znacznik(opis):
+def znacznik(opis, licz=True):
     with LOCK:
         if not STAN["nagrywa"]:
             return False
         with open(os.path.join(STAN["katalog"], "znaczniki.txt"), "a") as f:
             f.write(f"{time.time_ns()}\t{opis}\t{STAN['wys'] if STAN['wys'] is not None else ''}\n")
-        STAN["znaczniki"] += 1
+        if licz:
+            STAN["znaczniki"] += 1
     return True
+
+
+def pauza():
+    """Przelacza pauze: zapis surowych danych trwa, ale odcinek jest oznaczony do pominiecia."""
+    with LOCK:
+        if not STAN["nagrywa"]:
+            return None
+        STAN["pauza"] = not STAN["pauza"]
+        nowy = STAN["pauza"]
+    znacznik("PAUZA_START" if nowy else "PAUZA_KONIEC", licz=False)
+    return nowy
 
 
 def watek_flush():
@@ -257,7 +280,7 @@ body{margin:0;font-family:system-ui,sans-serif;background:#111;color:#eee}
 .k b{display:block;font-size:19px}.k small{color:#999;font-size:11px}
 .ok{color:#5d5}.zle{color:#f55}.uw{color:#fb3}
 button,input,select{font-size:17px;padding:11px;border-radius:8px;border:0}
-button{flex:1;color:#fff}#bs{background:#2a7}#bp{background:#c33}#bz{background:#36c}.bw{background:#555}
+button{flex:1;color:#fff}#bs{background:#2a7}#bp{background:#c33}#bz{background:#36c}#bpa{background:#b70}.bw{background:#555}
 input{flex:2;min-width:0;background:#333;color:#fff}select{background:#333;color:#fff}
 #kom{padding:4px 8px;color:#fb3;font-size:13px;min-height:16px}
 </style></head><body>
@@ -275,6 +298,7 @@ input{flex:2;min-width:0;background:#333;color:#fff}select{background:#333;color
  <select id="zas"><option>3</option><option selected>6</option><option>12</option><option>20</option></select></div>
 <div class="r"><button id="bs" onclick="cmd('start?nazwa='+encodeURIComponent(nazwa.value))">START</button>
  <button id="bp" onclick="cmd('stop')">STOP</button></div>
+<div class="r"><button id="bpa" onclick="cmd('pauza')">PAUZA (schylam się / kucam)</button></div>
 <div class="r"><input id="opis" placeholder="opis znacznika, np. sala 12">
  <button id="bz" onclick="cmd('znacznik?opis='+encodeURIComponent(opis.value));opis.value=''">ZNACZNIK</button></div>
 <div class="r"><button class="bw" onclick="if(confirm('Zerować wysokość w tym miejscu?'))cmd('zeruj')">Zeruj wysokość</button>
@@ -293,7 +317,8 @@ function rys(s){const W=c.width=c.clientWidth*devicePixelRatio,H=c.height=c.clie
  g.fillStyle='#f33';g.beginPath();g.moveTo(cx,cy-9*devicePixelRatio);g.lineTo(cx-5*devicePixelRatio,cy+5*devicePixelRatio);g.lineTo(cx+5*devicePixelRatio,cy+5*devicePixelRatio);g.fill()}
 function kl(e,t,k){e.textContent=t;e.className=k||''}
 function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);
- kl(nag,s.nagrywa?'NAGRYWA '+fmt(s.czas):'stop',s.nagrywa?'ok':'uw');ses.textContent=s.nazwa||'';
+ kl(nag,!s.nagrywa?'stop':s.pauza?'PAUZA':s.auto_pauza?'PRZECHYŁ!':'NAGRYWA '+fmt(s.czas),!s.nagrywa?'uw':s.pauza?'uw':s.auto_pauza?'zle':'ok');
+ bpa.textContent=s.pauza?'WZNÓW (stoję prosto)':'PAUZA (schylam się / kucam)';bpa.style.background=s.pauza?'#2a7':'#b70';ses.textContent=s.nazwa||'';
  kl(lid,s.lidar_ok?s.hz.toFixed(1)+' Hz':'BRAK',s.lidar_ok?'ok':'zle');lid2.textContent=s.pkt_obrot+' pkt/obrót';
  if(s.pitch===null){kl(prz,s.imu_wl?'BRAK':'wył.',s.imu_wl?'zle':'')}else{const m=Math.max(Math.abs(s.pitch),Math.abs(s.roll));
   kl(prz,m.toFixed(1)+'°',m>15?'zle':m>8?'uw':'ok');prz2.textContent='max w sesji '+s.max_przechyl.toFixed(1)+'°'}
@@ -325,7 +350,7 @@ class Handler(BaseHTTPRequestHandler):
             teraz = time.time()
             with LOCK:
                 s = {k: STAN[k] for k in ("nagrywa", "nazwa", "hz", "pkt_obrot", "yaw", "pitch", "roll",
-                                          "max_przechyl", "wys", "temp", "znaczniki", "komunikat")}
+                                          "max_przechyl", "wys", "temp", "znaczniki", "komunikat", "pauza", "auto_pauza")}
                 s["obrot"] = STAN["obrot"]
                 s["czas"] = teraz - STAN["t_start"] if STAN["nagrywa"] else 0
                 s["rozmiar"] = sum(STAN["bajty"].values())
@@ -359,6 +384,9 @@ class Handler(BaseHTTPRequestHandler):
         elif u.path == "/znacznik":
             ok = znacznik(q.get("opis", [""])[0])
             self._json({"ok": ok} if ok else {"blad": "Znacznik działa tylko podczas nagrywania"})
+        elif u.path == "/pauza":
+            r = pauza()
+            self._json({"ok": True, "pauza": r} if r is not None else {"blad": "Pauza działa tylko podczas nagrywania"})
         elif u.path == "/zeruj":
             with LOCK:
                 STAN["p0"] = None

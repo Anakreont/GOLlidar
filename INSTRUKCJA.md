@@ -37,7 +37,12 @@ python3 skan_web.py --bez-imu --bez-baro # sam LiDAR
 
 W przeglądarce telefonu (ta sama sieć lub hotspot): `http://<adres-IP-raspberry>:8080`.
 Strona pokazuje bieżący obrót LiDAR-u (kontur pomieszczenia wokół Ciebie), przechył, wysokość względną,
-stan zapisu i wolne miejsce. Przyciski: START / STOP, ZNACZNIK (np. numer sali), Zeruj wysokość, Wyłącz RPi.
+stan zapisu i wolne miejsce. Przyciski: START / STOP, PAUZA, ZNACZNIK (np. numer sali), Zeruj wysokość, Wyłącz RPi.
+
+**PAUZA** – naciśnij, zanim się schylisz, kucniesz albo odstawisz czujnik inaczej niż pionowo; po powrocie do
+normalnej pozycji naciśnij WZNÓW. Surowe dane zapisują się dalej, ale odcinek jest oznaczony do pominięcia.
+Wznawiaj mniej więcej w tym samym miejscu i zwrócony w tę samą stronę, w której zacząłeś pauzę.
+Przechył powyżej 15° jest oznaczany automatycznie (na kafelku „Zapis" pojawia się „PRZECHYŁ!").
 
 Autostart po włączeniu zasilania (wtedy SSH w terenie nie jest potrzebne):
 
