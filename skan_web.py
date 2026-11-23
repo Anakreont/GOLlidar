@@ -388,19 +388,24 @@ def znacznik(opis, licz=True):
     return True
 
 
-def pomieszczenie(nr, typ, punktow, opraw, uwagi):
+def pomieszczenie(nr, typ, punktow, opraw, uwagi, moc=""):
     """Dopisuje wiersz do pomieszczenia.csv w katalogu sesji (inwentaryzacja oswietlenia)."""
     try:
         opraw = int(opraw or 0)
         punktow = int(punktow or 0)
+        moc = float(str(moc or 0).replace(",", "."))
     except ValueError:
-        return "Liczba opraw i liczba punktów muszą być liczbami całkowitymi"
+        return "Liczba opraw, liczba punktów i moc muszą być liczbami"
+    if moc < 0:
+        return "Liczby nie mogą być ujemne"
     if opraw < 0 or punktow < 0:
         return "Liczby nie mogą być ujemne"
     if not czysc(nr):
         return "Podaj nazwę lub numer pomieszczenia"
     if opraw == 0:
-        typ, punktow = "", 0                      # pomieszczenie bez opraw: sama nazwa i uwagi
+        typ, punktow, moc = "", 0, 0.0            # pomieszczenie bez opraw: sama nazwa i uwagi
+    moc_razem = moc * max(punktow, 1) * opraw
+    lw = lambda x: (f"{x:.1f}".rstrip("0").rstrip(".").replace(".", ",")) if x else ""
     with LOCK:
         if not STAN["nagrywa"]:
             return "Zapis pomieszczeń działa tylko podczas nagrywania"
@@ -408,12 +413,12 @@ def pomieszczenie(nr, typ, punktow, opraw, uwagi):
         nowy = not os.path.exists(sciezka)
         with open(sciezka, "a", encoding="utf-8-sig" if nowy else "utf-8") as f:
             if nowy:
-                f.write("czas_ns;godzina;pomieszczenie;rodzaj_oprawy;punktow_w_oprawie;liczba_opraw;punktow_razem;uwagi;wysokosc_wzgl_m;budynek;kondygnacja\n")
+                f.write("czas_ns;godzina;pomieszczenie;rodzaj_oprawy;punktow_w_oprawie;liczba_opraw;punktow_razem;uwagi;wysokosc_wzgl_m;budynek;kondygnacja;moc_punktu_W;moc_razem_W\n")
             wys = "" if STAN["wys"] is None else f"{STAN['wys']:.1f}".replace(".", ",")
             f.write(f"{time.time_ns()};{datetime.now().strftime('%H:%M:%S')};{czysc(nr)};{czysc(typ)};"
                     f"{punktow or ''};{opraw};{punktow * opraw or ''};{czysc(uwagi)};{wys};"
-                    f"{STAN['budynek']};{STAN['kondygnacja']}\n")
-        STAN["pom"].append({"nr": czysc(nr), "typ": czysc(typ), "punktow": punktow, "opraw": opraw})
+                    f"{STAN['budynek']};{STAN['kondygnacja']};{lw(moc)};{lw(moc_razem)}\n")
+        STAN["pom"].append({"nr": czysc(nr), "typ": czysc(typ), "punktow": punktow, "opraw": opraw, "moc": moc, "moc_razem": moc_razem})
     znacznik(f"POM {czysc(nr)}", licz=True)
     return None
 
@@ -475,7 +480,7 @@ def sesja_tresc(n):
     pom = [w.split(";") for w in czytaj("pomieszczenia.csv").splitlines()[1:]]
     return {"n": n, "info": czytaj("info.txt"), "znaczniki": zn,
             "pom": [{"godz": w[1], "nr": w[2], "typ": w[3], "pkt": w[4], "opraw": w[5], "uwagi": w[7],
-                     "kond": w[10] if len(w) > 10 else ""} for w in pom if len(w) >= 8]}
+                     "kond": w[10] if len(w) > 10 else "", "moc": w[11] if len(w) > 11 else ""} for w in pom if len(w) >= 8]}
 
 
 def usun_sesje(n):
@@ -589,6 +594,12 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 <div class="et">Punktów świetlnych w jednej oprawie</div>
 <div class="w"><div class="licz"><button onclick="krok('ppkt',-1)">−</button>
  <input id="ppkt" type="number" inputmode="numeric" placeholder="0"><button onclick="krok('ppkt',1)">+</button></div></div>
+<div class="et">Moc jednego punktu świetlnego [W]</div>
+<div class="w"><div class="licz"><button onclick="krok('pmoc',-1)">−</button>
+ <input id="pmoc" type="number" inputmode="decimal" placeholder="0"><button onclick="krok('pmoc',1)">+</button></div></div>
+<div class="chips"><button class="chip" onclick="$('pmoc').value=9">9 W</button><button class="chip" onclick="$('pmoc').value=18">18 W</button>
+ <button class="chip" onclick="$('pmoc').value=36">36 W</button><button class="chip" onclick="$('pmoc').value=58">58 W</button>
+ <button class="chip" onclick="$('pmoc').value=60">60 W</button><button class="chip" onclick="$('pmoc').value=100">100 W</button></div>
 <div class="et">Ilość opraw w pomieszczeniu (0 = zapis samej nazwy, bez oświetlenia)</div>
 <div class="w"><div class="licz"><button onclick="krok('popr',-1)">−</button>
  <input id="popr" type="number" inputmode="numeric" placeholder="0"><button onclick="krok('popr',1)">+</button></div></div>
@@ -627,7 +638,7 @@ function szybki(t){cmd('znacznik?opis='+encodeURIComponent(t),wibr)}
 function krok(id,d){const e=$(id);e.value=Math.max(0,(parseInt(e.value)||0)+d)}
 function typ(b){for(const x of $('ptyp').children)x.className='';b.className='on'}
 function zapPom(){const e=encodeURIComponent,t=$('ptyp').querySelector('.on').textContent;
- cmd('pomieszczenie?nr='+e($('pnr').value)+'&typ='+e(t)+'&punktow='+e($('ppkt').value)+'&opraw='+e($('popr').value)+'&uwagi='+e($('puw').value),
+ cmd('pomieszczenie?nr='+e($('pnr').value)+'&typ='+e(t)+'&punktow='+e($('ppkt').value)+'&opraw='+e($('popr').value)+'&moc='+e($('pmoc').value)+'&uwagi='+e($('puw').value),
  ()=>{$('popr').value='';$('puw').value='';wibr()})}
 let kopOK=false,ustW=false;
 function esc(t){return String(t).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))}
@@ -637,7 +648,7 @@ function sesje(){fetch('/sesje').then(r=>r.json()).then(l=>{$('sd').innerHTML=''
  (x.aktywna?'':'<button data-n="'+encodeURIComponent(x.n)+'" style="background:#933" onclick="usun(this.dataset.n)">Usuń</button>')+'</div>').join(''):'brak sesji'})}
 function sesja(n){fetch('/sesja?n='+n).then(r=>r.json()).then(t=>{if(t.blad){alert(t.blad);return}
  $('sd').innerHTML='<b>'+esc(t.n)+'</b><pre>'+esc(t.info)+'</pre><b>Pomieszczenia ('+t.pom.length+')</b><pre>'+
- (esc(t.pom.map(p=>p.godz+'  '+(p.kond?'['+p.kond+'] ':'')+p.nr+' – '+(+p.opraw?p.opraw+' × '+p.typ+(p.pkt?' ('+p.pkt+' pkt)':''):'bez opraw')+(p.uwagi?' · '+p.uwagi:'')).join('\n'))||'brak')+
+ (esc(t.pom.map(p=>p.godz+'  '+(p.kond?'['+p.kond+'] ':'')+p.nr+' – '+(+p.opraw?p.opraw+' × '+p.typ+(p.pkt?' ('+p.pkt+' pkt)':'')+(p.moc?' × '+p.moc+' W':''):'bez opraw')+(p.uwagi?' · '+p.uwagi:'')).join('\n'))||'brak')+
  '</pre><b>Znaczniki ('+t.znaczniki.length+')</b><pre>'+(esc(t.znaczniki.join('\n'))||'brak')+'</pre>';$('sd').scrollIntoView({behavior:'smooth'})})}
 function usun(n){const nz=decodeURIComponent(n);
  if(!confirm('Usunąć z karty sesję\n'+nz+' ?\n\n'+(kopOK?'Kopia na serwerze zostaje.':'UWAGA: brak potwierdzonej kopii na serwerze – dane mogą przepaść bezpowrotnie!')))return;
@@ -672,8 +683,8 @@ function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);przekroj(s);
  if(!s.pendrive){kl($('pen'),'wyłączona');$('pen2').textContent=''}else{const p=s.pendrive,st=p.wiek>300;
   kl($('pen'),p.wynik=='BRAK'?'BRAK PENDRIVE':!p.ok?'BŁĄD':st?'brak od '+Math.round(p.wiek/60)+' min':'OK',p.ok&&!st?'ok':'zle');
   $('pen2').textContent=p.ok?'ostatnia '+(p.wiek<90?p.wiek+' s':Math.round(p.wiek/60)+' min')+' temu':'dane są na karcie'}
- $('plista').innerHTML=(s.pom_n?'<b>Pomieszczeń: '+s.pom_sal+', opraw: '+s.pom_opraw+', punktów świetlnych: '+s.pom_pkt+'</b><br>':'')+
-  (s.pom||[]).slice().reverse().map(x=>esc(x.nr)+' – '+(x.opraw?x.opraw+' × '+x.typ+(x.punktow?' ('+x.punktow+' pkt)':''):'bez opraw')).join('<br>');
+ $('plista').innerHTML=(s.pom_n?'<b>Pomieszczeń: '+s.pom_sal+', opraw: '+s.pom_opraw+', punktów świetlnych: '+s.pom_pkt+(s.pom_w?', moc: '+s.pom_w+' W':'')+'</b><br>':'')+
+  (s.pom||[]).slice().reverse().map(x=>esc(x.nr)+' – '+(x.opraw?x.opraw+' × '+x.typ+(x.punktow?' ('+x.punktow+' pkt)':'')+(x.moc?' × '+x.moc+' W = '+Math.round(x.moc_razem)+' W':''):'bez opraw')).join('<br>');
  $('kom').textContent=s.komunikat||''}).catch(()=>{$('kom').textContent='Brak połączenia z Raspberry Pi'})}
 setInterval(odswiez,500);odswiez();
 </script></body></html>"""
@@ -704,6 +715,7 @@ class Handler(BaseHTTPRequestHandler):
                 s["obrot"] = STAN["obrot"]
                 s["pom"] = STAN["pom"][-5:]
                 s["pom_n"] = len(STAN["pom"])
+                s["pom_w"] = round(sum(x.get("moc_razem", 0) for x in STAN["pom"]))
                 s["pom_opraw"] = sum(x["opraw"] for x in STAN["pom"])
                 s["pom_pkt"] = sum(x["opraw"] * x["punktow"] for x in STAN["pom"])
                 s["pom_sal"] = len({x["nr"] for x in STAN["pom"]})
@@ -756,7 +768,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": ok} if ok else {"blad": "Znacznik działa tylko podczas nagrywania"})
         elif u.path == "/pomieszczenie":
             g = lambda k: q.get(k, [""])[0]
-            blad = pomieszczenie(g("nr"), g("typ"), g("punktow"), g("opraw"), g("uwagi"))
+            blad = pomieszczenie(g("nr"), g("typ"), g("punktow"), g("opraw"), g("uwagi"), g("moc"))
             self._json({"blad": blad} if blad else {"ok": True})
         elif u.path == "/kondygnacja":
             self._json({"ok": zmien_kondygnacje(q.get("k", [""])[0])})
