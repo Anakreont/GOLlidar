@@ -1,0 +1,8 @@
+[Unit]
+Description=Skaner LiDAR - kopia nagran na serwer
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=anakreont
+ExecStart=/home/anakreont/skaner/sync.sh

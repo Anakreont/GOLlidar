@@ -377,6 +377,7 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 <h2>Stan</h2>
 <div class="w"><div class="k"><small>Sesja</small><b id="roz">–</b><small id="zn"></small></div>
  <div class="k"><small>Karta – wolne</small><b id="dysk">–</b><small id="ses"></small></div></div>
+<div class="w"><div class="k"><small>Kopia na serwer</small><b id="kop">–</b><small id="kop2"></small></div></div>
 <div class="w"><div class="k"><small>LiDAR</small><b id="lid2">–</b></div>
  <div class="k"><small>Max przechył w sesji</small><b id="prz2">–</b><small id="wys2"></small></div></div>
 <div class="w"><button class="sz" onclick="if(confirm('Zerować wysokość w tym miejscu?'))cmd('zeruj')">Zeruj wysokość</button>
@@ -412,6 +413,9 @@ function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);
  if(s.wys===null){kl($('wys'),s.baro_wl?'BRAK':'wył.',s.baro_wl?'zle':'');$('wys2').textContent=''}else{kl($('wys'),(s.wys>=0?'+':'')+s.wys.toFixed(1)+' m');$('wys2').textContent='temp. '+s.temp.toFixed(0)+' °C'}
  $('roz').textContent=(s.rozmiar/1e6).toFixed(1)+' MB';$('zn').textContent='znaczniki: '+s.znaczniki;$('ses').textContent=s.nazwa||'';
  kl($('dysk'),(s.wolne/1e9).toFixed(1)+' GB',s.wolne<1e9?'zle':'ok');
+ if(!s.kopia){kl($('kop'),'wyłączona');$('kop2').textContent=''}else{const w=s.kopia.wiek,st=w>300;
+  kl($('kop'),s.kopia.ok?(st?'brak od '+Math.round(w/60)+' min':'OK'):'BŁĄD',s.kopia.ok&&!st?'ok':s.kopia.ok?'uw':'zle');
+  $('kop2').textContent=s.kopia.ok?'ostatnia '+(w<90?w+' s':Math.round(w/60)+' min')+' temu':'sprawdź zasięg i serwer – dane są na karcie'}
  $('plista').innerHTML=(s.pom_n?'<b>Pomieszczeń: '+s.pom_sal+', opraw: '+s.pom_opraw+', punktów świetlnych: '+s.pom_pkt+'</b><br>':'')+
   (s.pom||[]).slice().reverse().map(x=>x.nr+' – '+x.opraw+' × '+x.typ+(x.punktow?' ('+x.punktow+' pkt)':'')).join('<br>');
  $('kom').textContent=s.komunikat||''}).catch(()=>{$('kom').textContent='Brak połączenia z Raspberry Pi'})}
@@ -455,6 +459,13 @@ class Handler(BaseHTTPRequestHandler):
             if teraz - STAN["ost"]["baro"] > 3:
                 s["wys"] = None
             s["wolne"] = shutil.disk_usage(ARGS.katalog).free
+            s["kopia"] = None                     # stan kopii na serwer (sync.sh)
+            try:
+                with open(os.path.join(ARGS.katalog, ".sync_status")) as f:
+                    t, wynik = f.read().split()[:2]
+                s["kopia"] = {"wiek": int(teraz - int(t)), "ok": wynik == "OK"}
+            except (OSError, ValueError):
+                pass
             self._json(s)
         elif u.path == "/":
             b = STRONA.encode()

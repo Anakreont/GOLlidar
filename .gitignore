@@ -4,3 +4,4 @@ skany/
 podglad.png
 __pycache__/
 *.pyc
+sync.conf

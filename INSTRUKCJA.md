@@ -136,7 +136,28 @@ Katalog `~/skany/<data>_<nazwa>/`:
 Kontrola nagrania: `python3 ~/skaner/sprawdz.py ~/skany/<katalog> --png`.
 Godzina nagrania to ok. 80 MB. Zestaw pobiera ok. 4–4,5 W; powerbank 10 000 mAh wystarcza na ok. 5,5 h.
 
-## 9. Wariant zapasowy bez strony
+## 9. Kopia nagrań na serwer w trakcie pracy
+
+`sync.sh` co minutę wysyła katalog `~/skany/` na serwer przez SSH (rsync). Dla rosnących plików wysyłana jest tylko
+nowa końcówka, więc transfer to ok. 80 MB na godzinę nagrania. Stan kopii widać na stronie w sekcji „Stan".
+
+1. Serwer musi być osiągalny z internetu po SSH — najprościej przez Tailscale zainstalowany na Raspberry Pi i na serwerze.
+2. Klucz SSH bez hasła z Raspberry Pi na serwer:
+   ```bash
+   ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519
+   ssh-copy-id uzytkownik@adres-serwera
+   ```
+3. Konfiguracja i włączenie:
+   ```bash
+   cd ~/skaner && cp sync.conf.example sync.conf && nano sync.conf
+   ./sync.sh && cat ~/skany/.sync_status          # powinno wypisać czas i OK
+   sudo cp skaner-sync.service skaner-sync.timer /etc/systemd/system/
+   sudo systemctl daemon-reload && sudo systemctl enable --now skaner-sync.timer
+   ```
+
+Dane zawsze najpierw trafiają na kartę SD; kopia jest dodatkowym zabezpieczeniem i przy braku zasięgu nadrabia zaległości sama.
+
+## 10. Wariant zapasowy bez strony
 
 ```bash
 sudo systemctl stop skaner

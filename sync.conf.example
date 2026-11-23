@@ -1,0 +1,5 @@
+# Skopiuj do sync.conf i uzupelnij. Plik sync.conf nie trafia do repozytorium.
+# Cel kopii: uzytkownik@serwer:/katalog/  (koniecznie z ukosnikiem na koncu)
+CEL="uzytkownik@adres-serwera:/home/uzytkownik/skany-lidar/"
+# Port SSH serwera (domyslnie 22)
+PORT=22
