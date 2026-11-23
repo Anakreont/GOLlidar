@@ -625,14 +625,19 @@ STRONA = r"""<!doctype html><html lang="pl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="theme-color" content="#111"><title>Skaner</title><style>
 *{box-sizing:border-box}
-body{margin:0;font-family:system-ui,sans-serif;background:#111;color:#eee;font-size:16px;padding-bottom:24px}
+body{margin:0;font-family:system-ui,sans-serif;background:#111;color:#eee;font-size:16px;padding-bottom:76px}
+section{display:none}section.on{display:block}
+#tb{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;gap:4px;padding:6px 6px calc(6px + env(safe-area-inset-bottom));background:#181818;border-top:1px solid #333}
+#tb button{min-height:52px;font-size:15px;background:#2a2a2a;border-radius:10px}#tb button.on{background:#2b62c9}
+body:not(.nagr) .rec{display:none!important}body.nagr .nrec{display:none!important}
+.lb{flex:0 0 96px;align-self:center;font-size:13px;color:#bbb;line-height:1.2}.zaw{flex-wrap:wrap;overflow:visible}
 #pasek{position:sticky;top:0;z-index:5;background:#181818;display:flex;gap:4px;padding:6px;border-bottom:1px solid #333}
 #pasek div{flex:1;text-align:center;border-radius:8px;background:#242424;padding:5px 2px;min-width:0}
 #pasek small{display:block;color:#999;font-size:10px;line-height:1.1}
 #pasek b{font-size:15px;white-space:nowrap}
 .ok{color:#5d5}.zle{color:#f55}.uw{color:#fb3}
 #mapa{position:relative}
-#c{width:100vw;height:min(100vw,40vh);display:block;background:#000}
+#c{width:100vw;height:min(100vw,36vh);display:block;background:#000}
 #zas{position:absolute;right:6px;top:6px;width:auto;font-size:15px;padding:6px 8px;border-radius:8px;border:0;background:#333c;color:#fff}
 #prk{display:none;position:absolute;left:0;right:0;bottom:0;padding:12px 10px;text-align:center;font-size:20px;font-weight:700;color:#fff}
 #prk small{display:block;font-weight:400;font-size:14px}
@@ -643,21 +648,21 @@ body{margin:0;font-family:system-ui,sans-serif;background:#111;color:#eee;font-s
 .lst pre{white-space:pre-wrap;word-break:break-word;background:#1a1a1a;padding:8px;border-radius:8px;font-size:12px;margin:6px 0}
 #kom{padding:4px 10px;color:#fb3;font-size:13px}
 #kom:empty{display:none}
-.w{padding:5px 8px;display:flex;gap:8px}
-button{flex:1;font-size:18px;font-weight:600;min-height:56px;border:0;border-radius:12px;color:#fff;touch-action:manipulation}
+.w{padding:4px 8px;display:flex;gap:8px}
+button{flex:1;font-size:17px;font-weight:600;min-height:50px;border:0;border-radius:12px;color:#fff;touch-action:manipulation}
 button:active{filter:brightness(1.35)}
-input,select,textarea{width:100%;font-size:18px;padding:14px 12px;border-radius:12px;border:1px solid #444;background:#222;color:#fff;font-family:inherit}
-textarea{min-height:92px;resize:vertical}
+input,select,textarea{width:100%;font-size:17px;padding:11px 12px;border-radius:12px;border:1px solid #444;background:#222;color:#fff;font-family:inherit}
+textarea{min-height:110px;resize:vertical}
 h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;letter-spacing:.05em}
-#bs{background:#1f9d68}#bp{background:#c33}#bpa{background:#b70}.nb{background:#2b62c9}.sz{background:#444;font-weight:400;font-size:16px}
-.chip{flex:0 0 auto;min-height:44px;font-size:15px;font-weight:400;background:#333;padding:0 14px;border-radius:22px}
+#bs{background:#1f9d68;min-height:60px}#bp{background:#c33}#bpa{background:#b70}.nb{background:#2b62c9}.sz{background:#444;font-weight:400;font-size:16px}
+.chip{flex:0 0 auto;min-height:40px;font-size:15px;font-weight:400;background:#333;padding:0 14px;border-radius:22px}
 .chips{padding:5px 8px;display:flex;gap:8px;overflow-x:auto}
-.seg button{min-height:52px;font-size:16px;font-weight:400;background:#2a2a2a;border:1px solid #444}
+.seg button{min-height:46px;font-size:15px;font-weight:400;background:#2a2a2a;border:1px solid #444}
 .seg button.on{background:#2b62c9;border-color:#2b62c9;font-weight:600}
 .seg{gap:6px}
 .et{font-size:13px;color:#aaa;padding:6px 12px 0}
 .licz{display:flex;gap:8px;align-items:stretch;flex:1}
-.licz button{flex:0 0 56px;background:#444;font-size:26px}
+.licz button{flex:0 0 52px;background:#444;font-size:24px;min-height:46px}
 .licz input{text-align:center}
 #plista{padding:2px 10px 4px;font-size:14px;color:#bbb;line-height:1.5}
 .k{flex:1;background:#1c1c1c;border-radius:10px;padding:8px 10px}
@@ -669,59 +674,48 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
  <div><small>Przechył</small><b id="prz">–</b></div>
  <div><small>Wysokość</small><b id="wys">–</b></div>
 </div>
-<div id="mapa"><canvas id="c"></canvas><div id="prk"></div>
- <select id="zas"><option value="3">3 m</option><option value="6" selected>6 m</option><option value="12">12 m</option><option value="20">20 m</option></select></div>
 <div id="kom"></div>
 
-<div class="et">Budynek (wybierz z listy albo wpisz nowy)</div>
-<div class="w"><input id="bud" list="budl" placeholder="budynek, np. SP162 Kraków" autocomplete="off"><datalist id="budl"></datalist></div>
-<div class="et">Kondygnacja</div>
-<div class="w"><input id="kon" placeholder="kondygnacja, np. parter, +1, -1" autocomplete="off">
- <button id="bk" class="sz" style="flex:0 0 96px;display:none" onclick="cmd('kondygnacja?k='+encodeURIComponent($('kon').value),wibr)">Zmień</button></div>
+<section id="t1">
+<div id="mapa"><canvas id="c"></canvas><div id="prk"></div>
+ <select id="zas"><option value="3">3 m</option><option value="6" selected>6 m</option><option value="12">12 m</option><option value="20">20 m</option></select></div>
+<div class="w nrec"><input id="bud" list="budl" placeholder="budynek (z listy albo nowy)" autocomplete="off"><datalist id="budl"></datalist></div>
+<div class="w"><input id="kon" placeholder="kondygnacja" autocomplete="off">
+ <button id="bk" class="sz rec" style="flex:0 0 96px" onclick="cmd('kondygnacja?k='+encodeURIComponent($('kon').value),wibr)">Zmień</button></div>
 <div class="chips"><button class="chip" onclick="$('kon').value='piwnica'">piwnica</button><button class="chip" onclick="$('kon').value='parter'">parter</button><button class="chip" onclick="$('kon').value='1 piętro'">1 piętro</button><button class="chip" onclick="$('kon').value='2 piętro'">2 piętro</button><button class="chip" onclick="$('kon').value='3 piętro'">3 piętro</button><button class="chip" onclick="$('kon').value='poddasze'">poddasze</button></div>
-<div class="w"><button id="bs" onclick="cmd('start?budynek='+encodeURIComponent($('bud').value)+'&kondygnacja='+encodeURIComponent($('kon').value))">START</button>
- <button id="bp" onclick="if(confirm('Zakończyć nagranie?'))cmd('stop')">STOP</button></div>
-<div class="w"><button id="bpa" onclick="cmd('pauza')">PAUZA (schylam się / kucam)</button></div>
+<div class="w nrec"><button id="bs" onclick="cmd('start?budynek='+encodeURIComponent($('bud').value)+'&kondygnacja='+encodeURIComponent($('kon').value))">START</button></div>
+<div class="w rec"><button id="bpa" onclick="cmd('pauza')">PAUZA</button>
+ <button id="bp" style="flex:0 0 34%" onclick="if(confirm('Zakończyć nagranie?'))cmd('stop')">STOP</button></div>
+</section>
 
-<h2>Znacznik / notatka</h2>
-<div class="w"><textarea id="opis" placeholder="Notatka do tego miejsca, np. sala 12 – zabudowa na całej ścianie północnej, okna zasłonięte roletami"></textarea></div>
-<div class="chips">
- <button class="chip" onclick="szybki('drzwi zamknięte')">drzwi zamknięte</button>
- <button class="chip" onclick="szybki('szafa na ścianie')">szafa na ścianie</button>
- <button class="chip" onclick="szybki('okna zasłonięte')">okna zasłonięte</button>
- <button class="chip" onclick="szybki('pomiar kontrolny')">pomiar kontrolny</button>
- <button class="chip" onclick="szybki('klatka schodowa')">klatka schodowa</button>
- <button class="chip" onclick="szybki('ludzie w kadrze')">ludzie w kadrze</button>
-</div>
-<div class="w"><button class="nb" onclick="zapZn()">ZAPISZ ZNACZNIK</button></div>
-
-<h2>Pomieszczenie – nazwa i oświetlenie</h2>
-<div class="w"><input id="pnr" placeholder="pomieszczenie, np. sala 12 (można zostawić puste)" autocomplete="off"></div>
-<div class="et">Rodzaj oprawy</div>
+<section id="t2">
+<div class="w"><input id="pnr" placeholder="pomieszczenie, np. sala 12 (może być puste)" autocomplete="off"></div>
 <div class="w seg" id="ptyp"><button class="on" onclick="typ(this)">świetlówki</button><button onclick="typ(this)">LED</button>
  <button onclick="typ(this)">żarówki</button><button onclick="typ(this)">inne</button></div>
-<div class="et">1. Liczba opraw w pomieszczeniu (0 = sama nazwa, bez oświetlenia)</div>
-<div class="w"><div class="licz"><button onclick="krok('popr',-1)">−</button>
+<div class="w"><label class="lb">1. Opraw</label><div class="licz"><button onclick="krok('popr',-1)">−</button>
  <input id="popr" type="number" inputmode="numeric" placeholder="0"><button onclick="krok('popr',1)">+</button></div></div>
-<div class="et">2. Liczba punktów świetlnych w jednej oprawie</div>
-<div class="w"><div class="licz"><button onclick="krok('ppkt',-1)">−</button>
+<div class="w"><label class="lb">2. Punktów w oprawie</label><div class="licz"><button onclick="krok('ppkt',-1)">−</button>
  <input id="ppkt" type="number" inputmode="numeric" placeholder="0"><button onclick="krok('ppkt',1)">+</button></div></div>
-<div class="et">3. Moc jednego punktu [W]</div>
-<div class="w"><div class="licz"><button onclick="krok('pmoc',-1)">−</button>
+<div class="w"><label class="lb">3. Moc punktu W</label><div class="licz"><button onclick="krok('pmoc',-1)">−</button>
  <input id="pmoc" type="number" inputmode="decimal" placeholder="0"><button onclick="krok('pmoc',1)">+</button></div></div>
-<div class="chips"><button class="chip" onclick="$('pmoc').value=9">9 W</button><button class="chip" onclick="$('pmoc').value=18">18 W</button>
- <button class="chip" onclick="$('pmoc').value=36">36 W</button><button class="chip" onclick="$('pmoc').value=58">58 W</button>
- <button class="chip" onclick="$('pmoc').value=60">60 W</button><button class="chip" onclick="$('pmoc').value=100">100 W</button></div>
-<div class="w"><textarea id="puw" style="min-height:64px" placeholder="uwagi, np. 4×18 W, 2 nie świecą"></textarea></div>
+<div class="chips"><button class="chip" onclick="$('pmoc').value=9">9</button><button class="chip" onclick="$('pmoc').value=18">18</button><button class="chip" onclick="$('pmoc').value=36">36</button><button class="chip" onclick="$('pmoc').value=58">58</button><button class="chip" onclick="$('pmoc').value=60">60</button><button class="chip" onclick="$('pmoc').value=100">100</button></div>
+<div class="w"><input id="puw" placeholder="uwagi, np. 2 nie świecą" autocomplete="off"></div>
 <div id="edb" class="lst" style="display:none;color:#fb3"></div>
 <div class="w"><button class="nb" id="bzp" onclick="zapPom()">ZAPISZ POMIESZCZENIE</button></div>
 <div id="plista" class="lst"></div>
-<div class="w" id="bed" style="display:none"><button class="sz" onclick="sesja(encodeURIComponent(aktN))">Popraw / usuń wpisy tej sesji</button></div>
+<div class="w" id="bed" style="display:none"><button class="sz" onclick="tab(4);sesja(encodeURIComponent(aktN))">Popraw / usuń wpisy</button></div>
+</section>
 
-<h2>Zapisane dane – budynki i kondygnacje</h2>
-<div class="w"><button class="sz" onclick="sesje()">Pokaż / odśwież</button></div>
+<section id="t3">
+<div class="w"><textarea id="opis" placeholder="Notatka do tego miejsca, np. zabudowa na całej ścianie północnej"></textarea></div>
+<div class="w"><button class="nb" onclick="zapZn()">ZAPISZ ZNACZNIK</button></div>
+<div class="et">Szybkie znaczniki (jedno dotknięcie)</div>
+<div class="chips zaw"><button class="chip" onclick="szybki('drzwi zamknięte')">drzwi zamknięte</button><button class="chip" onclick="szybki('szafa na ścianie')">szafa na ścianie</button><button class="chip" onclick="szybki('okna zasłonięte')">okna zasłonięte</button><button class="chip" onclick="szybki('pomiar kontrolny')">pomiar kontrolny</button><button class="chip" onclick="szybki('klatka schodowa')">klatka schodowa</button><button class="chip" onclick="szybki('ludzie w kadrze')">ludzie w kadrze</button></div>
+</section>
+
+<section id="t4">
+<div class="w"><button class="sz" onclick="sesje()">Odśwież listę budynków</button></div>
 <div id="sl" class="lst"></div><div id="sd" class="lst"></div>
-
 <h2>Stan</h2>
 <div class="w"><div class="k"><small>Sesja</small><b id="roz">–</b><small id="zn"></small></div>
  <div class="k"><small>Karta – wolne</small><b id="dysk">–</b><small id="ses"></small></div></div>
@@ -731,6 +725,9 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
  <div class="k"><small>Max przechył w sesji</small><b id="prz2">–</b><small id="wys2"></small></div></div>
 <div class="w"><button class="sz" onclick="if(confirm('Zerować wysokość w tym miejscu?'))cmd('zeruj')">Zeruj wysokość</button>
  <button class="sz" onclick="if(confirm('Zatrzymać zapis i wyłączyć Raspberry Pi?'))cmd('wylacz')">Wyłącz RPi</button></div>
+</section>
+
+<nav id="tb"><button onclick="tab(1)">Skan</button><button onclick="tab(2)">Oprawy</button><button onclick="tab(3)">Notatka</button><button onclick="tab(4)">Dane</button></nav>
 <script>
 const $=id=>document.getElementById(id),c=$('c'),g=c.getContext('2d');let ost=null;
 function cmd(u,ok){fetch('/'+u,{method:'POST'}).then(r=>r.json()).then(j=>{if(j.blad)alert(j.blad);else if(ok)ok()}).catch(()=>alert('Brak połączenia z Raspberry Pi'))}
@@ -749,14 +746,16 @@ function szybki(t){cmd('znacznik?opis='+encodeURIComponent(t),wibr)}
 function krok(id,d){const e=$(id);e.value=Math.max(0,(parseInt(e.value)||0)+d)}
 function typ(b){for(const x of $('ptyp').children)x.className='';b.className='on'}
 let ed=null,aktN='',otw='';
+function tab(n){for(let i=1;i<=4;i++){$('t'+i).className=i==n?'on':'';$('tb').children[i-1].className=i==n?'on':''}
+ try{localStorage.setItem('tab',n)}catch(e){} if(n==4)sesje();scrollTo(0,0)}
 function zapPom(){const e=encodeURIComponent,t=$('ptyp').querySelector('.on').textContent;
  cmd('pomieszczenie?nr='+e($('pnr').value)+'&typ='+e(t)+'&punktow='+e($('ppkt').value)+'&opraw='+e($('popr').value)+'&moc='+e($('pmoc').value)+'&uwagi='+e($('puw').value)+
- (ed?'&n='+e(ed.n)+'&id='+ed.id:''),()=>{$('popr').value='';$('puw').value='';wibr();if(ed){const n=ed.n;koniecEd();sesja(e(n))}})}
+ (ed?'&n='+e(ed.n)+'&id='+ed.id:''),()=>{$('pnr').value='';$('popr').value='';$('puw').value='';wibr();if(ed){const n=ed.n;koniecEd();tab(4);sesja(e(n))}})}
 function koniecEd(){ed=null;$('edb').style.display='none';$('bzp').textContent='ZAPISZ POMIESZCZENIE';$('pnr').value='';$('popr').value='';$('puw').value=''}
 function edPom(i){const p=podgl.pom[i];ed={n:podgl.n,id:p.id};$('pnr').value=p.nr;$('ppkt').value=p.punktow||'';$('pmoc').value=p.moc||'';$('popr').value=p.opraw;$('puw').value=p.uwagi;
  for(const b of $('ptyp').children)b.className=(b.textContent==p.typ||(!p.typ&&b==$('ptyp').children[0]))?'on':'';
  $('edb').style.display='block';$('edb').innerHTML='Poprawiasz wpis: <b>'+esc(p.nr)+'</b> ('+p.godz+') &nbsp; <a href="#" style="color:#9cf" onclick="koniecEd();return false">anuluj</a>';
- $('bzp').textContent='ZAPISZ POPRAWKĘ';$('pnr').scrollIntoView({behavior:'smooth',block:'center'})}
+ $('bzp').textContent='ZAPISZ POPRAWKĘ';tab(2)}
 function usPom(i){const p=podgl.pom[i];if(!confirm('Usunąć wpis pomieszczenia „'+p.nr+'”?'))return;
  cmd('pomieszczenie?usun=1&n='+encodeURIComponent(podgl.n)+'&id='+p.id,()=>sesja(encodeURIComponent(podgl.n)))}
 function edZn(i){const z=podgl.znaczniki[i],t=prompt('Treść znacznika:',z.opis);if(t===null)return;
@@ -805,13 +804,13 @@ function rys(s){const dp=devicePixelRatio||1,W=c.width=c.clientWidth*dp,H=c.heig
 function kl(e,t,k){e.textContent=t;e.className=k||''}
 function fmt(t){const m=Math.floor(t/60),s=Math.floor(t%60);return m+':'+(s<10?'0':'')+s}
 function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);przekroj(s);
- kopOK=!!(s.kopia&&s.kopia.ok&&s.kopia.wiek<300);$('bk').style.display=s.nagrywa?'':'none';$('bud').disabled=s.nagrywa;
+ kopOK=!!(s.kopia&&s.kopia.ok&&s.kopia.wiek<300);$('bud').disabled=s.nagrywa;
  if(!ustW&&s.ust){ustW=true;if(!$('bud').value)$('bud').value=s.ust.budynek||'';if(!$('kon').value)$('kon').value=s.ust.kondygnacja||''}
  if(s.nagrywa&&document.activeElement!=$('kon')&&!$('kon').dataset.e){$('bud').value=s.budynek;$('kon').value=s.kondygnacja;$('kon').dataset.e=1}
  if(!s.nagrywa)delete $('kon').dataset.e;
  kl($('nag'),!s.nagrywa?'stop':s.pauza?'PAUZA':s.prz_faza?'PRZEKRÓJ':s.auto_pauza?'PRZECHYŁ':'● '+fmt(s.czas),!s.nagrywa?'uw':s.pauza?'uw':s.auto_pauza?'zle':'ok');
- $('bpa').textContent=s.pauza?'WZNÓW (stoję prosto)':'PAUZA (schylam się / kucam)';$('bpa').style.background=s.pauza?'#1f9d68':'#b70';
- $('bs').style.opacity=s.nagrywa?.35:1;$('bp').style.opacity=s.nagrywa?1:.35;
+ $('bpa').textContent=s.pauza?'WZNÓW (stoję prosto)':'PAUZA (schylam się)';document.body.classList.toggle('nagr',s.nagrywa);$('bpa').style.background=s.pauza?'#1f9d68':'#b70';
+ 
  kl($('lid'),s.lidar_ok?s.hz.toFixed(1)+' Hz':'BRAK',s.lidar_ok?'ok':'zle');$('lid2').textContent=s.pkt_obrot+' pkt/obrót';
  if(s.pitch===null){kl($('prz'),s.imu_wl?'BRAK':'wył.',s.imu_wl?'zle':'')}else{const m=s.przechyl;kl($('prz'),m.toFixed(1)+'°',m>15?'zle':m>8?'uw':'ok')}
  $('prz2').textContent=s.max_przechyl.toFixed(1)+'°';
@@ -827,7 +826,7 @@ function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);przekroj(s);
  $('plista').innerHTML=(s.pom_n?'<b>Pomieszczeń: '+s.pom_sal+', opraw: '+s.pom_opraw+', punktów świetlnych: '+s.pom_pkt+(s.pom_w?', moc: '+s.pom_w+' W':'')+'</b><br>':'')+
   (s.pom||[]).slice().reverse().map(x=>esc(x.nr)+' – '+opisPom(x)).join('<br>');aktN=s.sesja_n||'';$('bed').style.display=aktN?'':'none';
  $('kom').textContent=s.komunikat||''}).catch(()=>{$('kom').textContent='Brak połączenia z Raspberry Pi'})}
-setInterval(odswiez,500);odswiez();sesje();
+let t0=1;try{t0=+localStorage.getItem('tab')||1}catch(e){}tab(t0);setInterval(odswiez,500);odswiez();sesje();
 </script></body></html>"""
 
 
