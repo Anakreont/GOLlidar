@@ -185,7 +185,7 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/api/sesja':
             pliki = sorted(p for p in os.listdir(k) if os.path.isfile(os.path.join(k, p)))
             wyn = sorted('_wynik/' + p for p in os.listdir(os.path.join(k, '_wynik'))
-                         if p in ('rzut.dxf', 'podglad.png', 'log.txt', 'blad.txt')) if os.path.isdir(os.path.join(k, '_wynik')) else []
+                         if p in ('rzut.dxf', 'podglad.png', 'przekroje.dxf', 'log.txt', 'blad.txt') or (p.startswith('przekroj_') and p.endswith('.jpg'))) if os.path.isdir(os.path.join(k, '_wynik')) else []
             return self._json({'info': info(k), 'stan': stan_wyniku(q['n'], k), 'pliki': pliki, 'wyniki': wyn,
                                'znaczniki': znaczniki(k), 'oprawy': SW.wiersze_pom(k), 'grzejniki': SW.wiersze_grz(k),
                                'okna': SW.wiersze_okn(k)})
@@ -289,7 +289,7 @@ h1{font-size:17px;margin:4px 0 10px}h2{font-size:15px;margin:12px 0 4px}h3{font-
 #panel{width:320px;overflow:auto;border-left:1px solid #ddd;background:#fff;padding:10px}
 #panel img{width:100%;border-radius:6px}label{display:block;margin:3px 0;cursor:pointer}
 table{border-collapse:collapse;background:#fff;font-size:13px}td,th{border:1px solid #ddd;padding:4px 8px;text-align:left}th{background:#f0f2f5}
-.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}.gal div{background:#fff;padding:6px;border-radius:8px}.gal img{width:100%;border-radius:6px;cursor:pointer}
+.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}.gal div{background:#fff;padding:6px;border-radius:8px}.gal img{width:100%;border-radius:6px;cursor:pointer}
 .kol{display:inline-block;width:10px;height:10px;border-radius:5px;margin-right:4px}.mala{color:#666;font-size:12px}
 #info{font-size:12px;color:#555;margin-left:auto}input[type=text]{padding:4px;width:100%}
 @media(max-width:800px){body{flex-direction:column;height:auto}#lewy{width:100%;max-height:35vh}#smapa.akt{flex-direction:column}#cw{height:60vh}#panel{width:100%}}
@@ -300,7 +300,7 @@ table{border-collapse:collapse;background:#fff;font-size:13px}td,th{border:1px s
 <button class="btn" onclick="oproznijKosz()">Opróżnij kosz</button>
 <p class="mala">Usunięte sesje trafiają do kosza (katalog _kosz). Usuń je też na skanerze – inaczej kopia z maliny wyśle je ponownie.</p></div>
 <div id="prawy"><div id="tb"><button data-t="mapa" class="akt">Mapa</button><button data-t="foto">Zdjęcia</button><button data-t="zn">Znaczniki i notatki</button>
-<button data-t="inw">Inwentaryzacja</button><button data-t="pliki">Pliki</button><span id="info">wybierz sesję z listy</span></div>
+<button data-t="prz">Przekroje</button><button data-t="inw">Inwentaryzacja</button><button data-t="pliki">Pliki</button><span id="info">wybierz sesję z listy</span></div>
 <div id="tresc">
 <section id="smapa" class="akt"><div id="cw"><canvas id="c"></canvas></div><div id="panel">
 <h2>Kondygnacja</h2><select id="seg" style="width:100%"></select>
@@ -310,6 +310,7 @@ table{border-collapse:collapse;background:#fff;font-size:13px}td,th{border:1px s
 <p class="mala">Przeciąganie – przesuwanie, kółko/szczypanie – powiększenie, dwuklik – cała kondygnacja.</p></div></section>
 <section id="sfoto"><div class="gal" id="gal"></div></section>
 <section id="szn"><table id="tzn"></table></section>
+<section id="sprz"><div id="przek" class="gal"></div></section>
 <section id="sinw"><div id="inw"></div></section>
 <section id="spliki"><div id="pliki"></div></section>
 </div></div>
@@ -379,7 +380,8 @@ function oproznijKosz(){if(confirm('Opróżnić kosz? Sesji z kosza nie da się 
 function usunMapeN(n){if(confirm('Usunąć mapę sesji '+n+'? Policzy się od nowa (nagrania zostają).'))post('api/usun_mape?n='+n,()=>{lista();if(S&&S.n==n)otworz(n)})}
 function usunMape(){if(confirm('Usunąć mapę tej sesji? Policzy się od nowa.'))post('api/usun_mape?n='+S.n,()=>otworz(S.n))}
 function usunSesje(){if(confirm('Przenieść całą sesję '+S.n+' (nagrania, zdjęcia, wpisy, mapy) do kosza?'))post('api/usun_sesje?n='+S.n,()=>{S=null;M=null;$('info').textContent='sesja usunięta';rys();lista()})}
-function pliki(){fetch('api/sesja?n='+S.n).then(r=>r.json()).then(d=>{$('pliki').innerHTML='<h2>Usuwanie</h2><button class="btn" onclick="usunMape()">Usuń mapę tej sesji</button> <button class="btn" style="color:#b00" onclick="usunSesje()">Usuń całą sesję</button><h2>Wyniki</h2>'+(d.wyniki.map(f=>'<p><a href="plik?n='+S.n+'&f='+f+'" target="_blank">'+esc(f.replace('_wynik/',''))+'</a></p>').join('')||'<p class="mala">brak – mapa: '+esc(d.stan)+'</p>')+
+function pliki(){fetch('api/sesja?n='+S.n).then(r=>r.json()).then(d=>{
+ const J=d.wyniki.filter(f=>f.includes('przekroj_'));$('przek').innerHTML=J.length?J.map(f=>'<div><a href="plik?n='+S.n+'&f='+f+'" target="_blank"><img src="plik?n='+S.n+'&f='+f+'"></a></div>').join('')+'<div><a class="btn" href="plik?n='+S.n+'&f=_wynik/przekroje.dxf">Pobierz przekroje.dxf</a></div>':'<p class="mala">Brak przekrojów pionowych w tej sesji (albo mapa jeszcze się liczy).</p>';$('pliki').innerHTML='<h2>Usuwanie</h2><button class="btn" onclick="usunMape()">Usuń mapę tej sesji</button> <button class="btn" style="color:#b00" onclick="usunSesje()">Usuń całą sesję</button><h2>Wyniki</h2>'+(d.wyniki.map(f=>'<p><a href="plik?n='+S.n+'&f='+f+'" target="_blank">'+esc(f.replace('_wynik/',''))+'</a></p>').join('')||'<p class="mala">brak – mapa: '+esc(d.stan)+'</p>')+
  '<h2>Dane z nagrania</h2>'+d.pliki.filter(f=>!f.startsWith('foto_')).map(f=>'<p><a href="plik?n='+S.n+'&f='+f+'">'+esc(f)+'</a></p>').join('')+'<h2>Informacje</h2><pre>'+esc(Object.entries(d.info).map(([a,b])=>a+'='+b).join('\n'))+'</pre>'})}
 lista();setInterval(lista,30000);
 </script></body></html>'''

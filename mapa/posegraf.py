@@ -108,3 +108,74 @@ def graf(kf, kt, rund=3, log=print):
         X = optymalizuj(X, kraw + wszystkie_petle)
     log(f'  petli razem: {len(wszystkie_petle)}')
     return X, wszystkie_petle
+
+
+def kierunek_skanu(n):
+    """Glowny kierunek normalnych skanu modulo 90 st. i jego sila (ulamek normalnych w +-3 st.)."""
+    n = n[np.isfinite(n[:, 0])]
+    if len(n) < 40:
+        return None, 0.0
+    a = np.arctan2(n[:, 1], n[:, 0]) % (np.pi / 2)
+    h, e = np.histogram(a, bins=90, range=(0, np.pi / 2))
+    h = np.convolve(np.r_[h[-3:], h, h[:3]], np.ones(7), 'same')[3:-3]
+    i = np.argmax(h)
+    return e[i] + e[1] / 2, h[i] / len(n)
+
+
+def prostuj(kf, sigma_st=1.5, log=print):
+    """Budynki maja katy proste: kurs kazdego skanu z wyraznym ukladem scian dociagamy (miekko) do wspolnego
+    kierunku modulo 90 st., a odometria ICP rozklada poprawke na trase. Skany bez wyraznego ukladu
+    (skosy, meble) i z odchylka > 8 st. nie wplywaja na wynik."""
+    X0 = np.array([k[0] for k in kf], float)
+    kraw = [(i, i + 1, wzgl(X0[i], X0[i + 1]), 1.0) for i in range(len(kf) - 1)]
+    fi, sila = [], []
+    for T, p, n in kf:
+        f, s = kierunek_skanu(n)
+        fi.append(np.nan if f is None else f); sila.append(s)
+    fi, sila = np.array(fi), np.array(sila)
+    # konwencja slam.py: p_swiat = R(th) p, wiec kierunek scian w ukladzie mapy = fi + th
+    kat = (fi + X0[:, 2]) % (np.pi / 2)
+    ok = np.isfinite(kat) & (sila > 0.35)
+    if ok.sum() < 10:
+        log('  prostowanie: za malo skanow z wyraznym ukladem scian'); return X0
+    z = np.exp(4j * kat[ok]) @ sila[ok]
+    PHI = (np.angle(z) / 4) % (np.pi / 2)
+    n = len(X0)
+    I = np.array([k[0] for k in kraw]); J = np.array([k[1] for k in kraw]); Z = np.array([k[2] for k in kraw])
+    idx = np.where(ok)[0]
+    def res(x):
+        X = x.reshape(-1, 3)
+        Xa, Xb = X[I], X[J]
+        c, s = np.cos(Xa[:, 2]), np.sin(Xa[:, 2])
+        dx, dy = Xb[:, 0] - Xa[:, 0], Xb[:, 1] - Xa[:, 1]
+        ex = c * dx + s * dy - Z[:, 0]; ey = -s * dx + c * dy - Z[:, 1]
+        et = (Xb[:, 2] - Xa[:, 2] - Z[:, 2] + np.pi) % (2 * np.pi) - np.pi
+        r = np.stack([ex / 0.03, ey / 0.03, et / np.radians(0.7)], 1).ravel()
+        e = ((fi[idx] + X[idx, 2]) - PHI + np.pi / 4) % (np.pi / 2) - np.pi / 4
+        m = (np.sqrt(sila[idx] / 0.35) * e / np.radians(sigma_st))
+        kot = (X[0, :2] - X0[0, :2]) * 1e3
+        return np.concatenate([r, m, kot])
+    A = lil_matrix((3 * len(kraw) + len(idx) + 2, 3 * n), dtype=int)
+    for e_, (i, j) in enumerate(zip(I, J)):
+        A[3 * e_:3 * e_ + 3, 3 * i:3 * i + 3] = 1; A[3 * e_:3 * e_ + 3, 3 * j:3 * j + 3] = 1
+    for q, i in enumerate(idx):
+        A[3 * len(kraw) + q, 3 * i + 2] = 1
+    A[3 * len(kraw) + len(idx):, 0:2] = 1
+    w = least_squares(res, X0.ravel(), jac_sparsity=A, loss='cauchy', f_scale=2.0, x_scale='jac', max_nfev=100)
+    X = w.x.reshape(-1, 3)
+    e0 = np.degrees(((fi[idx] + X0[idx, 2]) - PHI + np.pi / 4) % (np.pi / 2) - np.pi / 4)
+    e1 = np.degrees(((fi[idx] + X[idx, 2]) - PHI + np.pi / 4) % (np.pi / 2) - np.pi / 4)
+    log(f'  prostowanie: {len(idx)} skanow, odchylka od katow prostych mediana {np.median(np.abs(e0)):.2f} -> {np.median(np.abs(e1)):.2f} st.')
+    return X
+
+
+def przenies(P, kt, X0, X):
+    """Poprawka kluczowych skanow przeniesiona na wszystkie pozycje trasy (wg poprzedzajacego kluczowego)."""
+    P = P.copy()
+    j = np.clip(np.searchsorted(kt, P[:, 0], side='right') - 1, 0, len(kt) - 1)
+    for i in range(len(P)):
+        a, b = X0[j[i]], X[j[i]]
+        loc = _R(a[2]).T @ (P[i, 1:3] - a[:2])
+        P[i, 1:3] = b[:2] + _R(b[2]) @ loc
+        P[i, 3] = P[i, 3] + (b[2] - a[2])
+    return P

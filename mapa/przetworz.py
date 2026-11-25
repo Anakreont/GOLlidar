@@ -46,6 +46,16 @@ def przetworz(kat):
         pozi = [(t0, t0 + int(z['tl'][-1] * 1e9), 0.0)]
     P, kf, info, pion = slam.mapa(kat, znak=-1, segmenty=[(b - t0) / 1e9 for a, b, h in pozi[:-1]], dane=z)
     kt = [P[np.argmin(np.abs(P[:, 1:4] - Tk).sum(1)), 0] for Tk, _, _ in kf]
+    # katy proste: prostowanie kursu osobno w kazdym odcinku (kondygnacji)
+    import posegraf
+    kt = np.array(kt); X0 = np.array([k[0] for k in kf], float); X = X0.copy()
+    granice = [(a - t0) / 1e9 for a, b, h in pozi] + [1e12]
+    for s_ in range(len(pozi)):
+        idx = np.where((kt >= granice[s_]) & (kt < granice[s_ + 1]))[0]
+        if len(idx) > 20:
+            X[idx] = posegraf.prostuj([kf[i] for i in idx])
+    P = posegraf.przenies(P, kt, X0, X)
+    kf = [(X[i], kf[i][1], kf[i][2]) for i in range(len(kf))]
     zn = _znaczniki(kat, t0)
     kond = []
     for nr, (a, b, h) in enumerate(pozi):
@@ -112,6 +122,11 @@ def przetworz(kat):
     with open(os.path.join(wy, 'mapa.json'), 'w', encoding='utf-8') as f:
         json.dump(wynik, f, ensure_ascii=False, separators=(',', ':'))
     dxf_i_podglad(kat)
+    try:
+        import przekroje
+        przekroje.zapisz(kat, przekroje.policz(kat, z))
+    except Exception as e:                 # przekroje sa dodatkiem - blad nie moze zatrzymac mapy
+        print('przekroje: blad', e)
     return wynik
 
 
