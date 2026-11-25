@@ -41,13 +41,26 @@ def obroty(z, rmin=0.3, rmax=9.0):
     tp = tl[:, None] + (np.arange(12) - 11) * dtp / 12      # znacznik pakietu ~ ostatni punkt
     nowy = np.where(np.diff(a0) < -180)[0] + 1
     gr = np.split(np.arange(len(a0)), nowy)
+    gr = gr[1:-1]
+    # operator (glowa, plecak, tyczka, rece przy niesieniu w dloni) porusza sie razem z czujnikiem i zatruwa
+    # dopasowanie. Wycinki katowe (10 st.), w ktorych w ok. 10 s wiekszosc obrotow ma punkt blizej niz 0,7 m,
+    # uznajemy za operatora i odrzucamy w tym oknie; dodatkowo zawsze tyl glowicy (130-230 st.).
+    blisko = np.zeros((len(gr), 36), bool)
+    for j, g in enumerate(gr):
+        A, D = ang[g].ravel(), d[g].ravel()
+        k = (D > 0.1) & (D < 0.7)
+        blisko[j, (A[k] // 10).astype(int) % 36] = True
+    okno = 100
+    maska = np.zeros_like(blisko)
+    for j0 in range(0, len(gr), okno // 2):
+        b = blisko[max(0, j0 - okno // 2): j0 + okno]
+        if len(b): maska[j0: j0 + okno // 2] = b.mean(0) > 0.6
     out = []
-    for g in gr[1:-1]:
+    for j, g in enumerate(gr):
         A, D, Tt = ang[g].ravel(), d[g].ravel(), tp[g].ravel()
         m = (D > rmin) & (D < rmax)
-        # operator: glowa/plecak/tyczka widziane z tylu glowicy (kat 130-230 st., < 0,7 m) poruszaja sie razem
-        # z czujnikiem - zatruwaja dopasowanie, wiec ten wycinek odrzucamy
         m &= ~((D < 0.7) & (A > 130) & (A < 230))
+        m &= ~((D < 0.9) & maska[j][(A // 10).astype(int) % 36])
         if m.sum() < 150: continue
         out.append((Tt[m], np.radians(A[m]), D[m]))
     return out
