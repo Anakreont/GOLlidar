@@ -89,7 +89,9 @@ def przetworz(kat):
             if not a <= t <= b:
                 continue
             T_ = poz(t); q = T_[:2] @ R - [x0, y0]
+            v = np.array([np.cos(T_[2]), np.sin(T_[2])]) @ R      # kierunek 0 st. LiDAR-u = przod operatora (cialo jest z tylu)
             r = {'t': round(t, 1), 'opis': opis, 'rodzaj': _rodzaj(opis), 'x': round(float(q[0]), 2), 'y': round(float(q[1]), 2),
+                 'kier': round(float(np.degrees(np.arctan2(v[1], v[0]))), 1),
                  'wys': round(float(wys), 2) if wys not in ('', None) else None}
             if r['rodzaj'] == 'foto':
                 r['plik'] = opis.split()[1]
@@ -116,16 +118,13 @@ def przetworz(kat):
                      'szer': round(float(Qd[:, 0].max()), 2), 'wys': round(float(Qd[:, 1].max()), 2),
                      'sciany': [np.round(pl, 3).tolist() for pl in sciany], 'typy_scian': typy,
                      'chmura_cm': chm.ravel().tolist(),
-                     'trasa': np.round(tr[::3], 2).tolist(), 'znaczniki': zm})
+                     'trasa': np.round(tr[::3], 2).tolist(), 'znaczniki': zm, '_Qd': Qd})
     odrz = {}
     for _, x in info:
         odrz[x] = odrz.get(x, 0) + 1
     wynik = {'wersja': WERSJA, 'sesja': os.path.basename(os.path.normpath(kat)), 'policzono': time.strftime('%Y-%m-%d %H:%M'),
              'czas_liczenia_s': round(time.time() - t_start), 'skanow': int(len(P)), 'odrzucone': odrz,
              'pion': [round(float(v), 2) for v in pion], 'kondygnacje': kond}
-    with open(os.path.join(wy, 'mapa.json'), 'w', encoding='utf-8') as f:
-        json.dump(wynik, f, ensure_ascii=False, separators=(',', ':'))
-    dxf_i_podglad(kat)
     prz = []
     try:
         import przekroje
@@ -133,6 +132,31 @@ def przetworz(kat):
         przekroje.zapisz(kat, prz)
     except Exception as e:                 # przekroje sa dodatkiem - blad nie moze zatrzymac mapy
         print('przekroje: blad', e)
+    # przekroj na rzucie: linia w poprzek albo wzdluz kierunku operatora - ta, wzdluz ktorej szerokosc z rzutu
+    # najlepiej zgadza sie z szerokoscia z przekroju (pojedynczy nieruchomy skan = pomiar bez dryfu)
+    for k in wynik['kondygnacje']:
+        Qd = k.pop('_Qd')
+        for r in k['znaczniki']:
+            p = next((p for p in prz if str(p['nr']) == str(r.get('nr')) and r['rodzaj'] == 'przekroj'), None)
+            if not p or not p.get('szerokosc'):
+                continue
+            best = None
+            for dk in (90.0, 0.0):
+                a_ = np.radians(r['kier'] + dk); u = np.array([np.cos(a_), np.sin(a_)])
+                d = (Qd - [r['x'], r['y']]); wz = d @ u; pp = np.abs(d @ [-u[1], u[0]])
+                m = pp < 0.06
+                plus = wz[m & (wz > 0.15)]; minus = -wz[m & (wz < -0.15)]
+                if len(plus) < 3 or len(minus) < 3:
+                    continue
+                dp, dm = np.percentile(plus, 3), np.percentile(minus, 3)
+                szer = dp + dm
+                if best is None or abs(szer - p['szerokosc']) < abs(best[0] - p['szerokosc']):
+                    best = (szer, dk, u, dp, dm)
+            if best:
+                szer, dk, u, dp, dm = best
+                r['linia'] = [[round(r['x'] - u[0] * dm, 2), round(r['y'] - u[1] * dm, 2)], [round(r['x'] + u[0] * dp, 2), round(r['y'] + u[1] * dp, 2)]]
+                r['szer_rzut'] = round(float(szer), 3); r['szer_przekroj'] = p['szerokosc']
+                r['wysokosc_przekroj'] = p['wysokosc']; r['kier_przekroju'] = 'w poprzek' if dk else 'wzdłuż'
     # wysokosc kondygnacji = mediana wysokosci z przekrojow w jej czasie (do modelu 3D)
     for k in wynik['kondygnacje']:
         h = [p['wysokosc'] for p in prz if k['od'] <= p['t'] <= k['do'] and 1.8 < p['wysokosc'] < 4.5]
@@ -143,6 +167,7 @@ def przetworz(kat):
                 r.pop('obraz')
     with open(os.path.join(wy, 'mapa.json'), 'w', encoding='utf-8') as f:
         json.dump(wynik, f, ensure_ascii=False, separators=(',', ':'))
+    dxf_i_podglad(kat)
     model3d(kat)
     return wynik
 
@@ -194,14 +219,22 @@ def obrocona(k, st):
     f = lambda xy: (np.asarray(xy, float).reshape(-1, 2) - [cx, cy]) @ Rm.T + [cx, cy]
     ch = f(np.array(k['chmura_cm']).reshape(-1, 2) / 100)
     sc = [f(pl) for pl in k['sciany']]; tr = f(k['trasa']) if k['trasa'] else np.zeros((0, 2))
-    zn = [dict(r, **dict(zip(('x', 'y'), f([r['x'], r['y']])[0]))) for r in k['znaczniki']]
+    zn = []
+    for r in k['znaczniki']:
+        r2 = dict(r, **dict(zip(('x', 'y'), f([r['x'], r['y']])[0])))
+        if r.get('kier') is not None:
+            r2['kier'] = r['kier'] + st
+        if r.get('linia'):
+            r2['linia'] = f(r['linia']).tolist()
+        zn.append(r2)
     wsz = np.vstack([ch] + sc) if sc else ch
     m0 = wsz.min(0)
     k2 = dict(k)
     k2['chmura_cm'] = np.round((ch - m0) * 100).astype(int).ravel().tolist()
     k2['sciany'] = [(pl - m0).tolist() for pl in sc]
     k2['trasa'] = (tr - m0).tolist()
-    k2['znaczniki'] = [dict(r, x=float(r['x'] - m0[0]), y=float(r['y'] - m0[1])) for r in zn]
+    k2['znaczniki'] = [dict(r, x=float(r['x'] - m0[0]), y=float(r['y'] - m0[1]),
+                            **({'linia': (np.array(r['linia']) - m0).tolist()} if r.get('linia') else {})) for r in zn]
     mx = wsz.max(0) - m0; k2['szer'], k2['wys'] = float(mx[0]), float(mx[1])
     return k2
 
@@ -239,6 +272,15 @@ def dxf_i_podglad(kat):
                 continue
             war = {'foto': 'ZDJECIA', 'przekroj': 'PRZEKROJE'}.get(r['rodzaj'], 'ZNACZNIKI')
             msp.add_circle((r['x'] + dx, r['y']), 0.1, dxfattribs={'layer': war})
+            if r['rodzaj'] == 'foto' and r.get('kier') is not None:          # kierunek zdjecia (przod operatora)
+                a_ = np.radians(r['kier'])
+                for da in (-30, 30):
+                    b_ = a_ + np.radians(da)
+                    msp.add_line((r['x'] + dx, r['y']), (r['x'] + dx + 0.6 * np.cos(b_), r['y'] + 0.6 * np.sin(b_)), dxfattribs={'layer': 'ZDJECIA'})
+            if r.get('linia'):
+                (xa, ya), (xb, yb) = r['linia']
+                msp.add_line((xa + dx, ya), (xb + dx, yb), dxfattribs={'layer': 'PRZEKROJE'})
+                ax.plot([xa + dx, xb + dx], [ya, yb], '-', color='m', lw=1)
             tx = r.get('plik', r['opis']).replace('.jpg', '')
             msp.add_text(tx[:60], height=0.12, dxfattribs={'layer': war}).set_placement((r['x'] + dx + 0.13, r['y']))
             ax.plot(r['x'] + dx, r['y'], 'o', mfc='none', color=kol.get(r['rodzaj'], 'g'), ms=6)

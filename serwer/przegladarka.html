@@ -185,6 +185,11 @@ function rys(){const r=c.getBoundingClientRect(),d=devicePixelRatio||1;if(!r.wid
  if(W.chmura){g.fillStyle='rgba(100,116,139,.35)';const ch=k.chmura_cm,st=wid.s<30?2:1;for(let i=0;i<ch.length;i+=2*st){const[a,b]=P(ch[i]/100,ch[i+1]/100);g.fillRect(a,b,1.4,1.4)}}
  if(W.trasa&&k.trasa.length){g.strokeStyle='rgba(239,68,68,.45)';g.lineWidth=1.2;g.setLineDash([4,3]);g.beginPath();k.trasa.forEach((p,i)=>{const[a,b]=P(p[0],p[1]);i?g.lineTo(a,b):g.moveTo(a,b)});g.stroke();g.setLineDash([])}
  if(W.sciany){g.lineCap='round';k.sciany.forEach((pl,j)=>{g.strokeStyle=(k.typy_scian||[])[j]=='inne'?'#475569':'#111827';g.lineWidth=Math.max(1.6,Math.min(4,wid.s*0.035));g.beginPath();pl.forEach((p,i)=>{const[a,b]=P(p[0],p[1]);i?g.lineTo(a,b):g.moveTo(a,b)});g.stroke()})}
+ k.znaczniki.forEach(z=>{if(z.rodzaj=='system'||!W[z.rodzaj])return;
+  if(z.rodzaj=='foto'&&z.kier!=null){const Lc=0.9,A=z.kier*Math.PI/180,[a0,b0]=P(z.x,z.y);g.fillStyle='rgba(37,99,235,.16)';g.strokeStyle='rgba(37,99,235,.5)';g.lineWidth=1;g.beginPath();g.moveTo(a0,b0);
+   for(let d=-32;d<=32;d+=8){const[a1,b1]=P(z.x+Lc*Math.cos(A+d*Math.PI/180),z.y+Lc*Math.sin(A+d*Math.PI/180));g.lineTo(a1,b1)}g.closePath();g.fill();g.stroke()}
+  if(z.linia){const[a1,b1]=P(z.linia[0][0],z.linia[0][1]),[a2,b2]=P(z.linia[1][0],z.linia[1][1]);g.strokeStyle='rgba(147,51,234,.8)';g.lineWidth=2;g.setLineDash([7,4]);g.beginPath();g.moveTo(a1,b1);g.lineTo(a2,b2);g.stroke();g.setLineDash([]);
+   const dx=a2-a1,dy=b2-b1,n=Math.hypot(dx,dy)||1,px=-dy/n*6,py=dx/n*6;g.beginPath();g.moveTo(a1-px,b1-py);g.lineTo(a1+px,b1+py);g.moveTo(a2-px,b2-py);g.lineTo(a2+px,b2+py);g.stroke()}});
  k.znaczniki.forEach(z=>{if(z.rodzaj=='system'||!W[z.rodzaj])return;const[a,b]=P(z.x,z.y),rr=z===wyb?11:8;
   g.fillStyle='#fff';g.beginPath();g.arc(a,b,rr+2,0,7);g.fill();g.fillStyle=KOL[z.rodzaj]||'#16a34a';g.beginPath();g.arc(a,b,rr,0,7);g.fill();
   g.fillStyle='#fff';g.font='bold '+(rr+1)+'px system-ui';g.textAlign='center';g.textBaseline='middle';g.fillText(z.rodzaj=='przekroj'?'P':z.rodzaj=='foto'?'F':z.rodzaj=='punkt'?'•':'N',a,b+.5);g.textAlign='left';g.textBaseline='alphabetic';
@@ -211,7 +216,8 @@ function pokaz(z){let h='';const prz=z.rodzaj=='przekroj'?(S.przekroje||[]).find
  if(z.plik)h+='<img src="'+plik(z.plik)+'">';
  if(z.obraz)h+='<img src="'+plik('_wynik/'+z.obraz)+'">';
  h+='<div class="opis"><div><b>'+esc(z.rodzaj=='foto'?'Zdjęcie':prz?'Przekrój '+prz.nr+': wysokość '+prz.wysokosc.toFixed(2)+' m'+(prz.szerokosc?', szerokość '+prz.szerokosc.toFixed(2)+' m':''):z.opis)+'</b><div class="mala">'+(z.t!=null?z.t.toFixed(0)+' s od startu':'')+(z.wys!=null?' · wysokość wzgl. '+z.wys.toFixed(2)+' m':'')+
-  (prz?' · szacunek na żywo w skanerze: '+esc(z.opis.replace(/^przekrój \d+: /,'')):'')+'</div></div><span class="sp"></span>'+
+  (z.szer_rzut!=null?'<br>Szerokość: z przekroju <b>'+z.szer_przekroj.toFixed(3)+' m</b>, z rzutu w tym miejscu '+z.szer_rzut.toFixed(3)+' m (różnica '+((z.szer_rzut-z.szer_przekroj)*100).toFixed(1)+' cm; linia '+esc(z.kier_przekroju)+' kierunku marszu)':'')+
+  (z.rodzaj=='foto'&&z.kier!=null?'<br>Kierunek zdjęcia przyjęty jako przód operatora (stożek na rzucie).':'')+'</div></div><span class="sp"></span>'+
   (z.plik?'<a class="btn" href="'+plik(z.plik)+'" target="_blank">Otwórz oryginał</a>':'')+(z.obraz?'<a class="btn" href="'+plik('_wynik/przekroje.dxf')+'">Przekroje DXF</a>':'')+
   (M&&z.x!=null?'<button class="btn" onclick="naMapie('+z.x+','+z.y+')">Pokaż na rzucie</button>':'')+'<button class="btn" onclick="zamknij()">Zamknij ✕</button></div>';
  $('mokno').innerHTML=h;$('modal').classList.add('otw')}
