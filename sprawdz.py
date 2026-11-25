@@ -208,7 +208,10 @@ def main():
                     print("  UWAGA: duzo skanow z przechylem > 8 st. - trzymaj tyczke bardziej pionowo.")
             yaw = [x[1] for x in r if x[0] - r[0][0] < 120e9]
             if len(yaw) > 100:
-                print(f"  yaw w pierwszych 2 min: od {min(yaw):+.1f} do {max(yaw):+.1f} st. (przy postoju = dryf)")
+                u = [yaw[0]]
+                for y in yaw[1:]:
+                    u.append(u[-1] + ((y - u[-1] + 180) % 360 - 180))
+                print(f"  yaw w pierwszych 2 min: zakres {max(u) - min(u):.1f} st. (przy postoju = dryf)")
         else:
             print("IMU: plik jest, ale brak poprawnych ramek RVC (sprawdz zworke PS0 i baud 115200).")
     bp = os.path.join(kat, "baro.bin")
