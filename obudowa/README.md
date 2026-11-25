@@ -30,15 +30,15 @@ Zalecane: PETG lub PLA, warstwa 0,2 mm, 3 obrysy, wypełnienie 30%.
 Wszystkie wymiary są parametrami na początku `generuj.py` (`pip install trimesh manifold3d`, potem `python3 generuj.py`).
 Rozstaw otworów BNO085 (12,7 × 20,32 mm) i wymiary płytek USB nie były sprawdzone na fizycznych elementach — zmierz przed drukiem.
 
-# Tyczka w twardym plecaku (`tyczka.py`)
+# Tyczka w twardym plecaku (`tyczka.py`, rurka Ø40)
 
-Rurka aluminiowa Ø25 × 2 mm (6060/6063), ok. 80 cm (kup 100 cm i przytnij po przymiarce: głowica LiDAR-u ok. 1,85 m nad podłogą).
+Rurka aluminiowa Ø40 × 2 mm (6060/6063), ok. 80 cm; kable idą w środku rurki (otwory Ø14–16 z przelotkami: ok. 5 cm pod korkiem i nad gniazdem w skrzyni) (kup 100 cm i przytnij po przymiarce: głowica LiDAR-u ok. 1,85 m nad podłogą).
 
 | Plik | Co to | Ile | Elementy złączne |
 |---|---|---|---|
-| `korek.stl` | korek w górny koniec rurki, trzpień 1/4" do góry | 1 | śruba 1/4"-20 × 20–25 mm (łeb w gniazdo od dołu), śruba M4 × 35 + nakrętka jako kołek przez rurkę |
+| `korek.stl` | korek w górny koniec rurki, trzpień 1/4" do góry | 1 | śruba 1/4"-20 × 20–25 mm (łeb w gniazdo od dołu), śruba M4 × 50 + nakrętka jako kołek przez rurkę |
 | `obejma.stl` | zacisk rurki na tylnej ścianie skrzyni | 2 | 4 × M5 × 20 przez ścianę + duże podkładki od zewnątrz, 2 × M4 × 20 + nakrętki do zacisku |
 | `gniazdo.stl` | kubek na dnie skrzyni, rurka się w nim opiera | 1 | 4 × M5 × 16 przez dno + duże podkładki |
 
-Wyjście rurki przez otwór Ø27 w górnej ściance (za rączką) z gumową przelotką. Kable przez dławnicę PG9/PG11 obok.
+Wyjście rurki przez otwór Ø42 w górnej ściance (za rączką) z gumową przelotką. Kable przez dławnicę PG9/PG11 obok.
 Przed drukiem zmierz rurkę suwmiarką i popraw `RURA_D`, `RURA_DW` w `tyczka.py`. Druk: PETG, 4 obrysy, wypełnienie 40 %.

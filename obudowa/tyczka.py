@@ -10,10 +10,10 @@ import numpy as np, trimesh
 from trimesh.creation import box, cylinder
 
 # ---------------- parametry (zmierz rurke suwmiarka i popraw)
-RURA_D = 25.0           # srednica zewnetrzna rurki
-RURA_DW = 21.0          # srednica wewnetrzna (25 x 2 mm -> 21)
+RURA_D = 40.0           # srednica zewnetrzna rurki
+RURA_DW = 36.0          # srednica wewnetrzna (40 x 2 mm -> 36)
 LUZ = 0.4               # luz otworu na rurke (druk zwykle zweza otwory)
-OD_SCIANY = 19.0        # odleglosc osi rurki od wewnetrznej sciany skrzyni
+OD_SCIANY = RURA_D / 2 + 7   # odleglosc osi rurki od wewnetrznej sciany skrzyni
 SRUBA_SCIANA = 5.5      # otwory na sruby M5 przez sciane skrzyni
 SRUBA_ZACISK = 4.4      # sruba zaciskowa M4
 NAKR_M4 = 7.4           # nakretka M4 pod klucz 7 mm + luz
@@ -66,7 +66,8 @@ def obejma():
     """Obejma na sciane skrzyni: plyta przykrecana 4 srubami M5 przez sciane (od zewnatrz duze podkladki),
     zacisk rurki 2 srubami M4. Druk: plyta pionowo, otwor na rurke pionowo (tak jak lezy w modelu)."""
     H = 44.0; y0 = OD_SCIANY; R = (RURA_D + LUZ) / 2
-    plyta = b(-30, 30, 0, 5, 0, H)
+    P = R + 12
+    plyta = b(-P, P, 0, 5, 0, H)
     blok = b(-R - 5, R + 5, 0, y0, 0, H)
     piers = c(0, y0, R + 5, 0, H)
     uszy = b(-10, 10, y0, y0 + R + 13, 0, H)
@@ -77,7 +78,7 @@ def obejma():
         otw += [cx(y0 + R + 6.5, z, SRUBA_ZACISK / 2, -11, 11),     # sruba zaciskowa M4
                 hexx(y0 + R + 6.5, z, NAKR_M4, 6.5, 11),            # nakretka M4
                 cx(y0 + R + 6.5, z, 4.2, -11, -6.5)]                # leb sruby
-    for x in (-24, 24):
+    for x in (-(P - 6), P - 6):
         for z in (8, H - 8):
             otw += [cy(x, z, SRUBA_SCIANA / 2, -1, 6)]               # M5 przez sciane skrzyni
     return D(m, *otw)
@@ -87,12 +88,13 @@ def gniazdo():
     """Kubek na dno skrzyni: rurka stoi w nim i opiera sie o dno kubka. Plyta 4 x M5 przez dno skrzyni.
     Uklad: sciana skrzyni w Y = 0, os rurki w Y = OD_SCIANY (tak samo jak w obejmie)."""
     y0 = OD_SCIANY; R = (RURA_D + LUZ) / 2
-    plyta = b(-30, 30, 1.0, y0 + 26, 0, 5)
+    P = R + 12
+    plyta = b(-P, P, 1.0, y0 + R + 14, 0, 5)
     kubek = c(0, y0, R + 4, 0, 33)
     m = U(plyta, kubek)
     otw = [c(0, y0, R, 4, 34)]                                       # rurka (dno kubka 4 mm)
-    for x in (-23, 23):
-        for y in (7, y0 + 20):
+    for x in (-(P - 6), P - 6):
+        for y in (7, y0 + R + 8):
             otw += [c(x, y, SRUBA_SCIANA / 2, -1, 6)]
     return D(m, *otw)
 
