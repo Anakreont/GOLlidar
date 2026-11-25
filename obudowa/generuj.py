@@ -58,7 +58,32 @@ def pokrywa():
     return D(m, *wyc)
 
 
+
+def podstawa_tyczka():
+    """Podstawa glowicy zlaczona z tuleja na tyczke Ø40 (tyczka.py: RURA_D). Zamiast nakretki 1/4" - tuleja pod dnem,
+    przejscie przez skos 42 st. (druk bez podpor). Kable LiDAR-u i BNO ida otworem Ø26 w dnie prosto do rurki -
+    boczne wyjscia USB zamkniete. Os obrotu LiDAR-u = os rurki."""
+    import tyczka as T
+    Rs = T.RURA_D / 2 + T.LUZ / 2 + 4.0; HS = 24.0; HT = 40.0           # promien tulei, wysokosc skosu, tulei
+    korpus = D(b(X0, X1, Y0, Y1, 0, WYS), b(X0 + SCIANA, X1 - SCIANA, Y0 + SCIANA, Y1 - SCIANA, DNO, WYS + 1))
+    skos = trimesh.convex.convex_hull(trimesh.util.concatenate([c(OS[0], OS[1], Rs, -HS, -HS + 0.1), b(X0, X1, Y0, Y1, -0.1, 0.5)]))
+    tul = c(OS[0], OS[1], Rs, -HS - HT, -HS + 0.2)
+    dod = [b(x - 3.5, x + 3.5, y - 3.5, y + 3.5, 0, WYS) for x, y in SLUPKI]
+    bno = [(BNO_SR[0] + sx * BNO_DX / 2, BNO_SR[1] + sy * BNO_DY / 2) for sx in (-1, 1) for sy in (-1, 1)]
+    dod += [c(x, y, 2.9, 0, DNO + 5.0, 24) for x, y in bno]
+    m = U(korpus, skos, tul, *dod)
+    wyc = [c(OS[0], OS[1], T.RURA_D / 2 + T.LUZ / 2, -HS - HT - 1, -HS),            # rurka (opiera sie o stopien)
+           c(OS[0], OS[1], 13.0, -HS - 1, DNO + 1),                                   # przejscie kabli do rurki
+           T.cx(OS[1], -HS - HT / 2, T.SRUBA_ZACISK / 2, -Rs - 1, Rs + 1)]            # kolek M4 przez rurke
+    wyc += [c(x, y, 1.35, WYS - 14, WYS + 1, 20) for x, y in SLUPKI]
+    wyc += [c(x, y, 1.05, DNO + 0.6, DNO + 6, 16) for x, y in bno]
+    wyc += [b(x - 1.1, x + 1.1, yc - 3, yc + 3, -0.5, DNO + 1) for x in (15.0, 28.5) for yc in (-22.0, 6.0)]
+    m = D(m, *wyc)
+    m.apply_translation((0, 0, HS + HT))                                              # dno tulei na stole
+    return m
+
+
 if __name__ == "__main__":
-    for nazwa, f in (("podstawa", podstawa), ("pokrywa", pokrywa)):
+    for nazwa, f in (("podstawa", podstawa), ("pokrywa", pokrywa), ("podstawa_tyczka", podstawa_tyczka)):
         m = f(); m.export(nazwa + ".stl")
         print(nazwa, "szczelna:", m.is_watertight, "objetosc cm3: %.1f" % (m.volume / 1000), "wymiary:", np.round(m.extents, 1))
