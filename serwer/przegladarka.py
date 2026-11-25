@@ -8,7 +8,7 @@ Mapy licza sie same w tle po zakonczeniu sesji (mapa/przetworz.py), mozna tez wy
 Uruchomienie:  python3 przegladarka.py [--port 8150] [--katalog ~/skany-lidar]
 Odpowiada tylko klientom z adresow prywatnych (siec domowa, localhost).
 """
-import argparse, ipaddress, json, os, queue, re, subprocess, sys, threading, time, types
+import argparse, ipaddress, json, os, queue, re, shutil, subprocess, sys, threading, time, types
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -27,7 +27,7 @@ BLOK = threading.Lock()
 
 
 def katalog(n):
-    if not SESJA_RE.match(n or ''):
+    if not SESJA_RE.match(n or '') or n.startswith('_'):
         return None
     k = os.path.join(ARGS.katalog, n)
     return k if os.path.isdir(k) else None
@@ -218,6 +218,19 @@ class H(BaseHTTPRequestHandler):
         if not self._lan():
             return
         u = urlparse(self.path); q = {a: b[0] for a, b in parse_qs(u.query).items()}
+        if u.path == '/api/usun_wszystkie_mapy':
+            ile = 0
+            for n in os.listdir(ARGS.katalog):
+                kk = katalog(n)
+                if kk and os.path.isdir(os.path.join(kk, '_wynik')):
+                    with BLOK:
+                        if W_TOKU.get(n) == 'liczy':
+                            continue
+                    shutil.rmtree(os.path.join(kk, '_wynik'), ignore_errors=True); ile += 1
+            return self._json({'ok': True, 'ile': ile})
+        if u.path == '/api/oproznij_kosz':
+            shutil.rmtree(os.path.join(ARGS.katalog, '_kosz'), ignore_errors=True)
+            return self._json({'ok': True})
         k = katalog(q.get('n'))
         if not k:
             return self._json({'blad': 'nie ma takiej sesji'}, 404)
@@ -226,6 +239,22 @@ class H(BaseHTTPRequestHandler):
             if os.path.exists(b):
                 os.remove(b)
             zlec(q['n'])
+            return self._json({'ok': True})
+        if u.path == '/api/usun_mape':
+            with BLOK:
+                if W_TOKU.get(q['n']) == 'liczy':
+                    return self._json({'blad': 'mapa wlasnie sie liczy - sprobuj za chwile'}, 409)
+            shutil.rmtree(os.path.join(k, '_wynik'), ignore_errors=True)
+            return self._json({'ok': True})
+        if u.path == '/api/usun_sesje':
+            with BLOK:
+                if q['n'] in W_TOKU:
+                    return self._json({'blad': 'mapa tej sesji wlasnie sie liczy - sprobuj za chwile'}, 409)
+            kosz = os.path.join(ARGS.katalog, '_kosz'); os.makedirs(kosz, exist_ok=True)
+            cel = os.path.join(kosz, q['n'])
+            if os.path.exists(cel):
+                cel += time.strftime('_%Y%m%d%H%M%S')
+            shutil.move(k, cel)
             return self._json({'ok': True})
         if u.path == '/api/nazwy':
             dl = int(self.headers.get('Content-Length') or 0)
@@ -264,7 +293,11 @@ table{border-collapse:collapse;background:#fff;font-size:13px}td,th{border:1px s
 #info{font-size:12px;color:#555;margin-left:auto}input[type=text]{padding:4px;width:100%}
 @media(max-width:800px){body{flex-direction:column;height:auto}#lewy{width:100%;max-height:35vh}#smapa.akt{flex-direction:column}#cw{height:60vh}#panel{width:100%}}
 </style></head><body>
-<div id="lewy"><h1>Pomiary LiDAR</h1><div id="lista">wczytuję…</div></div>
+<div id="lewy"><h1>Pomiary LiDAR</h1><div id="lista">wczytuję…</div>
+<h2>Porządki</h2><button class="btn" onclick="usunWszystkieMapy()">Usuń wszystkie mapy</button>
+<p class="mala">Mapy policzą się od nowa same (np. po poprawce programu). Nagrania zostają.</p>
+<button class="btn" onclick="oproznijKosz()">Opróżnij kosz</button>
+<p class="mala">Usunięte sesje trafiają do kosza (katalog _kosz). Usuń je też na skanerze – inaczej kopia z maliny wyśle je ponownie.</p></div>
 <div id="prawy"><div id="tb"><button data-t="mapa" class="akt">Mapa</button><button data-t="foto">Zdjęcia</button><button data-t="zn">Znaczniki i notatki</button>
 <button data-t="inw">Inwentaryzacja</button><button data-t="pliki">Pliki</button><span id="info">wybierz sesję z listy</span></div>
 <div id="tresc">
@@ -331,7 +364,12 @@ function tab(L,kol,naz){if(!L.length)return'<p class="mala">brak wpisów</p>';re
 function inwent(){$('inw').innerHTML='<h2>Oświetlenie</h2>'+tab(S.oprawy,['nr','typ','opraw','punktow','moc','moc_razem','uwagi','godz'],['pomieszczenie','rodzaj','opraw','pkt/oprawę','W/pkt','W razem','uwagi','godz.'])+
  '<h2>Grzejniki</h2>'+tab(S.grzejniki,['nr','rodzaj','sztuk','zeberek','szer','dl','uwagi','godz'],['pomieszczenie','rodzaj','szt.','żeberek','szer. cm','dł. cm','uwagi','godz.'])+
  '<h2>Okna i drzwi zewnętrzne</h2>'+tab(S.okna,['nr','typ','rodzaj','szer','wys_cm','rama','szyby','sztuk','uwagi'],['pomieszczenie','typ','rodzaj','szer. cm','wys. cm','rama','szyby','szt.','uwagi'])}
-function pliki(){fetch('api/sesja?n='+S.n).then(r=>r.json()).then(d=>{$('pliki').innerHTML='<h2>Wyniki</h2>'+(d.wyniki.map(f=>'<p><a href="plik?n='+S.n+'&f='+f+'" target="_blank">'+esc(f.replace('_wynik/',''))+'</a></p>').join('')||'<p class="mala">brak – mapa: '+esc(d.stan)+'</p>')+
+function post(u,ok){fetch(u,{method:'POST'}).then(r=>r.json()).then(j=>{if(j.blad)alert(j.blad);else ok&&ok(j)})}
+function usunWszystkieMapy(){if(confirm('Usunąć mapy (DXF, PNG, wyniki) wszystkich sesji? Nagrania zostają, mapy policzą się od nowa.'))post('api/usun_wszystkie_mapy',j=>{alert('Usunięto mapy '+j.ile+' sesji');M=null;lista();if(S)otworz(S.n)})}
+function oproznijKosz(){if(confirm('Opróżnić kosz? Sesji z kosza nie da się już odzyskać.'))post('api/oproznij_kosz',()=>alert('Kosz opróżniony'))}
+function usunMape(){if(confirm('Usunąć mapę tej sesji? Policzy się od nowa.'))post('api/usun_mape?n='+S.n,()=>otworz(S.n))}
+function usunSesje(){if(confirm('Przenieść całą sesję '+S.n+' (nagrania, zdjęcia, wpisy, mapy) do kosza?'))post('api/usun_sesje?n='+S.n,()=>{S=null;M=null;$('info').textContent='sesja usunięta';rys();lista()})}
+function pliki(){fetch('api/sesja?n='+S.n).then(r=>r.json()).then(d=>{$('pliki').innerHTML='<h2>Usuwanie</h2><button class="btn" onclick="usunMape()">Usuń mapę tej sesji</button> <button class="btn" style="color:#b00" onclick="usunSesje()">Usuń całą sesję</button><h2>Wyniki</h2>'+(d.wyniki.map(f=>'<p><a href="plik?n='+S.n+'&f='+f+'" target="_blank">'+esc(f.replace('_wynik/',''))+'</a></p>').join('')||'<p class="mala">brak – mapa: '+esc(d.stan)+'</p>')+
  '<h2>Dane z nagrania</h2>'+d.pliki.filter(f=>!f.startsWith('foto_')).map(f=>'<p><a href="plik?n='+S.n+'&f='+f+'">'+esc(f)+'</a></p>').join('')+'<h2>Informacje</h2><pre>'+esc(Object.entries(d.info).map(([a,b])=>a+'='+b).join('\n'))+'</pre>'})}
 lista();setInterval(lista,30000);
 </script></body></html>'''
