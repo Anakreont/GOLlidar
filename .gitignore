@@ -5,3 +5,4 @@ podglad.png
 __pycache__/
 *.pyc
 sync.conf
+_wynik/

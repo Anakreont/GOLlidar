@@ -7,6 +7,16 @@ def wczytaj(kat):
     z = np.load(kat + '_dek.npz')
     return {k: z[k] for k in z.files}
 
+def wczytaj_lub_dekoduj(kat):
+    """Zdekodowane dane z pamieci podrecznej <sesja>/_wynik/dek.npz (odswiezanej, gdy lidar.bin jest nowszy)."""
+    import os
+    from dekoduj import dekoduj
+    p = os.path.join(kat, '_wynik', 'dek.npz')
+    if os.path.exists(p) and os.path.getmtime(p) >= os.path.getmtime(os.path.join(kat, 'lidar.bin')):
+        z = np.load(p); return {k: z[k] for k in z.files}
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    return dekoduj(kat, p)
+
 def obroty(z, rmin=0.15, rmax=9.0):
     """Dzieli pakiety na obroty; kazdy punkt z czasem z interpolacji wewnatrz pakietu."""
     a0, a1, d, tl = z['a0'], z['a1'], z['d'], z['tl']
@@ -60,8 +70,8 @@ def icp(src, tgt, ntg, tree, T0, iters=15, huber=0.05, max_d=0.5, prior=None):
     ev = np.linalg.eigvalsh(H[:2, :2])
     return np.array([x, y, th]), np.sqrt(np.mean(r ** 2 * w)), ev, m.mean()
 
-def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=200.0, pion=None, log=False, segmenty=None, promien=8.0):
-    z = wczytaj(kat); sk = obroty(z)
+def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=200.0, pion=None, log=False, segmenty=None, promien=8.0, dane=None):
+    z = dane if dane is not None else wczytaj(kat); sk = obroty(z)
     ti, yaw = z['ti'], np.radians(z['yaw'])
     pit, rol = z['pitch'], z['roll']
     if pion is None:
