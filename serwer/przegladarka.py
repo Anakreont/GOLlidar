@@ -8,7 +8,7 @@ Mapy licza sie same w tle po zakonczeniu sesji (mapa/przetworz.py), mozna tez wy
 Uruchomienie:  python3 przegladarka.py [--port 8150] [--katalog ~/skany-lidar]
 Odpowiada tylko klientom z adresow prywatnych (siec domowa, localhost).
 """
-import argparse, ipaddress, json, os, queue, re, shutil, subprocess, sys, threading, time, types
+import argparse, hashlib, hmac, ipaddress, json, os, queue, re, shutil, subprocess, sys, threading, time, types
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -146,19 +146,67 @@ def automat():
         time.sleep(60)
 
 
+LOGOWANIE = """<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pomiary LiDAR - logowanie</title><style>body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#111827;font:15px system-ui,sans-serif}
+form{background:#fff;padding:28px;border-radius:14px;width:min(340px,90vw);box-shadow:0 20px 50px rgba(0,0,0,.4)}h1{font-size:18px;margin:0 0 16px}
+input{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;font:inherit;box-sizing:border-box}button{margin-top:12px;width:100%;padding:10px;border:0;border-radius:8px;background:#2563eb;color:#fff;font:inherit;cursor:pointer}
+.b{color:#dc2626;margin:8px 0 0}</style></head><body><form method="post" action="/zaloguj"><h1>📐 Pomiary LiDAR</h1>
+<input type="password" name="haslo" placeholder="hasło" autofocus><!--blad--><button>Zaloguj</button></form></body></html>"""
+
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def _lan(self):
+    def _zewnetrzny(self):
+        """Ruch z internetu: przez tunel Cloudflare (naglowki CF-*) albo z adresu publicznego."""
+        if self.headers.get('CF-Connecting-IP') or self.headers.get('CF-Ray'):
+            return True
         try:
             ip = ipaddress.ip_address(self.client_address[0])
-            if ip.is_private or ip.is_loopback:
-                return True
+            return not (ip.is_private or ip.is_loopback)
         except ValueError:
-            pass
-        self.send_error(403, 'Tylko siec lokalna')
+            return True
+
+    def _zalogowany(self):
+        sekret = os.environ.get('LIDAR_SEKRET', '')
+        for c in (self.headers.get('Cookie') or '').split(';'):
+            a, _, b = c.strip().partition('=')
+            if a == 'lidar' and sekret and '.' in b:
+                wazne, podpis = b.split('.', 1)
+                ok = hmac.compare_digest(podpis, hmac.new(sekret.encode(), wazne.encode(), 'sha256').hexdigest())
+                if ok and wazne.isdigit() and int(wazne) > time.time():
+                    return True
         return False
+
+    def _lan(self):
+        """Siec domowa bez hasla; z zewnatrz (Cloudflare) tylko po zalogowaniu."""
+        if not self._zewnetrzny() or self._zalogowany():
+            return True
+        u = urlparse(self.path)
+        if not os.environ.get('LIDAR_HASLO_HASH'):
+            self.send_error(403, 'Dostep z zewnatrz wylaczony (brak hasla na serwerze)')
+        elif self.command == 'GET' and u.path == '/':
+            self._wyslij(200, 'text/html; charset=utf-8', LOGOWANIE.encode())
+        else:
+            self._json({'blad': 'zaloguj sie'}, 401)
+        return False
+
+    def _logowanie(self):
+        dl = int(self.headers.get('Content-Length') or 0)
+        q = parse_qs(self.rfile.read(min(dl, 2000)).decode('utf-8', 'replace'))
+        haslo = (q.get('haslo') or [''])[0]
+        wzor = os.environ.get('LIDAR_HASLO_HASH', '')
+        if wzor and hmac.compare_digest(hashlib.sha256(haslo.encode()).hexdigest(), wzor):
+            wazne = str(int(time.time()) + 30 * 86400)
+            podpis = hmac.new(os.environ.get('LIDAR_SEKRET', '').encode(), wazne.encode(), 'sha256').hexdigest()
+            self.send_response(303)
+            self.send_header('Location', '/')
+            self.send_header('Set-Cookie', f'lidar={wazne}.{podpis}; Max-Age={30 * 86400}; Path=/; HttpOnly; Secure; SameSite=Lax')
+            self.end_headers()
+        else:
+            time.sleep(1.5)
+            self._wyslij(200, 'text/html; charset=utf-8', LOGOWANIE.replace('<!--blad-->', '<p class="b">Złe hasło</p>').encode())
 
     def _wyslij(self, kod, typ, dane, naglowki=()):
         self.send_response(kod)
@@ -222,6 +270,8 @@ class H(BaseHTTPRequestHandler):
         self.send_error(404)
 
     def do_POST(self):
+        if urlparse(self.path).path == '/zaloguj':
+            return self._logowanie()
         if not self._lan():
             return
         u = urlparse(self.path); q = {a: b[0] for a, b in parse_qs(u.query).items()}
