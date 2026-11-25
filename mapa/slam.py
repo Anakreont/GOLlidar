@@ -17,6 +17,21 @@ def wczytaj_lub_dekoduj(kat):
     os.makedirs(os.path.dirname(p), exist_ok=True)
     return dekoduj(kat, p)
 
+def przerwy(kat, t0):
+    """Przedzialy PAUZA_START..PAUZA_KONIEC w sekundach od poczatku nagrania (z znaczniki.txt)."""
+    import os
+    p = os.path.join(kat, 'znaczniki.txt'); out = []; a = None
+    if not os.path.exists(p): return out
+    for l in open(p, encoding='utf-8'):
+        k = l.split('\t')
+        if len(k) < 2 or not k[0].isdigit(): continue
+        t = (int(k[0]) - t0) / 1e9
+        if k[1].startswith('PAUZA_START'): a = t
+        elif k[1].startswith('PAUZA_KONIEC') and a is not None: out.append((a - 0.5, t + 1.0)); a = None
+    if a is not None: out.append((a - 0.5, 1e12))
+    return out
+
+
 def obroty(z, rmin=0.3, rmax=9.0):
     """Dzieli pakiety na obroty; kazdy punkt z czasem z interpolacji wewnatrz pakietu."""
     a0, a1, d, tl = z['a0'], z['a1'], z['d'], z['tl']
@@ -84,9 +99,12 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=200.0, pion=None, log=False, segm
     poses, kf, info = [], [], []
     T = np.zeros(3); v = np.zeros(2); ostT = None; yaw_ost = None
     seg_ost = None; kfw = []   # kluczowe w ukladzie swiata (punkty, normalne, pozycja, segment)
+    pauzy = przerwy(kat, int(z['t0'])); po_pauzie = False
     for (tt, ang, D) in sk:
         tm = tt.mean()
         if tm < t_od or tm > t_do: continue
+        if any(pa <= tm <= pb for pa, pb in pauzy):     # PAUZA: zdjety plecak, przekroj z reki - nie do rzutu
+            info.append((tm, 'pauza')); po_pauzie = True; continue
         seg = 0 if segmenty is None else int(np.searchsorted(segmenty, tm))
         if seg != seg_ost:
             kf_seg = []; seg_ost = seg
@@ -109,10 +127,21 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=200.0, pion=None, log=False, segm
         P = np.vstack([kf_seg[i][1] for i in wyb]); N = np.vstack([kf_seg[i][2] for i in wyb])
         ps = p[::2]
         tree = cKDTree(P)
-        wyn = icp(ps, P, N, tree, T0, prior=(T0[2], imu_w))
-        if wyn is None: info.append((tm, 'icp')); continue
-        Tn, rms, ev, frac = wyn
-        if frac < 0.3 or np.linalg.norm(Tn[:2] - T0[:2]) > 0.4: info.append((tm, 'skok')); Tn = T0
+        if po_pauzie:
+            # po pauzie operator stoi mniej wiecej w tym samym miejscu: szukamy pozycji w promieniu ok. 0,6 m
+            v = np.zeros(2); wyn = None
+            for ddx in (0, -0.4, 0.4):
+                for ddy in (0, -0.4, 0.4):
+                    r_ = icp(ps, P, N, tree, T0 + [ddx, ddy, 0], prior=(T0[2], imu_w), max_d=0.8, iters=25)
+                    if r_ is not None and (wyn is None or r_[3] - 2 * r_[1] > wyn[3] - 2 * wyn[1]): wyn = r_
+            po_pauzie = False
+            if wyn is None: info.append((tm, 'icp')); continue
+            Tn, rms, ev, frac = wyn
+        else:
+            wyn = icp(ps, P, N, tree, T0, prior=(T0[2], imu_w))
+            if wyn is None: info.append((tm, 'icp')); continue
+            Tn, rms, ev, frac = wyn
+            if frac < 0.3 or np.linalg.norm(Tn[:2] - T0[:2]) > 0.4: info.append((tm, 'skok')); Tn = T0
         v = 0.5 * v + 0.5 * (Tn[:2] - T[:2]); T = Tn; yaw_ost = ym
         poses.append((tm, *T, w))
         Tk = kf_seg[-1][0]

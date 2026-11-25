@@ -287,7 +287,7 @@ def watek_imu(port, baud):
                             elif m < PROG_PRZECHYLU - 3 and STAN["auto_pauza"]:
                                 STAN["auto_pauza"], zmiana = False, "AUTO_PRZECHYL_KONIEC"
                             teraz = time.time()
-                            zdarzenia = prz.krok(teraz, m) if STAN["nagrywa"] and not STAN["pauza"] else []
+                            zdarzenia = prz.krok(teraz, m) if STAN["nagrywa"] else []   # przekroj takze w pauzie (zdjety plecak)
                             if not STAN["nagrywa"] and prz.faza:
                                 prz.faza = 0
                             skany, nr = None, 0
@@ -1158,7 +1158,7 @@ function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);przekroj(s);
  if(s.nagrywa&&document.activeElement!=$('kon')&&!$('kon').dataset.e){$('bud').value=s.budynek;$('kon').value=s.kondygnacja;$('kon').dataset.e=1}
  if(!s.nagrywa)delete $('kon').dataset.e;
  kl($('nag'),!s.nagrywa?'stop':s.pauza?'PAUZA':s.prz_faza?'PRZEKRÓJ':s.auto_pauza?'PRZECHYŁ':'● '+fmt(s.czas),!s.nagrywa?'uw':s.pauza?'uw':s.auto_pauza?'zle':'ok');
- $('bpa').textContent=s.pauza?'WZNÓW (stoję prosto)':'PAUZA (schylam się)';document.body.classList.toggle('nagr',s.nagrywa);$('bpa').style.background=s.pauza?'#1f9d68':'#b70';
+ $('bpa').textContent=s.pauza?'WZNÓW (plecak założony, stoję w tym samym miejscu)':'PAUZA (zdejmuję plecak / schylam się)';document.body.classList.toggle('nagr',s.nagrywa);$('bpa').style.background=s.pauza?'#1f9d68':'#b70';
  
  kl($('lid'),s.lidar_ok?s.hz.toFixed(1)+' Hz':'BRAK',s.lidar_ok?'ok':'zle');$('lid2').textContent=s.pkt_obrot+' pkt/obrót';$('fn').textContent=s.foto||'';
  $('l2').style.display=s.lidar2_wl?'':'none';if(s.lidar2_wl)kl($('l2s'),s.lidar2_ok?'działa':'BRAK',s.lidar2_ok?'ok':'zle');
