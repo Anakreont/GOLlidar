@@ -128,9 +128,63 @@ def kolano(kat=35.0):
     return D(m, *otw)
 
 
+L2_POL = 22.5      # polowa rozstawu otworow M3 L2 (kwadrat 45 x 45) - odczyt z rysunku L1, SPRAWDZ suwmiarka na L2
+L2_PLYTA = 60.0    # srednica plyty pod L2 (podstawa L2 ma 75 x 75 - plyta mniejsza, zeby nie zaslaniac wyjscia kabla)
+
+
+def kolano_l2(kat=35.0):
+    """Kolano z plyta bezposrednio pod Unitree L2: 4 x M3 (sruby M3 x 8 od spodu, gwint w L2 ma 6 mm glebokosci).
+    Kopula do przodu (+Y), kable L2 w dol przez okno z tylu do rurki."""
+    Rz = RURA_D / 2 + LUZ / 2 + 4.0
+    a = np.radians(kat)
+    os_ = np.array([0, np.sin(a), np.cos(a)]); p0 = np.array([0, 0, 42.0])
+    def wzd(r, l0, l1, x=0.0, y=0.0, n=72):
+        m = cylinder(radius=r, height=l1 - l0, sections=n); m.apply_translation((x, y, (l0 + l1) / 2))
+        m.apply_transform(trimesh.transformations.rotation_matrix(-a, (1, 0, 0)))
+        m.apply_translation(p0); return m
+    kula = trimesh.creation.icosphere(subdivisions=4, radius=Rz); kula.apply_translation(p0)
+    L = 24.0                                                             # dlugosc pochylonej czesci do plyty
+    m = U(c(0, 0, Rz, 0, 42), kula, wzd(Rz, 0, L), wzd(L2_PLYTA / 2, L, L + 5))
+    otw = [c(0, 0, RURA_D / 2 + LUZ / 2, -1, 36), c(0, 0, RURA_DW / 2 - 2, 30, 43),
+           wzd(RURA_DW / 2 - 2, -2, L - 1),                              # kanal (sufit 6 mm pod plyta)
+           cy(0, 46, 9.0, -Rz - 5, 0),                                   # okno kabli z tylu
+           cx(0, 14, SRUBA_ZACISK / 2, -Rz - 1, Rz + 1)]                 # kolek M4
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            otw += [wzd(1.7, L - 1, L + 6, sx * L2_POL, sy * L2_POL, 24),     # M3
+                    wzd(3.2, L - 30, L + 1.0, sx * L2_POL, sy * L2_POL, 24)]  # leb M3 od spodu (plyta 4 mm)
+    return D(m, *otw)
+
+
+
+def kolano90():
+    """Dolne kolano 90 st.: rurka stoi NA ZEWNATRZ skrzyni (miedzy skrzynia a szelkami), wchodzi w kolano od gory,
+    kable skrecaja w kolanie i ida otworem przez tylna sciane do srodka - nic nie widac. Kolnierz 4 x M5 przez sciane
+    (od srodka duze podkladki), w scianie otwor ~Ø30 na kable. Gorna obejma (obejma.stl) trzyma rurke przy scianie.
+    Druk: tak jak w modelu (dno plaskie na stole, kolnierz pionowo), bez podpor."""
+    y0 = OD_SCIANY; R = (RURA_D + LUZ) / 2; Rz = R + 4.0; P = Rz + 16
+    blok = b(-Rz, Rz, 0, y0, 0, 2 * Rz)                                  # kolano (dol plaski)
+    tul = c(0, y0, Rz, 0, 2 * Rz + 40)                                   # tuleja na rurke
+    kol = b(-P, P, 0, 5, 0, 2 * Rz + 16)                                 # kolnierz na scianie (Y=0)
+    m = U(blok, tul, kol)
+    zc = Rz                                                              # wysokosc osi kanalu
+    otw = [c(0, y0, R, 2 * Rz - 2, 2 * Rz + 41),                         # rurka wchodzi na ~42 mm, opiera sie na stopniu
+           c(0, y0, RURA_DW / 2 - 2, zc, 2 * Rz),                         # kanal pionowy
+           cy(0, zc, RURA_DW / 2 - 2, -1, y0),                            # kanal poziomy przez kolnierz
+           trimesh.creation.icosphere(subdivisions=3, radius=RURA_DW / 2 - 2).apply_translation((0, y0, zc)),
+           cx(2 * Rz + 22, y0 * 0 + 2 * Rz + 22, 0.1, -0.05, 0.05)]       # (pusty element)
+    otw = otw[:-1]
+    otw += [cx(y0, 2 * Rz + 22, SRUBA_ZACISK / 2, -Rz - 1, Rz + 1)]     # kolek M4 przez tuleje i rurke
+    for x in (-(P - 8), P - 8):
+        for z in (8, 2 * Rz + 8):
+            otw += [cy(x, z, SRUBA_SCIANA / 2, -1, 6)]
+    return D(m, *otw)
+
+
 if __name__ == "__main__":
     for nazwa, f in (("korek", korek), ("obejma", obejma), ("gniazdo", gniazdo),
-                     ("kolano_0", lambda: kolano(0)), ("kolano_35", lambda: kolano(35))):
+                     ("kolano_0", lambda: kolano(0)), ("kolano_35", lambda: kolano(35)),
+                     ("kolano_l2_35", lambda: kolano_l2(35)), ("kolano90", kolano90)):
         m = f()
         assert m.is_watertight, nazwa
         m.export(f"{nazwa}.stl")

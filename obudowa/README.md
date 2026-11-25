@@ -48,3 +48,9 @@ Przed drukiem zmierz rurkę suwmiarką i popraw `RURA_D`, `RURA_DW` w `tyczka.py
 `kolano_0.stl` (płyta pozioma – obecny LiDAR 2D) i `kolano_35.stl` (pochylone 35° – kopuła L2 do przodu). Inny kąt: `kolano(kat)` w `tyczka.py`.
 Nasuwane na rurkę na 36 mm, kołek M4 × 60 przez kolano i rurkę. W górnej płycie śruba 1/4"-20 × 16 mm łbem od środka (wkładana przez okno z tyłu), na nią głowica.
 Kable z rurki wychodzą oknem z tyłu (Ø18). Druk tuleją w dół; sufit kanału to most ok. 32 mm – bez podpór zwykle wychodzi, ewentualnie podpory tylko w kanale.
+
+## Wersja z rurką na zewnątrz skrzyni (bez dziury w górnej ściance)
+
+- `kolano90.stl` – dolne kolano 90°: rurka stoi między skrzynią a szelkami, kable skręcają w kolanie i wchodzą do skrzyni otworem ~Ø30 w tylnej ścianie (nic nie widać). Kołnierz 4 × M5, kołek M4 × 60 przez tuleję i rurkę. Zamiast `gniazdo.stl`.
+- `obejma.stl` (1 szt., od zewnątrz u góry skrzyni) trzyma rurkę pionowo.
+- `kolano_l2_35.stl` – górne kolano z płytą prosto pod Unitree L2 (4 × M3 × 8 od spodu), kopuła 35° do przodu. **Rozstaw otworów 45 × 45 mm odczytany z rysunku L1 – sprawdź suwmiarką na L2 przed drukiem** (`L2_POL` w `tyczka.py`).
