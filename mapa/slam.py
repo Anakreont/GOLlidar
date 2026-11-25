@@ -75,6 +75,7 @@ def icp(src, tgt, ntg, tree, T0, iters=15, huber=0.05, max_d=0.5, prior=None):
 
 def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=200.0, pion=None, log=False, segmenty=None, promien=8.0, dane=None):
     z = dane if dane is not None else wczytaj(kat); sk = obroty(z)
+    if bool(z.get('bez_imu', False)): imu_w = 0.0
     ti, yaw = z['ti'], np.radians(z['yaw'])
     pit, rol = z['pitch'], z['roll']
     if pion is None:

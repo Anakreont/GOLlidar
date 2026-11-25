@@ -32,6 +32,16 @@ def dekoduj(kat, wy=None):
     tl = a * tsu / 1000 + b
     print(f'LiDAR: {len(T)} pakietow, skala zegara {(a-1)*1e6:+.0f} ppm, rozrzut opoznien {np.percentile(tp-tl,95)*1000:.1f} ms (95%)')
     # IMU
+    import os
+    if not os.path.exists(kat + '/imu.bin'):
+        print('IMU: brak imu.bin - mapa bez IMU (kurs tylko z dopasowania skanow, bez filtra przechylu)')
+        ti = np.arange(tl[0], tl[-1], 0.01)
+        z = dict(tl=tl, a0=np.array(A0), a1=np.array(A1), d=np.array(D, float) / 1000, i=np.array(I),
+                 ti=ti, yaw=np.zeros_like(ti), pitch=np.zeros_like(ti), roll=np.zeros_like(ti), acc=np.zeros((len(ti), 3)),
+                 t0=T[0], bez_imu=True)
+        if wy:
+            np.savez_compressed(wy, **z)
+        return z
     Ti, R = [], []
     buf = bytearray()
     for t, d in S.rekordy(kat + '/imu.bin'):
