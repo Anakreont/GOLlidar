@@ -1185,6 +1185,8 @@ function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);przekroj(s);
  $('glista').innerHTML=(s.grz_szt?'<b>Grzejników w tej sesji: '+s.grz_szt+'</b><br>':'')+(s.grz||[]).slice().reverse().map(x=>esc(x.nr)+' – '+opisGrz(x)).join('<br>');
  $('kom').textContent=s.komunikat||''}).catch(()=>{$('kom').textContent='Brak połączenia z Raspberry Pi'})}
 let t0=1;try{t0=+localStorage.getItem('tab')||1}catch(e){}tab(t0);setInterval(odswiez,500);odswiez();sesje();
+let radarZajety=false;setInterval(()=>{if(radarZajety||document.hidden||!ostS||$('t1').className!='on')return;radarZajety=true;
+ fetch('/obrot').then(r=>r.json()).then(j=>{if(ostS){ostS.obrot=j.obrot;rys(ostS)}}).catch(()=>{}).finally(()=>{radarZajety=false})},120);
 </script></body></html>"""
 
 
@@ -1203,6 +1205,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         u = urlparse(self.path)
+        if u.path == "/obrot":                 # lekki podglad radaru - tylko ostatni obrot (strona pyta ok. 8 razy/s)
+            with LOCK:
+                o = STAN["obrot"]
+            return self._json({"obrot": o})
         if u.path == "/stan":
             teraz = time.time()
             with LOCK:
