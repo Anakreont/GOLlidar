@@ -123,6 +123,27 @@ def nazwy(kat):
         return {}
 
 
+def obrocona(k, st):
+    """Kopia kondygnacji obrocona o st stopni (przeciwnie do zegara, jak w przegladarce) i przesunieta do (0,0)."""
+    if not st:
+        return k
+    a = np.radians(st); cx, cy = k['szer'] / 2, k['wys'] / 2
+    Rm = np.array([[np.cos(a), -np.sin(a)], [np.sin(a), np.cos(a)]])
+    f = lambda xy: (np.asarray(xy, float).reshape(-1, 2) - [cx, cy]) @ Rm.T + [cx, cy]
+    ch = f(np.array(k['chmura_cm']).reshape(-1, 2) / 100)
+    sc = [f(pl) for pl in k['sciany']]; tr = f(k['trasa']) if k['trasa'] else np.zeros((0, 2))
+    zn = [dict(r, **dict(zip(('x', 'y'), f([r['x'], r['y']])[0]))) for r in k['znaczniki']]
+    wsz = np.vstack([ch] + sc) if sc else ch
+    m0 = wsz.min(0)
+    k2 = dict(k)
+    k2['chmura_cm'] = np.round((ch - m0) * 100).astype(int).ravel().tolist()
+    k2['sciany'] = [(pl - m0).tolist() for pl in sc]
+    k2['trasa'] = (tr - m0).tolist()
+    k2['znaczniki'] = [dict(r, x=float(r['x'] - m0[0]), y=float(r['y'] - m0[1])) for r in zn]
+    mx = wsz.max(0) - m0; k2['szer'], k2['wys'] = float(mx[0]), float(mx[1])
+    return k2
+
+
 def dxf_i_podglad(kat):
     """DXF i PNG z mapa.json - szybkie, bez ponownego liczenia mapy (np. po zmianie nazw kondygnacji)."""
     import ezdxf, matplotlib
@@ -139,6 +160,7 @@ def dxf_i_podglad(kat):
     widoczne = [k for k in M['kondygnacje'] if not nz.get(str(k['nr']), {}).get('ukryj')]
     fig, ax = plt.subplots(figsize=(max(8, 6 * len(widoczne)), 7))
     for k in widoczne:
+        k = obrocona(k, nz.get(str(k['nr']), {}).get('obrot') or 0)
         nazwa = nz.get(str(k['nr']), {}).get('nazwa') or f"Odcinek {k['nr']}"
         for pl in k['sciany']:
             msp.add_lwpolyline([(x + dx, y) for x, y in pl], dxfattribs={'layer': 'SCIANY'})

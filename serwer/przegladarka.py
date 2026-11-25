@@ -260,7 +260,8 @@ class H(BaseHTTPRequestHandler):
             dl = int(self.headers.get('Content-Length') or 0)
             try:
                 nz = json.loads(self.rfile.read(min(dl, 100000)) or b'{}')
-                nz = {str(int(a)): {'nazwa': str(b.get('nazwa', ''))[:80], 'ukryj': bool(b.get('ukryj'))} for a, b in nz.items()}
+                nz = {str(int(a)): {'nazwa': str(b.get('nazwa', ''))[:80], 'ukryj': bool(b.get('ukryj')),
+                                    'obrot': round(float(b.get('obrot') or 0) % 360, 2)} for a, b in nz.items()}
             except (ValueError, AttributeError):
                 return self._json({'blad': 'zle dane'}, 400)
             os.makedirs(os.path.join(k, '_wynik'), exist_ok=True)
@@ -328,28 +329,36 @@ function przelicz(){fetch('api/przelicz?n='+S.n,{method:'POST'}).then(()=>{alert
 function segmenty(){$('seg').innerHTML=M.kondygnacje.map((k,i)=>'<option value="'+i+'">'+esc((NZ[k.nr]||{}).nazwa||('Odcinek '+k.nr))+' ('+k.od+'–'+k.do+' s, '+(k.poziom>=0?'+':'')+k.poziom+' m)'+((NZ[k.nr]||{}).ukryj?' – ukryty':'')+'</option>').join('');
  $('seg').value=seg;$('seg').onchange=()=>{seg=+$('seg').value;wyb=null;nazwaForm();dopasuj();rys()};nazwaForm();
  $('warstwy').innerHTML=Object.keys(W).map(w=>'<label><input type="checkbox" '+(W[w]?'checked':'')+' onchange="W[\''+w+'\']=this.checked;rys()"> '+(KOL[w]?'<span class="kol" style="background:'+KOL[w]+'"></span>':'')+NAZ[w]+'</label>').join('')}
-function nazwaForm(){const k=M.kondygnacje[seg],z=NZ[k.nr]||{};$('nazwa').innerHTML='<input type="text" id="nz" placeholder="nazwa, np. PARTER" value="'+esc(z.nazwa||'')+'"><label><input type="checkbox" id="uk" '+(z.ukryj?'checked':'')+'> pomiń w DXF (np. powtórne przejście)</label><button class="btn" onclick="zapiszNazwe()">Zapisz</button> <button class="btn" onclick="przelicz()">Przelicz mapę</button><p class="mala">Policzono '+esc(M.policzono)+', '+M.skanow+' skanów.</p>'}
-function zapiszNazwe(){const k=M.kondygnacje[seg];NZ[k.nr]={nazwa:$('nz').value,ukryj:$('uk').checked};fetch('api/nazwy?n='+S.n,{method:'POST',body:JSON.stringify(NZ)}).then(r=>r.json()).then(()=>{segmenty();pliki()})}
+function nazwaForm(){const k=M.kondygnacje[seg],z=NZ[k.nr]||{};$('nazwa').innerHTML='<input type="text" id="nz" placeholder="nazwa, np. PARTER" value="'+esc(z.nazwa||'')+'"><label><input type="checkbox" id="uk" '+(z.ukryj?'checked':'')+'> pomiń w DXF (np. powtórne przejście)</label><div style="margin:6px 0"><b>Obrót</b> <button class="btn" onclick="obroc(-90)">⟲90</button><button class="btn" onclick="obroc(-5)">⟲5</button><button class="btn" onclick="obroc(-1)">⟲1</button><button class="btn" onclick="obroc(1)">⟳1</button><button class="btn" onclick="obroc(5)">⟳5</button><button class="btn" onclick="obroc(90)">⟳90</button> <input id="ob" type="number" step="0.5" style="width:70px" value="'+((z.obrot||0).toFixed(1))+'" onchange="ustObrot(this.value)">° <span class="mala">(Shift+przeciąganie lub dwa palce – obrót)</span></div><button class="btn" onclick="zapiszNazwe()">Zapisz (nazwa, obrót – też w DXF)</button> <button class="btn" onclick="przelicz()">Przelicz mapę</button><p class="mala">Policzono '+esc(M.policzono)+', '+M.skanow+' skanów.</p>'}
+function zapiszNazwe(){const k=M.kondygnacje[seg];NZ[k.nr]={nazwa:$('nz').value,ukryj:$('uk').checked,obrot:obr()};fetch('api/nazwy?n='+S.n,{method:'POST',body:JSON.stringify(NZ)}).then(r=>r.json()).then(()=>{segmenty();pliki()})}
 const c=$('c'),g=c.getContext('2d');
-function dopasuj(){if(!M||!M.kondygnacje[seg])return;const k=M.kondygnacje[seg],r=c.getBoundingClientRect();wid.s=Math.min(r.width/(k.szer+1),r.height/(k.wys+1));wid.x=r.width/2-k.szer/2*wid.s;wid.y=r.height/2+k.wys/2*wid.s}
-const P=(x,y)=>[wid.x+x*wid.s,wid.y-y*wid.s];
+function obr(){const k=M&&M.kondygnacje[seg];return k?((NZ[k.nr]||{}).obrot||0):0}
+function R(x,y){const k=M.kondygnacje[seg],a=obr()*Math.PI/180,cx=k.szer/2,cy=k.wys/2,dx=x-cx,dy=y-cy;return[cx+dx*Math.cos(a)-dy*Math.sin(a),cy+dx*Math.sin(a)+dy*Math.cos(a)]}
+function dopasuj(){if(!M||!M.kondygnacje[seg])return;const k=M.kondygnacje[seg],r=c.getBoundingClientRect();
+ const C=[R(0,0),R(k.szer,0),R(0,k.wys),R(k.szer,k.wys)],xs=C.map(p=>p[0]),ys=C.map(p=>p[1]),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+ wid.s=Math.min(r.width/(x1-x0+1),r.height/(y1-y0+1));wid.x=r.width/2-(x0+x1)/2*wid.s;wid.y=r.height/2+(y0+y1)/2*wid.s}
+const P=(x,y)=>{const q=R(x,y);return[wid.x+q[0]*wid.s,wid.y-q[1]*wid.s]};
+function obroc(d){const k=M.kondygnacje[seg];(NZ[k.nr]??={}).obrot=(((obr()+d)%360)+360)%360;$('ob').value=NZ[k.nr].obrot.toFixed(1);rys()}
+function ustObrot(v){const k=M.kondygnacje[seg];(NZ[k.nr]??={}).obrot=((+v%360)+360)%360;rys()}
 function rys(){const r=c.getBoundingClientRect(),d=devicePixelRatio||1;c.width=r.width*d;c.height=r.height*d;g.setTransform(d,0,0,d,0,0);g.clearRect(0,0,r.width,r.height);
  if(!M||!M.kondygnacje[seg]){g.fillStyle='#888';g.font='15px system-ui';g.fillText(S?'Mapa: '+S.stan:'Wybierz sesję',20,30);return}
  const k=M.kondygnacje[seg];
  const kr=wid.s>=1?Math.max(.2,Math.min(1,10/wid.s)):1;const sk=wid.s*0.5>=1?1:1;
- g.strokeStyle='#eee';g.lineWidth=1;const m=wid.s>=60?.5:1;for(let x=0;x<=k.szer+1;x+=m){const[a]=P(x,0);g.beginPath();g.moveTo(a,0);g.lineTo(a,r.height);g.stroke()}for(let y=0;y<=k.wys+1;y+=m){const[,b]=P(0,y);g.beginPath();g.moveTo(0,b);g.lineTo(r.width,b);g.stroke()}
+ g.strokeStyle='#eee';g.lineWidth=1;const m=wid.s>=60?.5:1;for(let x=0;x<=k.szer+1;x+=m){const[a,b]=P(x,-1),[a2,b2]=P(x,k.wys+1);g.beginPath();g.moveTo(a,b);g.lineTo(a2,b2);g.stroke()}for(let y=0;y<=k.wys+1;y+=m){const[a,b]=P(-1,y),[a2,b2]=P(k.szer+1,y);g.beginPath();g.moveTo(a,b);g.lineTo(a2,b2);g.stroke()}
  if(W.chmura){g.fillStyle='rgba(120,120,120,.45)';const ch=k.chmura_cm;for(let i=0;i<ch.length;i+=2){const[a,b]=P(ch[i]/100,ch[i+1]/100);g.fillRect(a,b,1.3,1.3)}}
  if(W.trasa&&k.trasa.length){g.strokeStyle='rgba(220,40,40,.6)';g.lineWidth=1;g.beginPath();k.trasa.forEach((p,i)=>{const[a,b]=P(p[0],p[1]);i?g.lineTo(a,b):g.moveTo(a,b)});g.stroke()}
  if(W.sciany){g.strokeStyle='#111';g.lineWidth=2;k.sciany.forEach(pl=>{g.beginPath();pl.forEach((p,i)=>{const[a,b]=P(p[0],p[1]);i?g.lineTo(a,b):g.moveTo(a,b)});g.stroke()})}
  k.znaczniki.forEach(z=>{if(z.rodzaj=='system'||!W[z.rodzaj])return;const[a,b]=P(z.x,z.y);g.fillStyle=KOL[z.rodzaj]||'#1b9e5a';g.beginPath();g.arc(a,b,z===wyb?8:5,0,7);g.fill();if(wid.s>40){g.font='11px system-ui';g.fillText((z.plik||z.opis).slice(0,40),a+8,b+4)}});
  const L=(wid.s>=100?.5:wid.s>=40?1:wid.s>=15?2:5);g.fillStyle='#333';g.fillRect(14,r.height-22,L*wid.s,4);g.font='12px system-ui';g.fillText(L+' m',14,r.height-28)}
 let drag=null,pinch=null;
-c.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,ox:wid.x,oy:wid.y,mv:0};c.setPointerCapture(e.pointerId)});
-c.addEventListener('pointermove',e=>{if(!drag||pinch)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.mv=Math.max(drag.mv,Math.abs(dx)+Math.abs(dy));wid.x=drag.ox+dx;wid.y=drag.oy+dy;rys()});
+c.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,ox:wid.x,oy:wid.y,mv:0,rot:e.shiftKey,o0:obr()};c.setPointerCapture(e.pointerId)});
+c.addEventListener('pointermove',e=>{if(!drag||pinch)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.mv=Math.max(drag.mv,Math.abs(dx)+Math.abs(dy));
+ if(drag.rot&&M){const k=M.kondygnacje[seg];(NZ[k.nr]??={}).obrot=(((drag.o0+dx*0.2)%360)+360)%360;$('ob').value=NZ[k.nr].obrot.toFixed(1)}else{wid.x=drag.ox+dx;wid.y=drag.oy+dy}rys()});
 c.addEventListener('pointerup',e=>{if(drag&&drag.mv<5)klik(e);drag=null});
 c.addEventListener('wheel',e=>{e.preventDefault();const r=c.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,f=e.deltaY<0?1.2:1/1.2;wid.x=mx-(mx-wid.x)*f;wid.y=my-(my-wid.y)*f;wid.s*=f;rys()},{passive:false});
-c.addEventListener('touchstart',e=>{if(e.touches.length==2){const[a,b]=e.touches;pinch={d:Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY),s:wid.s,x:wid.x,y:wid.y,cx:(a.clientX+b.clientX)/2,cy:(a.clientY+b.clientY)/2}}});
-c.addEventListener('touchmove',e=>{if(pinch&&e.touches.length==2){e.preventDefault();const[a,b]=e.touches,r=c.getBoundingClientRect(),f=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY)/pinch.d,mx=pinch.cx-r.left,my=pinch.cy-r.top;wid.s=pinch.s*f;wid.x=mx-(mx-pinch.x)*f;wid.y=my-(my-pinch.y)*f;rys()}},{passive:false});
+c.addEventListener('touchstart',e=>{if(e.touches.length==2){const[a,b]=e.touches;pinch={d:Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY),s:wid.s,x:wid.x,y:wid.y,cx:(a.clientX+b.clientX)/2,cy:(a.clientY+b.clientY)/2,k:Math.atan2(b.clientY-a.clientY,b.clientX-a.clientX),o0:obr()}}});
+c.addEventListener('touchmove',e=>{if(pinch&&e.touches.length==2){e.preventDefault();const[a,b]=e.touches,r=c.getBoundingClientRect(),f=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY)/pinch.d,mx=pinch.cx-r.left,my=pinch.cy-r.top;wid.s=pinch.s*f;wid.x=mx-(mx-pinch.x)*f;wid.y=my-(my-pinch.y)*f;
+ const dk=(Math.atan2(b.clientY-a.clientY,b.clientX-a.clientX)-pinch.k)*180/Math.PI;if(M&&Math.abs(dk)>3){const k=M.kondygnacje[seg];(NZ[k.nr]??={}).obrot=(((pinch.o0-dk)%360)+360)%360;$('ob').value=NZ[k.nr].obrot.toFixed(1)}rys()}},{passive:false});
 c.addEventListener('touchend',e=>{if(e.touches.length<2)pinch=null});
 c.addEventListener('dblclick',()=>{dopasuj();rys()});addEventListener('resize',rys);
 function klik(e){if(!M)return;const r=c.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;let best=null,bd=14;
