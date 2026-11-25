@@ -1,13 +1,17 @@
 #!/bin/bash
 # Instaluje przegladarke pomiarow LiDAR na serwerze (Dell) jako usluge systemd, dostepna tylko w sieci domowej.
 # Uruchomienie (na Dellu, ze swojego konta):   sudo bash ~/GOLlidar/serwer/instaluj_przegladarke.sh
-# Potem w przegladarce w domu:  http://<IP Della>:8095
+# Potem w przegladarce w domu:  http://<IP Della>:<port wypisany na koncu>
 set -euo pipefail
 UZYT="${SUDO_USER:-$USER}"
 DOM="$(eval echo "~$UZYT")"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 DANE="${LIDAR_DIR:-$DOM/skany-lidar}"
-PORT="${PORT:-8095}"
+PORT="${PORT:-8150}"
+# pierwszy wolny port od $PORT (na Dellu 8080, 8090, 8095 sa juz zajete) - chyba ze to nasza wlasna usluga
+if ! systemctl is-active --quiet lidar-przegladarka 2>/dev/null; then
+    while ss -ltnH "sport = :$PORT" | grep -q .; do PORT=$((PORT + 1)); done
+fi
 
 echo "== biblioteki (numpy, scipy, matplotlib, scikit-image, ezdxf)"
 apt-get update -qq

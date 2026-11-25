@@ -5,7 +5,7 @@ Pokazuje nagrania z LIDAR_DIR pogrupowane budynek -> kondygnacja -> sesja: mape 
 trasa, zdjecia, przekroje, punkty, notatki), zdjecia, znaczniki, inwentaryzacje (oprawy, grzejniki, okna) i pliki (DXF).
 Mapy licza sie same w tle po zakonczeniu sesji (mapa/przetworz.py), mozna tez wymusic przyciskiem.
 
-Uruchomienie:  python3 przegladarka.py [--port 8095] [--katalog ~/skany-lidar]
+Uruchomienie:  python3 przegladarka.py [--port 8150] [--katalog ~/skany-lidar]
 Odpowiada tylko klientom z adresow prywatnych (siec domowa, localhost).
 """
 import argparse, ipaddress, json, os, queue, re, subprocess, sys, threading, time, types
@@ -340,7 +340,7 @@ lista();setInterval(lista,30000);
 def main():
     global ARGS
     ap = argparse.ArgumentParser()
-    ap.add_argument('--port', type=int, default=8095)
+    ap.add_argument('--port', type=int, default=8150)
     ap.add_argument('--katalog', default=os.environ.get('LIDAR_DIR', os.path.expanduser('~/skany-lidar')))
     ARGS = ap.parse_args()
     threading.Thread(target=pracownik, daemon=True).start()
