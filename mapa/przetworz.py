@@ -12,7 +12,7 @@ sys.path.insert(0, TU); sys.path.insert(0, os.path.join(TU, '..'))
 import slam, sprawdz as S
 from eksport_dxf import kierunek, kondygnacja, szkielet, lica, KOM, MIN_KF
 
-WERSJA = 3
+WERSJA = 4
 PETLE = False          # zamykanie petli (posegraf.graf) - do dopracowania wag, na razie gorzej niz bez
 RZUTUJ = False
 ZSZYJ = True         # zszywanie fragmentow po lukach w sledzeniu (posegraf.zszyj)

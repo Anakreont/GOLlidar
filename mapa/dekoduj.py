@@ -20,16 +20,30 @@ def dekoduj(kat, wy=None):
             T.append(t); TS.append(ts); A0.append(st / 100); A1.append(kon / 100)
             D.append([o[0] for o in odl]); I.append([o[1] for o in odl])
     T = np.array(T, np.int64); TS = np.array(TS, np.int64)
-    # rozwiniecie licznika LD19
-    d = np.diff(TS); d[d < -15000] += 30000
-    tsu = np.concatenate([[0], np.cumsum(d)]).astype(float)
-    # odporna regresja t_pi = a*ts + b (opoznienie odczytu tylko dodatnie -> dolna obwiednia)
+    # rozwiniecie licznika LD19 z pomoca czasu maliny: krotnosc 30000 ms dobrana tak, by przyrost zgadzal sie
+    # z czasem odczytu. Restart LiDAR-a (zanik zasilania - np. luzny kabel przy przechyle) zeruje licznik:
+    # wtedy przyrost nie pasuje do czasu maliny -> nowy odcinek z wlasnym przesunieciem.
     tp = (T - T[0]) / 1e9
-    a, b = np.polyfit(tsu / 1000, tp, 1)
+    dpi = np.diff(tp) * 1000; d = np.diff(TS).astype(float)
+    d += 30000 * np.round((dpi - d) / 30000)
+    zle = np.abs(d - dpi) > 300
+    d[zle] = dpi[zle]
+    tsu = np.concatenate([[0], np.cumsum(d)]).astype(float)
+    gr = np.concatenate([[0], np.where(zle)[0] + 1, [len(T)]])
+    # skala zegara z najdluzszego odcinka (odporna regresja po dolnej obwiedni opoznien odczytu)
+    dl = np.argmax(np.diff(gr)); m0 = slice(gr[dl], gr[dl + 1])
+    x, y = tsu[m0] / 1000, tp[m0]
+    a, b = np.polyfit(x, y, 1)
     for _ in range(5):
-        r = tp - (a * tsu / 1000 + b); m = r < np.percentile(r, 20)
-        a, b = np.polyfit(tsu[m] / 1000, tp[m], 1)
-    tl = a * tsu / 1000 + b
+        r = y - (a * x + b); m = r < np.percentile(r, 20)
+        a, b = np.polyfit(x[m], y[m], 1)
+    tl = np.empty(len(T))
+    for i in range(len(gr) - 1):                   # przesuniecie osobno dla kazdego odcinka
+        s_ = slice(gr[i], gr[i + 1]); r = tp[s_] - a * tsu[s_] / 1000
+        tl[s_] = a * tsu[s_] / 1000 + np.percentile(r, 10)
+    if zle.any():
+        przerwy = [(round(float(tp[j]), 1), round(float(dpi[j - 1]) / 1000, 1)) for j in gr[1:-1]]
+        print(f'LiDAR: {int(zle.sum())} przerw/restartow licznika (czas s, przerwa s): {przerwy[:12]}')
     print(f'LiDAR: {len(T)} pakietow, skala zegara {(a-1)*1e6:+.0f} ppm, rozrzut opoznien {np.percentile(tp-tl,95)*1000:.1f} ms (95%)')
     # IMU
     import os
@@ -38,7 +52,7 @@ def dekoduj(kat, wy=None):
         ti = np.arange(tl[0], tl[-1], 0.01)
         z = dict(tl=tl, a0=np.array(A0), a1=np.array(A1), d=np.array(D, float) / 1000, i=np.array(I),
                  ti=ti, yaw=np.zeros_like(ti), pitch=np.zeros_like(ti), roll=np.zeros_like(ti), acc=np.zeros((len(ti), 3)),
-                 t0=T[0], bez_imu=True)
+                 t0=T[0], bez_imu=True, wersja_dek=2)
         if wy:
             np.savez_compressed(wy, **z)
         return z
@@ -63,7 +77,7 @@ def dekoduj(kat, wy=None):
     ti = ai * cnt + bi
     yaw = np.degrees(np.unwrap(np.radians(R[:, 1] / 100)))
     z = dict(tl=tl, a0=np.array(A0), a1=np.array(A1), d=np.array(D, float) / 1000, i=np.array(I),
-             ti=ti, yaw=yaw, pitch=R[:, 2] / 100, roll=R[:, 3] / 100, acc=R[:, 4:7], t0=T[0])
+             ti=ti, yaw=yaw, pitch=R[:, 2] / 100, roll=R[:, 3] / 100, acc=R[:, 4:7], t0=T[0], wersja_dek=2)
     if wy:
         np.savez_compressed(wy, **z)
     return z

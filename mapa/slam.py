@@ -14,13 +14,17 @@ def wczytaj(kat):
     z = np.load(kat + '_dek.npz')
     return {k: z[k] for k in z.files}
 
+WERSJA_DEK = 2   # zmiana dekodowania -> stara pamiec podreczna dek.npz liczona od nowa
+
 def wczytaj_lub_dekoduj(kat):
     """Zdekodowane dane z pamieci podrecznej <sesja>/_wynik/dek.npz (odswiezanej, gdy lidar.bin jest nowszy)."""
     import os
     from dekoduj import dekoduj
     p = os.path.join(kat, '_wynik', 'dek.npz')
     if os.path.exists(p) and os.path.getmtime(p) >= os.path.getmtime(os.path.join(kat, 'lidar.bin')):
-        z = np.load(p); return {k: z[k] for k in z.files}
+        z = np.load(p)
+        if (int(z['wersja_dek']) if 'wersja_dek' in z.files else 0) == WERSJA_DEK:
+            return {k: z[k] for k in z.files}
     os.makedirs(os.path.dirname(p), exist_ok=True)
     return dekoduj(kat, p)
 
