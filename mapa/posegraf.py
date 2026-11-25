@@ -180,3 +180,33 @@ def przenies(P, kt, X0, X):
         P[i, 1:3] = b[:2] + _R(b[2]) @ loc
         P[i, 3] = P[i, 3] + (b[2] - a[2])
     return P
+
+
+def doszlifuj(kf, rund=2, promien=6.0, log=print):
+    """Drugi przebieg: kazdy kluczowy skan dopasowany do mapy zlozonej z WSZYSTKICH pozostalych skanow
+    (nie tylko poprzednich) - wyrownuje bledy narastajace w pierwszym przebiegu. Zmiany ograniczone (<10 cm, <1,5 st.)."""
+    import slam
+    X = np.array([k[0] for k in kf], float)
+    for r_ in range(rund):
+        W = []; Nw = []
+        for (T, p, n), x in zip(kf, X):
+            mk = np.isfinite(n[:, 0]); c, s = np.cos(x[2]), np.sin(x[2])
+            W.append(swiat(x, p[mk])); Nw.append(n[mk] @ np.array([[c, s], [-s, c]]))
+        idx = np.concatenate([np.full(len(w), i) for i, w in enumerate(W)]); P = np.vstack(W); N = np.vstack(Nw)
+        tree_all = cKDTree(P)
+        zm = []
+        Xn = X.copy()
+        for i, (T, p, n) in enumerate(kf):
+            bl = tree_all.query_ball_point(X[i, :2], promien)
+            bl = np.asarray(bl); bl = bl[np.abs(idx[bl] - i) > 2]
+            if len(bl) < 300: continue
+            Pt, Nt = P[bl], N[bl]
+            r = slam.icp(p[::2], Pt, Nt, cKDTree(Pt), X[i], iters=10, max_d=0.15, huber=0.03)
+            if r is None: continue
+            Tn, rms, ev, frac = r
+            d = Tn - X[i]; d[2] = (d[2] + np.pi) % (2 * np.pi) - np.pi
+            if frac > 0.5 and np.hypot(d[0], d[1]) < 0.10 and abs(d[2]) < np.radians(1.5):
+                Xn[i] = Tn; zm.append(np.hypot(d[0], d[1]))
+        X = Xn
+        log(f'  szlif {r_ + 1}: poprawiono {len(zm)} skanow, srednio {1000 * np.mean(zm) if zm else 0:.1f} mm')
+    return X

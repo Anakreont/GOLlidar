@@ -12,7 +12,9 @@ sys.path.insert(0, TU); sys.path.insert(0, os.path.join(TU, '..'))
 import slam, sprawdz as S
 from eksport_dxf import kierunek, kondygnacja, szkielet, lica, KOM, MIN_KF
 
-WERSJA = 1
+WERSJA = 2
+PETLE = False          # zamykanie petli (posegraf.graf) - do dopracowania wag, na razie gorzej niz bez
+RZUTUJ = False         # rzutowanie z przechylem IMU - na rzucie CAD pogarszalo wynik
 
 
 def _znaczniki(kat, t0):
@@ -44,7 +46,7 @@ def przetworz(kat):
     pozi = list(S.poziomy(w)) if w else []
     if not pozi:
         pozi = [(t0, t0 + int(z['tl'][-1] * 1e9), 0.0)]
-    P, kf, info, pion = slam.mapa(kat, znak=-1, segmenty=[(b - t0) / 1e9 for a, b, h in pozi[:-1]], dane=z)
+    P, kf, info, pion = slam.mapa(kat, znak=-1, segmenty=[(b - t0) / 1e9 for a, b, h in pozi[:-1]], dane=z, rzutuj=RZUTUJ)
     kt = [P[np.argmin(np.abs(P[:, 1:4] - Tk).sum(1)), 0] for Tk, _, _ in kf]
     # katy proste: prostowanie kursu osobno w kazdym odcinku (kondygnacji)
     import posegraf
@@ -54,10 +56,13 @@ def przetworz(kat):
         idx = np.where((kt >= granice[s_]) & (kt < granice[s_ + 1]))[0]
         if len(idx) > 20:
             sub = [kf[i] for i in idx]
-            try:                              # zamykanie petli w obrebie kondygnacji (rozne pietra nakladaja sie w 2D)
+            try:                              # zamykanie petli - wylaczone: na rzucie CAD pogarszalo wynik (21,6 -> 9,3 mm bez petli)
+                if not PETLE: raise StopIteration
                 Xg, L = posegraf.graf(sub, kt[idx], log=lambda *a: None)
                 print(f'  petle: {len(L)}')
                 sub = [(Xg[j], sub[j][1], sub[j][2]) for j in range(len(sub))]
+            except StopIteration:
+                pass
             except Exception as e:
                 print('  petle: blad', e)
             X[idx] = posegraf.prostuj(sub)

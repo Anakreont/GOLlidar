@@ -3,6 +3,11 @@ import sys, numpy as np
 from scipy.spatial import cKDTree
 sys.path.insert(0, __import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)), '..'))
 
+# parametry dopasowania (strojone na rzucie CAD domu Piotra, sesja 25.11 18:57)
+PAR = dict(imu_w=200.0, promien=8.0, kf_dl=0.25, kf_kat=8.0, co_ktory=2, przechyl_max=12.0, huber=0.03, max_d=0.3,
+           intens=0.3, sub_max=150, iters=15)
+
+
 def wczytaj(kat):
     z = np.load(kat + '_dek.npz')
     return {k: z[k] for k in z.files}
@@ -82,7 +87,7 @@ def obroty(z, rmin=0.3, rmax=9.0, pion=None):
     for j, g in enumerate(gr):
         A, D, Tt = ang[g].ravel(), d[g].ravel(), tp[g].ravel()
         I_ = inten[g].ravel()
-        slabe = I_ < 0.3 * np.interp(D, przedz + 0.25, med)
+        slabe = I_ < PAR['intens'] * np.interp(D, przedz + 0.25, med)
         if rzut:
             p_ = np.radians(np.interp(Tt, ti, pr)); r_ = np.radians(np.interp(Tt, ti, rr)); Ar = np.radians(A)
             elew = -r_ * np.cos(Ar) + p_ * np.sin(Ar)
@@ -130,7 +135,8 @@ def icp(src, tgt, ntg, tree, T0, iters=15, huber=0.05, max_d=0.5, prior=None):
     ev = np.linalg.eigvalsh(H[:2, :2])
     return np.array([x, y, th]), np.sqrt(np.mean(r ** 2 * w)), ev, m.mean()
 
-def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=200.0, pion=None, log=False, segmenty=None, promien=8.0, dane=None, rzutuj=True):
+def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segmenty=None, promien=None, dane=None, rzutuj=True):
+    imu_w = PAR['imu_w'] if imu_w is None else imu_w; promien = PAR['promien'] if promien is None else promien
     z = dane if dane is not None else wczytaj(kat)
     if bool(z.get('bez_imu', False)): imu_w = 0.0
     ti, yaw = z['ti'], np.radians(z['yaw'])
@@ -154,7 +160,7 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=200.0, pion=None, log=False, segm
         if seg != seg_ost:
             kf_seg = []; seg_ost = seg
         pz = np.interp(tt, ti, prz)
-        if pz.max() > 12: info.append((tm, 'przechyl')); continue
+        if pz.max() > PAR['przechyl_max']: info.append((tm, 'przechyl')); continue
         yp = np.interp(tt, ti, yaw); ym = np.interp(tm, ti, yaw)
         a = -ang + znak * (yp - ym)              # LD19 zgodnie z zegarem -> matematycznie przeciwnie; deskew obrotu
         p = np.stack([D * np.cos(a), D * np.sin(a)], 1)
@@ -168,9 +174,9 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=200.0, pion=None, log=False, segm
         T0 = np.array([T[0] + v[0], T[1] + v[1], T[2] + dth])
         poz = np.array([x[0][:2] for x in kf_seg])
         bl = np.where(np.hypot(*(poz - T0[:2]).T) < promien)[0]
-        wyb = sorted(set(bl[-150:].tolist()) | set(range(max(0, len(kf_seg) - 10), len(kf_seg))))
+        wyb = sorted(set(bl[-PAR['sub_max']:].tolist()) | set(range(max(0, len(kf_seg) - 10), len(kf_seg))))
         P = np.vstack([kf_seg[i][1] for i in wyb]); N = np.vstack([kf_seg[i][2] for i in wyb])
-        ps = p[::2]
+        ps = p[::PAR['co_ktory']]
         tree = cKDTree(P)
         if po_pauzie:
             # po pauzie operator stoi mniej wiecej w tym samym miejscu: szukamy pozycji w promieniu ok. 0,6 m
@@ -183,13 +189,13 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=200.0, pion=None, log=False, segm
             if wyn is None: info.append((tm, 'icp')); continue
             Tn, rms, ev, frac = wyn
         else:
-            wyn = icp(ps, P, N, tree, T0, prior=(T0[2], imu_w))
+            wyn = icp(ps, P, N, tree, T0, prior=(T0[2], imu_w), huber=PAR['huber'], max_d=PAR['max_d'], iters=PAR['iters'])
             if wyn is None: info.append((tm, 'icp')); continue
             Tn, rms, ev, frac = wyn
             if frac < 0.3 or np.linalg.norm(Tn[:2] - T0[:2]) > 0.4: info.append((tm, 'skok')); Tn = T0
         v = 0.5 * v + 0.5 * (Tn[:2] - T[:2]); T = Tn; yaw_ost = ym
         poses.append((tm, *T, w))
         Tk = kf_seg[-1][0]
-        if np.hypot(*(T[:2] - Tk[:2])) > 0.25 or abs(T[2] - Tk[2]) > np.radians(8):
+        if np.hypot(*(T[:2] - Tk[:2])) > PAR['kf_dl'] or abs(T[2] - Tk[2]) > np.radians(PAR['kf_kat']):
             dodaj_kf()
     return np.array(poses), kf, info, pion
