@@ -1010,7 +1010,8 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 <h2>Stan</h2>
 <div class="w"><div class="k"><small>Sesja</small><b id="roz">–</b><small id="zn"></small></div>
  <div class="k"><small>Karta – wolne</small><b id="dysk">–</b><small id="ses"></small></div></div>
-<div class="w"><div class="k"><small>Kopia na serwer</small><b id="kop">–</b><small id="kop2"></small></div>
+<div class="w"><div class="k"><small>Kopia na serwer</small><b id="kop">–</b><small id="kop2"></small>
+  <button class="btn" style="margin-top:6px;padding:6px 10px;font-size:13px" onclick="cmd('wyslij_teraz',()=>alert('Wysyłka ruszyła – wysyła wszystko, czego brakuje na serwerze (także sesje skasowane na Dellu). Stan zobaczysz w tym kafelku.'))">⟳ Wyślij teraz</button></div>
  <div class="k"><small>Kopia na pendrive</small><b id="pen">–</b><small id="pen2"></small></div></div>
 <div class="w"><div class="k"><small>LiDAR</small><b id="lid2">–</b></div>
  <div class="k"><small>Max przechył w sesji</small><b id="prz2">–</b><small id="wys2"></small></div></div>
@@ -1336,6 +1337,14 @@ class Handler(BaseHTTPRequestHandler):
         elif u.path == "/usun":
             blad = usun_sesje(q.get("n", [""])[0])
             self._json({"blad": blad} if blad else {"ok": True})
+        elif u.path == "/wyslij_teraz":
+            # reczna wysylka: sync.sh porownuje rozmiary plikow z serwerem i dosyla wszystko, czego tam brakuje
+            sk = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sync.sh")
+            if not os.path.exists(os.path.join(os.path.dirname(sk), "sync.conf")):
+                self._json({"blad": "Kopia na serwer nie jest skonfigurowana (brak sync.conf) – dane pobiera Dell sam, gdy malina jest w sieci"})
+            else:
+                subprocess.Popen(["bash", sk], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                self._json({"ok": True})
         elif u.path == "/pauza":
             r = pauza()
             self._json({"ok": True, "pauza": r} if r is not None else {"blad": "Pauza działa tylko podczas nagrywania"})

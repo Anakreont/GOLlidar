@@ -86,6 +86,7 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
   <div class="lista">
    <button onclick="usunPuste()">🧹 Usuń puste nagrania (bez danych)</button>
    <button onclick="usunWszystkieMapy()">🔄 Przelicz wszystkie mapy od nowa</button>
+   <button onclick="przywrocKosz()">♻️ Przywróć wszystko z kosza</button>
    <button onclick="oproznijKosz()">🗑 Opróżnij kosz (nieodwracalne)</button>
    <div class="mala" style="padding:6px 10px">Usunięte sesje i budynki trafiają do kosza. Usuń je też na skanerze – inaczej kopia z maliny wyśle je ponownie.</div>
   </div></div>
@@ -137,6 +138,7 @@ function rysujListe(){const f=$('szukaj').value.toLowerCase(),B={};let puste=0;
 function usunBudynek(b){if(confirm('Przenieść do kosza CAŁY budynek „'+b+'” – wszystkie jego nagrania, zdjęcia i mapy?'))post('api/usun_budynek?b='+encodeURIComponent(b),j=>{if(S&&S.info.budynek==b){S=null;M=null;czysc()}lista()})}
 function usunPuste(){post('api/usun_puste',j=>{alert('Przeniesiono do kosza '+j.ile+' pustych nagrań');lista()})}
 function usunWszystkieMapy(){if(confirm('Przeliczyć wszystkie mapy od nowa? Nagrania zostają, mapy policzą się w tle (ok. 1 min na nagranie).'))post('api/usun_wszystkie_mapy',j=>{alert('Usunięto mapy '+j.ile+' sesji – liczą się od nowa');lista();if(S)otworz(S.n)})}
+function przywrocKosz(){post('api/przywroc_kosz',j=>{alert('Przywrócono '+j.ile+' nagrań'+(j.pominieto?' (pominięto '+j.pominieto+' – już są na liście)':''));lista()})}
 function oproznijKosz(){if(confirm('Opróżnić kosz? Tego nie da się cofnąć.'))post('api/oproznij_kosz',()=>alert('Kosz opróżniony'))}
 function czysc(){$('nag').innerHTML='<div class="tyt"><b>Wybierz nagranie z listy</b></div>';$('panel').innerHTML='';rys()}
 // ---------------------------------------------------------------- sesja

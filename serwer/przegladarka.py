@@ -303,6 +303,16 @@ class H(BaseHTTPRequestHandler):
                     cel += time.strftime('_%Y%m%d%H%M%S')
                 shutil.move(os.path.join(ARGS.katalog, s_['n']), cel); ile += 1
             return self._json({'ok': True, 'ile': ile})
+        if u.path == '/api/przywroc_kosz':
+            # przywrocenie wszystkich sesji z kosza (np. po pomylkowym skasowaniu); nie nadpisuje istniejacych
+            kosz = os.path.join(ARGS.katalog, '_kosz'); ile, pom = 0, 0
+            for n in sorted(os.listdir(kosz)) if os.path.isdir(kosz) else []:
+                nazwa = re.sub(r'_\d{14}$', '', n)
+                cel = os.path.join(ARGS.katalog, nazwa)
+                if os.path.exists(cel):
+                    pom += 1; continue
+                shutil.move(os.path.join(kosz, n), cel); ile += 1
+            return self._json({'ok': True, 'ile': ile, 'pominieto': pom})
         if u.path == '/api/oproznij_kosz':
             shutil.rmtree(os.path.join(ARGS.katalog, '_kosz'), ignore_errors=True)
             return self._json({'ok': True})
