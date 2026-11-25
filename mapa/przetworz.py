@@ -29,7 +29,7 @@ def _znaczniki(kat, t0):
 
 
 def _rodzaj(opis):
-    for pref, r in (('FOTO ', 'foto'), ('PRZEKROJ_WYNIK', 'przekroj'), ('PUNKT ', 'punkt'), ('POM ', 'oprawy'),
+    for pref, r in (('SALA ', 'sala'), ('FOTO ', 'foto'), ('PRZEKROJ_WYNIK', 'przekroj'), ('PUNKT ', 'punkt'), ('POM ', 'oprawy'),
                     ('GRZ ', 'grzejnik'), ('OKN', 'okno'), ('NOTATKA', 'notatka'), ('IMU_PION0', 'system'),
                     ('PAUZA', 'system'), ('AUTO_', 'system'), ('PRZEKROJ_', 'system')):
         if opis.startswith(pref):
@@ -105,6 +105,8 @@ def przetworz(kat):
             r = {'t': round(t, 1), 'opis': opis, 'rodzaj': _rodzaj(opis), 'x': round(float(q[0]), 2), 'y': round(float(q[1]), 2),
                  'kier': round(float(np.degrees(np.arctan2(v[1], v[0]))), 1),
                  'wys': round(float(wys), 2) if wys not in ('', None) else None}
+            if r['rodzaj'] == 'sala':
+                r['opis'] = opis[5:]
             if r['rodzaj'] == 'foto':
                 r['plik'] = opis.split()[1]
             elif r['rodzaj'] == 'punkt':
@@ -260,7 +262,7 @@ def dxf_i_podglad(kat):
         M = json.load(f)
     nz = nazwy(kat)
     doc = ezdxf.new('R2010', setup=True); doc.units = ezdxf.units.M
-    for n, kol in (('SCIANY', 7), ('PUNKTY', 8), ('TRASA', 1), ('OPIS', 3), ('ZDJECIA', 5), ('PRZEKROJE', 6), ('ZNACZNIKI', 2)):
+    for n, kol in (('SCIANY', 7), ('PUNKTY', 8), ('TRASA', 1), ('OPIS', 3), ('ZDJECIA', 5), ('PRZEKROJE', 6), ('ZNACZNIKI', 2), ('POMIESZCZENIA', 4)):
         doc.layers.add(n, color=kol)
     msp = doc.modelspace(); dx = 0.0
     kol = {'foto': 'b', 'przekroj': 'm', 'punkt': 'orange', 'notatka': 'g', 'oprawy': 'c', 'grzejnik': 'r', 'okno': 'y'}
@@ -281,6 +283,10 @@ def dxf_i_podglad(kat):
             tr = np.array(k['trasa']); ax.plot(tr[:, 0] + dx, tr[:, 1], 'r-', lw=0.4, alpha=0.5)
         for r in k['znaczniki']:
             if r['rodzaj'] == 'system':
+                continue
+            if r['rodzaj'] == 'sala':                    # nazwa pomieszczenia w miejscu, gdzie operator ja wpisal
+                msp.add_text(r['opis'][:40], height=0.22, dxfattribs={'layer': 'POMIESZCZENIA'}).set_placement((r['x'] + dx, r['y']))
+                ax.text(r['x'] + dx, r['y'], r['opis'][:40], fontsize=8, color='navy', ha='center')
                 continue
             war = {'foto': 'ZDJECIA', 'przekroj': 'PRZEKROJE'}.get(r['rodzaj'], 'ZNACZNIKI')
             msp.add_circle((r['x'] + dx, r['y']), 0.1, dxfattribs={'layer': war})

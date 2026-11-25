@@ -935,12 +935,15 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
  <button id="bk" class="sz rec" style="flex:0 0 96px" onclick="cmd('kondygnacja?k='+encodeURIComponent($('kon').value),wibr)">Zmień</button></div>
 <div class="chips"><button class="chip" onclick="$('kon').value='piwnica'">piwnica</button><button class="chip" onclick="$('kon').value='parter'">parter</button><button class="chip" onclick="$('kon').value='1 piętro'">1 piętro</button><button class="chip" onclick="$('kon').value='2 piętro'">2 piętro</button><button class="chip" onclick="$('kon').value='3 piętro'">3 piętro</button><button class="chip" onclick="$('kon').value='poddasze'">poddasze</button></div>
 <div class="w nrec"><button id="bs" onclick="cmd('start?budynek='+encodeURIComponent($('bud').value)+'&kondygnacja='+encodeURIComponent($('kon').value))">START</button></div>
+<div class="w rec"><input id="snr" placeholder="pomieszczenie, np. sala 12" autocomplete="off" enterkeyhint="done" oninput="$('pnr').value=$('gnr').value=$('onr').value=this.value" onkeydown="if(event.key=='Enter'){zapSala();this.blur()}">
+ <button class="nb" style="flex:0 0 110px" onclick="zapSala()">Jestem tu</button></div>
+<div class="w rec"><small id="sost" style="color:#9ab;padding:0 6px"></small></div>
 <div class="w rec"><button id="bpa" onclick="cmd('pauza')">PAUZA</button>
  <button id="bp" style="flex:0 0 34%" onclick="if(confirm('Zakończyć nagranie?'))cmd('stop')">STOP</button></div>
 </section>
 
 <section id="t2">
-<div class="w"><input id="pnr" placeholder="pomieszczenie, np. sala 12 (może być puste)" autocomplete="off" oninput="$('gnr').value=$('onr').value=this.value"></div>
+<div class="w"><input id="pnr" placeholder="pomieszczenie, np. sala 12 (może być puste)" autocomplete="off" oninput="$('snr').value=$('gnr').value=$('onr').value=this.value"></div>
 <div class="w seg" id="ptyp"><button class="on" onclick="typ(this)">świetlówki</button><button onclick="typ(this)">LED</button>
  <button onclick="typ(this)">żarówki</button><button onclick="typ(this)">inne</button></div>
 <div class="w"><label class="lb">1. Opraw</label><div class="licz"><button onclick="krok('popr',-1)">−</button>
@@ -958,7 +961,7 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 </section>
 
 <section id="t5">
-<div class="w"><input id="gnr" placeholder="pomieszczenie, np. sala 12 (może być puste)" autocomplete="off" oninput="$('pnr').value=$('onr').value=this.value"></div>
+<div class="w"><input id="gnr" placeholder="pomieszczenie, np. sala 12 (może być puste)" autocomplete="off" oninput="$('snr').value=$('pnr').value=$('onr').value=this.value"></div>
 <div class="w seg siatka" id="grodz"><button class=on onclick="typG(this)">żeliwny</button><button onclick="typG(this)">płytowy</button><button onclick="typG(this)">aluminiowy</button><button onclick="typG(this)">łazienkowy</button><button onclick="typG(this)">rurowy</button><button onclick="typG(this)">favier</button></div>
 <div class="w"><label class="lb">1. Sztuk</label><div class="licz"><button onclick="krok('gszt',-1)">−</button>
  <input id="gszt" type="number" inputmode="numeric" placeholder="0"><button onclick="krok('gszt',1)">+</button></div></div>
@@ -975,7 +978,7 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 </section>
 
 <section id="t6">
-<div class="w"><input id="onr" placeholder="pomieszczenie / elewacja (może być puste)" autocomplete="off" oninput="$('pnr').value=$('gnr').value=this.value"></div>
+<div class="w"><input id="onr" placeholder="pomieszczenie / elewacja (może być puste)" autocomplete="off" oninput="$('snr').value=$('pnr').value=$('gnr').value=this.value"></div>
 <div class="et">Typy w tym budynku (dotknij, żeby wczytać wymiary)</div>
 <div class="chips" id="otypy"><span style="color:#888;font-size:13px;padding:10px 4px">brak – pierwszy wpis utworzy typ A</span></div>
 <div class="w seg" id="orodz"><button class=on onclick="segO(this)">okno</button><button onclick="segO(this)">drzwi zewn.</button><button onclick="segO(this)">drzwi balk.</button><button onclick="segO(this)">inne</button></div>
@@ -1037,6 +1040,8 @@ function przekroj(s){const e=$('prk'),f=s.nagrywa?s.prz_faza:0;
  else e.style.display='none';
  if(f!=pf){if(f==1){dzw(660,90)}else if(f==2){dzw(880,150);dzw(1320,250,.18);if(navigator.vibrate)navigator.vibrate([150,80,150])}else if(pf==1){dzw(220,250)}pf=f}}
 function zapZn(){cmd('znacznik?opis='+encodeURIComponent($('opis').value),()=>{$('opis').value='';wibr()})}
+function zapSala(){const v=$('snr').value.trim();if(!v){alert('Wpisz nazwę pomieszczenia');return}
+ cmd('znacznik?opis='+encodeURIComponent('SALA '+v),()=>{$('sost').textContent='Zapisano: '+v+' – wpisy w Oprawy / Grzejniki / Okna pójdą do tego pomieszczenia';wibr()})}
 function szybki(t){cmd('znacznik?opis='+encodeURIComponent(t),wibr)}
 function krok(id,d){const e=$(id);e.value=Math.max(0,(parseInt(e.value)||0)+d)}
 function typ(b){for(const x of $('ptyp').children)x.className='';b.className='on'}
