@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pomiary LiDAR</title>
+<script type="importmap">{"imports":{"three":"./static/three.module.js"}}</script>
+<style>
+:root{--bg:#f3f4f6;--karta:#fff;--tekst:#1f2933;--szary:#6b7280;--linia:#e5e7eb;--akcent:#2563eb;--akcent2:#dbeafe;--czerw:#dc2626;--ziel:#16a34a;--zolty:#d97706}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--tekst);height:100vh;display:grid;grid-template-rows:52px 1fr;grid-template-columns:320px 1fr}
+header{grid-column:1/3;background:#111827;color:#fff;display:flex;align-items:center;gap:14px;padding:0 16px}
+header h1{font-size:17px;margin:0;font-weight:600;letter-spacing:.2px}
+header .spacer{flex:1}
+header input{background:#1f2937;border:1px solid #374151;color:#fff;border-radius:8px;padding:7px 10px;width:240px}
+.btn{border:1px solid var(--linia);background:#fff;color:var(--tekst);padding:6px 12px;border-radius:8px;cursor:pointer;font:inherit;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:#9ca3af}
+.btn.gl{background:var(--akcent);border-color:var(--akcent);color:#fff}
+.btn.cz{color:var(--czerw)}
+.btn.ciemny{background:#1f2937;border-color:#374151;color:#e5e7eb}
+.menu{position:relative}.menu .lista{display:none;position:absolute;right:0;top:36px;background:#fff;color:var(--tekst);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.2);padding:6px;z-index:50;min-width:260px}
+.menu.otw .lista{display:block}.menu .lista button{display:block;width:100%;text-align:left;border:0;background:none;padding:9px 10px;border-radius:6px;cursor:pointer;font:inherit}
+.menu .lista button:hover{background:var(--bg)}
+aside{overflow:auto;background:#fff;border-right:1px solid var(--linia);padding:10px}
+.bud{border:1px solid var(--linia);border-radius:12px;margin-bottom:10px;overflow:hidden}
+.bud>.gl{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#f9fafb;cursor:pointer}
+.bud>.gl b{flex:1}.bud .ile{color:var(--szary);font-size:12px}
+.bud .x{border:0;background:none;cursor:pointer;color:var(--szary);font-size:16px;padding:2px 6px;border-radius:6px}.bud .x:hover{background:#fee2e2;color:var(--czerw)}
+.kond{padding:4px 12px 8px}.kond h4{margin:8px 0 4px;font-size:12px;text-transform:uppercase;color:var(--szary);letter-spacing:.5px}
+.ses{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:13px}
+.ses:hover{background:var(--bg)}.ses.akt{background:var(--akcent2)}
+.ses .t{flex:1}.ses .t small{color:var(--szary)}
+.pill{font-size:11px;padding:2px 8px;border-radius:10px;background:#e5e7eb;color:#374151}
+.pill.gotowe{background:#dcfce7;color:#166534}.pill.liczy,.pill.czeka{background:#fef3c7;color:#92400e}.pill.błąd{background:#fee2e2;color:#991b1b}.pill.nagrywanie{background:#dbeafe;color:#1e40af}
+.puste{color:var(--szary);font-size:13px;padding:6px 4px}
+main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.nag{background:#fff;border-bottom:1px solid var(--linia);padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.nag .tyt{flex:1;min-width:220px}.nag .tyt b{font-size:16px}.nag .tyt div{color:var(--szary);font-size:12px}
+.zakl{display:flex;gap:2px;padding:0 12px;background:#fff;border-bottom:1px solid var(--linia);overflow-x:auto}
+.zakl button{border:0;background:none;padding:10px 14px;cursor:pointer;font:inherit;color:var(--szary);border-bottom:2px solid transparent;white-space:nowrap}
+.zakl button.akt{color:var(--akcent);border-color:var(--akcent);font-weight:600}
+.tresc{flex:1;min-height:0;position:relative;overflow:auto}
+.widok{display:none;height:100%}.widok.akt{display:block}
+#w2d.akt,#w3d.akt{display:flex}
+.plotno{flex:1;position:relative;min-width:0}
+canvas#c{width:100%;height:100%;display:block;background:#fff;touch-action:none;cursor:grab}
+.warstwy{position:absolute;left:12px;top:12px;display:flex;flex-wrap:wrap;gap:6px;max-width:70%}
+.chip{background:#fff;border:1px solid var(--linia);border-radius:16px;padding:4px 10px;font-size:12px;cursor:pointer;user-select:none;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.chip.wyl{opacity:.45;text-decoration:line-through}
+.chip i{display:inline-block;width:9px;height:9px;border-radius:5px;margin-right:5px;vertical-align:0}
+.podp{position:absolute;left:12px;bottom:10px;font-size:12px;color:var(--szary);background:rgba(255,255,255,.85);padding:3px 8px;border-radius:6px}
+#tip{position:absolute;pointer-events:none;background:#111827;color:#fff;font-size:12px;padding:4px 8px;border-radius:6px;display:none;white-space:nowrap;z-index:5}
+.panel{width:300px;flex-shrink:0;border-left:1px solid var(--linia);background:#fff;overflow:auto;padding:14px}
+.panel h3{font-size:13px;margin:14px 0 6px;color:var(--szary);text-transform:uppercase;letter-spacing:.5px}
+.panel h3:first-child{margin-top:0}
+.panel input[type=text],.panel select{width:100%;padding:7px 8px;border:1px solid var(--linia);border-radius:8px;font:inherit}
+.rzad{display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin:6px 0}
+.mala{color:var(--szary);font-size:12px}
+.stat{display:grid;grid-template-columns:1fr 1fr;gap:6px}.stat div{background:var(--bg);border-radius:8px;padding:8px}.stat b{display:block;font-size:16px}
+.galeria{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;padding:16px}
+.galeria figure{margin:0;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);cursor:pointer}
+.galeria img{width:100%;display:block;aspect-ratio:4/3;object-fit:cover;background:#eee}
+.galeria figure.prz img{object-fit:contain;background:#fff}
+.galeria figcaption{padding:8px 10px;font-size:12px;color:var(--szary)}.galeria figcaption b{color:var(--tekst);display:block;font-size:13px}
+.tabela{padding:16px}table{border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);width:100%;margin-bottom:18px}
+td,th{padding:7px 10px;border-bottom:1px solid var(--linia);text-align:left;font-size:13px}th{background:#f9fafb;color:var(--szary);font-weight:600}
+tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
+.pusto{padding:40px;text-align:center;color:var(--szary)}
+#modal{position:fixed;inset:0;background:rgba(17,24,39,.7);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
+#modal.otw{display:flex}
+#modal .okno{background:#fff;border-radius:14px;max-width:min(1100px,96vw);max-height:92vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.4)}
+#modal .okno img{display:block;max-width:100%;max-height:72vh;margin:0 auto}
+#modal .opis{padding:12px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#modal .opis b{font-size:15px}#modal .opis .sp{flex:1}
+#w3d .plotno{background:linear-gradient(#e8eef7,#fff)}
+#info3d{position:absolute;right:12px;top:12px;background:rgba(255,255,255,.9);padding:8px 12px;border-radius:10px;font-size:12px;max-width:260px}
+@media(max-width:900px){body{grid-template-columns:1fr;grid-template-rows:52px auto 1fr}aside{max-height:30vh}header input{display:none}.panel{display:none}}
+</style>
+</head>
+<body>
+<header>
+ <h1>📐 Pomiary LiDAR</h1>
+ <input id="szukaj" placeholder="Szukaj budynku…" oninput="lista()">
+ <span class="spacer"></span>
+ <div class="menu" id="mPorz"><button class="btn ciemny" onclick="this.parentNode.classList.toggle('otw')">Porządki ▾</button>
+  <div class="lista">
+   <button onclick="usunPuste()">🧹 Usuń puste nagrania (bez danych)</button>
+   <button onclick="usunWszystkieMapy()">🔄 Przelicz wszystkie mapy od nowa</button>
+   <button onclick="oproznijKosz()">🗑 Opróżnij kosz (nieodwracalne)</button>
+   <div class="mala" style="padding:6px 10px">Usunięte sesje i budynki trafiają do kosza. Usuń je też na skanerze – inaczej kopia z maliny wyśle je ponownie.</div>
+  </div></div>
+</header>
+<aside id="lista"><div class="pusto">wczytuję…</div></aside>
+<main>
+ <div class="nag" id="nag"><div class="tyt"><b>Wybierz nagranie z listy</b><div>budynek → kondygnacja → sesja</div></div></div>
+ <div class="zakl" id="zakl">
+  <button data-w="w2d" class="akt">Rzut</button><button data-w="w3d">Model 3D</button><button data-w="wfoto">Zdjęcia</button>
+  <button data-w="wprz">Przekroje</button><button data-w="wzn">Znaczniki i notatki</button><button data-w="winw">Inwentaryzacja</button><button data-w="wpl">Pliki</button>
+ </div>
+ <div class="tresc">
+  <section class="widok akt" id="w2d">
+   <div class="plotno"><canvas id="c"></canvas><div class="warstwy" id="warstwy"></div><div id="tip"></div>
+    <div class="podp">przeciągnij – przesuń · kółko/dwa palce – powiększ · Shift+przeciągnij – obróć · dwuklik – całość · kliknij znacznik</div></div>
+   <div class="panel" id="panel"><div class="mala">Wybierz nagranie.</div></div>
+  </section>
+  <section class="widok" id="w3d"><div class="plotno" id="p3d"><div id="info3d">Model 3D: ściany wyciągnięte na wysokość z przekrojów pionowych. Obracaj myszą, kółko – zoom, prawy przycisk – przesuwanie. Kliknij znacznik.</div></div></section>
+  <section class="widok" id="wfoto"><div class="galeria" id="gal"></div></section>
+  <section class="widok" id="wprz"><div class="galeria" id="galp"></div></section>
+  <section class="widok" id="wzn"><div class="tabela" id="tzn"></div></section>
+  <section class="widok" id="winw"><div class="tabela" id="tinw"></div></section>
+  <section class="widok" id="wpl"><div class="tabela" id="tpl"></div></section>
+ </div>
+</main>
+<div id="modal" onclick="if(event.target===this)zamknij()"><div class="okno" id="mokno"></div></div>
+<script>
+const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let L=[],S=null,M=null,NZ={},seg=0,wid={x:0,y:0,s:50},wyb=null,rozwin={};
+const KOL={foto:'#2563eb',przekroj:'#9333ea',punkt:'#ea580c',notatka:'#16a34a',oprawy:'#0891b2',grzejnik:'#dc2626',okno:'#ca8a04'};
+const NAZ={sciany:'Ściany',chmura:'Chmura punktów',trasa:'Trasa',foto:'Zdjęcia',przekroj:'Przekroje',punkt:'Punkty',notatka:'Notatki',oprawy:'Oprawy',grzejnik:'Grzejniki',okno:'Okna'};
+const ZNAK={foto:'📷',przekroj:'⊥',punkt:'•',notatka:'✎',oprawy:'💡',grzejnik:'♨',okno:'▭'};
+const W={sciany:1,chmura:1,trasa:1,foto:1,przekroj:1,punkt:1,notatka:1,oprawy:1,grzejnik:1,okno:1};
+const plik=f=>'plik?n='+S.n+'&f='+f;
+function post(u,ok,body){return fetch(u,{method:'POST',body}).then(r=>r.json()).then(j=>{if(j.blad)alert(j.blad);else ok&&ok(j)})}
+document.addEventListener('click',e=>{if(!e.target.closest('.menu'))document.querySelectorAll('.menu').forEach(m=>m.classList.remove('otw'))});
+document.querySelectorAll('#zakl button').forEach(b=>b.onclick=()=>pokazWidok(b.dataset.w));
+function pokazWidok(w){document.querySelectorAll('#zakl button').forEach(x=>x.classList.toggle('akt',x.dataset.w==w));document.querySelectorAll('.widok').forEach(x=>x.classList.toggle('akt',x.id==w));if(w=='w2d')rys();if(w=='w3d')tryb3d()}
+// ---------------------------------------------------------------- lista
+function lista(){fetch('api/sesje').then(r=>r.json()).then(d=>{L=d;rysujListe()})}
+function rysujListe(){const f=$('szukaj').value.toLowerCase(),B={};let puste=0;
+ L.forEach(s=>{if(s.stan=='brak danych'){puste++;return}if(f&&!s.budynek.toLowerCase().includes(f))return;((B[s.budynek]??={})[s.kondygnacja]??=[]).push(s)});
+ const naz=Object.keys(B).sort((a,b)=>Math.max(...Object.values(B[b]).flat().map(s=>+s.n.slice(0,8)))-Math.max(...Object.values(B[a]).flat().map(s=>+s.n.slice(0,8)))||a.localeCompare(b));
+ $('lista').innerHTML=(naz.map(b=>{const ses=Object.values(B[b]).flat(),otw=rozwin[b]??(S?ses.some(s=>s.n==S.n):naz.indexOf(b)<2);
+  return '<div class="bud"><div class="gl" onclick="rozwin[\''+esc(b).replace(/'/g,"\\'")+'\']='+!otw+';rysujListe()"><span>'+(otw?'▾':'▸')+'</span><b>'+esc(b)+'</b><span class="ile">'+ses.length+' nagr.</span><button class="x" title="Usuń cały budynek" onclick="event.stopPropagation();usunBudynek(\''+esc(b).replace(/'/g,"\\'")+'\')">🗑</button></div>'+
+  (otw?Object.keys(B[b]).sort().map(k=>'<div class="kond"><h4>'+esc(k)+'</h4>'+B[b][k].map(s=>
+   '<div class="ses'+(S&&S.n==s.n?' akt':'')+'" onclick="otworz(\''+s.n+'\')"><div class="t">'+esc(s.start.slice(5))+'<br><small>'+(s.czas_s?Math.round(s.czas_s/60)+' min':'–')+' · '+s.foto+' zdj. · '+s.mb+' MB</small></div><span class="pill '+esc(s.stan)+'">'+esc(s.stan)+'</span></div>').join('')+'</div>').join(''):'')+'</div>'}).join('')||'<div class="pusto">Brak nagrań</div>')+
+  (puste?'<div class="puste">+ '+puste+' pustych nagrań bez danych · <a href="#" onclick="usunPuste();return false">usuń</a></div>':'')}
+function usunBudynek(b){if(confirm('Przenieść do kosza CAŁY budynek „'+b+'” – wszystkie jego nagrania, zdjęcia i mapy?'))post('api/usun_budynek?b='+encodeURIComponent(b),j=>{if(S&&S.info.budynek==b){S=null;M=null;czysc()}lista()})}
+function usunPuste(){post('api/usun_puste',j=>{alert('Przeniesiono do kosza '+j.ile+' pustych nagrań');lista()})}
+function usunWszystkieMapy(){if(confirm('Przeliczyć wszystkie mapy od nowa? Nagrania zostają, mapy policzą się w tle (ok. 1 min na nagranie).'))post('api/usun_wszystkie_mapy',j=>{alert('Usunięto mapy '+j.ile+' sesji – liczą się od nowa');lista();if(S)otworz(S.n)})}
+function oproznijKosz(){if(confirm('Opróżnić kosz? Tego nie da się cofnąć.'))post('api/oproznij_kosz',()=>alert('Kosz opróżniony'))}
+function czysc(){$('nag').innerHTML='<div class="tyt"><b>Wybierz nagranie z listy</b></div>';$('panel').innerHTML='';rys()}
+// ---------------------------------------------------------------- sesja
+function otworz(n){fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{S=d;S.n=n;M=null;wyb=null;rysujListe();naglowek();galeria();przekroje();znaczniki();inwent();pliki();
+ fetch('api/mapa?n='+n).then(r=>r.ok?r.json():null).then(j=>{if(j){M=j.mapa;NZ=j.nazwy||{};seg=0;}else M=null;panel();warstwy();dopasuj();rys();if($('w3d').classList.contains('akt'))tryb3d()})})}
+function naglowek(){const i=S.info,ma=S.wyniki.includes('_wynik/rzut.dxf');
+ $('nag').innerHTML='<div class="tyt"><b>'+esc(i.budynek||'?')+' › '+esc(i.kondygnacja||'?')+'</b><div>'+esc((i.start||'').replace('T',' ').slice(0,16))+' · '+esc(S.n)+' · <span class="pill '+esc(S.stan)+'">'+esc(S.stan)+'</span></div></div>'+
+ (ma?'<a class="btn gl" href="'+plik('_wynik/rzut.dxf')+'">⬇ Rzut DXF</a>':'')+
+ (S.wyniki.includes('_wynik/przekroje.dxf')?'<a class="btn" href="'+plik('_wynik/przekroje.dxf')+'">⬇ Przekroje DXF</a>':'')+
+ (S.wyniki.includes('_wynik/model3d.dxf')?'<a class="btn" href="'+plik('_wynik/model3d.dxf')+'">⬇ Model 3D DXF</a><a class="btn" href="'+plik('_wynik/model3d.obj')+'">OBJ</a>':'')+
+ '<button class="btn" onclick="przelicz()">🔄 Przelicz</button><div class="menu"><button class="btn" onclick="this.parentNode.classList.toggle(\'otw\')">⋯</button><div class="lista">'+
+ '<button onclick="usunMape()">Usuń mapę tej sesji (policzy się od nowa)</button><button style="color:var(--czerw)" onclick="usunSesje()">Przenieś całą sesję do kosza</button></div></div>'}
+function przelicz(){post('api/przelicz?n='+S.n,()=>{alert('Zlecone – mapa liczy się ok. 1 min na każde 8 min nagrania.');lista()})}
+function usunMape(){if(confirm('Usunąć mapę tej sesji? Policzy się od nowa.'))post('api/usun_mape?n='+S.n,()=>{lista();otworz(S.n)})}
+function usunSesje(){if(confirm('Przenieść całą sesję do kosza?'))post('api/usun_sesje?n='+S.n,()=>{S=null;M=null;czysc();lista()})}
+// ---------------------------------------------------------------- panel i warstwy
+function obr(){const k=M&&M.kondygnacje[seg];return k?((NZ[k.nr]||{}).obrot||0):0}
+function panel(){if(!M){$('panel').innerHTML='<h3>Mapa</h3><p class="mala">Stan: '+esc(S.stan)+'</p><button class="btn gl" onclick="przelicz()">Policz teraz</button>';return}
+ const k=M.kondygnacje[seg],z=NZ[k.nr]||{},zn=k.znaczniki.filter(r=>r.rodzaj!='system');
+ $('panel').innerHTML='<h3>Kondygnacja</h3><select id="seg" onchange="seg=+this.value;wyb=null;panel();dopasuj();rys()">'+M.kondygnacje.map((q,i)=>'<option value="'+i+'"'+(i==seg?' selected':'')+'>'+esc((NZ[q.nr]||{}).nazwa||('Odcinek '+q.nr))+' · '+q.od.toFixed(0)+'–'+q.do.toFixed(0)+' s'+((NZ[q.nr]||{}).ukryj?' (pominięty)':'')+'</option>').join('')+'</select>'+
+ '<div class="rzad"><input type="text" id="nz" placeholder="nazwa, np. PARTER" value="'+esc(z.nazwa||'')+'"></div>'+
+ '<label class="mala"><input type="checkbox" id="uk" '+(z.ukryj?'checked':'')+'> pomiń w DXF (powtórne przejście)</label>'+
+ '<h3>Obrót rzutu</h3><div class="rzad"><button class="btn" onclick="obroc(-90)">⟲90°</button><button class="btn" onclick="obroc(-1)">⟲1°</button><button class="btn" onclick="obroc(1)">⟳1°</button><button class="btn" onclick="obroc(90)">⟳90°</button></div>'+
+ '<div class="rzad"><input type="text" id="ob" style="width:80px" value="'+obr().toFixed(1)+'" onchange="ustObrot(this.value)"> °</div>'+
+ '<div class="rzad"><button class="btn gl" onclick="zapisz()">Zapisz nazwę i obrót</button></div><div class="mala">Zapis zmienia też pliki DXF i model 3D.</div>'+
+ '<h3>Podsumowanie</h3><div class="stat"><div><b>'+k.szer.toFixed(1)+' × '+k.wys.toFixed(1)+' m</b>obrys</div><div><b>'+(k.wysokosc_m?k.wysokosc_m.toFixed(2)+' m':'–')+'</b>wysokość</div>'+
+ '<div><b>'+zn.filter(r=>r.rodzaj=='foto').length+'</b>zdjęć</div><div><b>'+zn.filter(r=>r.rodzaj=='przekroj').length+'</b>przekrojów</div></div>'+
+ '<p class="mala">'+esc(k.wysokosc_zrodlo||'')+' · policzono '+esc(M.policzono)+'</p>'}
+function zapisz(){const k=M.kondygnacje[seg];NZ[k.nr]={nazwa:$('nz').value,ukryj:$('uk').checked,obrot:obr()};post('api/nazwy?n='+S.n,()=>{panel();otworz(S.n)},JSON.stringify(NZ))}
+function obroc(d){const k=M.kondygnacje[seg];(NZ[k.nr]??={}).obrot=(((obr()+d)%360)+360)%360;$('ob').value=obr().toFixed(1);rys()}
+function ustObrot(v){const k=M.kondygnacje[seg];(NZ[k.nr]??={}).obrot=((+String(v).replace(',','.')%360)+360)%360;rys()}
+function warstwy(){$('warstwy').innerHTML=Object.keys(W).map(w=>'<span class="chip'+(W[w]?'':' wyl')+'" onclick="W.'+w+'^=1;warstwy();rys()">'+(KOL[w]?'<i style="background:'+KOL[w]+'"></i>':'')+NAZ[w]+'</span>').join('')}
+// ---------------------------------------------------------------- rzut 2D
+const c=$('c'),g=c.getContext('2d');
+function R(x,y){const k=M.kondygnacje[seg],a=obr()*Math.PI/180,cx=k.szer/2,cy=k.wys/2,dx=x-cx,dy=y-cy;return[cx+dx*Math.cos(a)-dy*Math.sin(a),cy+dx*Math.sin(a)+dy*Math.cos(a)]}
+const P=(x,y)=>{const q=R(x,y);return[wid.x+q[0]*wid.s,wid.y-q[1]*wid.s]};
+function dopasuj(){if(!M||!M.kondygnacje[seg])return;const k=M.kondygnacje[seg],r=c.getBoundingClientRect();
+ const C=[R(0,0),R(k.szer,0),R(0,k.wys),R(k.szer,k.wys)],xs=C.map(p=>p[0]),ys=C.map(p=>p[1]),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+ wid.s=Math.min(r.width/(x1-x0+1.5),(r.height-60)/(y1-y0+1.5));wid.x=r.width/2-(x0+x1)/2*wid.s;wid.y=r.height/2+(y0+y1)/2*wid.s+10}
+function rys(){const r=c.getBoundingClientRect(),d=devicePixelRatio||1;if(!r.width)return;c.width=r.width*d;c.height=r.height*d;g.setTransform(d,0,0,d,0,0);g.clearRect(0,0,r.width,r.height);
+ if(!M||!M.kondygnacje[seg]){g.fillStyle='#9ca3af';g.font='16px system-ui';g.textAlign='center';g.fillText(S?'Mapa: '+S.stan:'Wybierz nagranie z listy',r.width/2,r.height/2);g.textAlign='left';return}
+ const k=M.kondygnacje[seg];
+ const m=wid.s>=80?.5:wid.s>=25?1:2;g.strokeStyle='#f1f3f5';g.lineWidth=1;
+ for(let x=-2;x<=k.szer+2;x+=m){const[a,b]=P(x,-2),[a2,b2]=P(x,k.wys+2);g.beginPath();g.moveTo(a,b);g.lineTo(a2,b2);g.stroke()}
+ for(let y=-2;y<=k.wys+2;y+=m){const[a,b]=P(-2,y),[a2,b2]=P(k.szer+2,y);g.beginPath();g.moveTo(a,b);g.lineTo(a2,b2);g.stroke()}
+ if(W.chmura){g.fillStyle='rgba(100,116,139,.35)';const ch=k.chmura_cm,st=wid.s<30?2:1;for(let i=0;i<ch.length;i+=2*st){const[a,b]=P(ch[i]/100,ch[i+1]/100);g.fillRect(a,b,1.4,1.4)}}
+ if(W.trasa&&k.trasa.length){g.strokeStyle='rgba(239,68,68,.45)';g.lineWidth=1.2;g.setLineDash([4,3]);g.beginPath();k.trasa.forEach((p,i)=>{const[a,b]=P(p[0],p[1]);i?g.lineTo(a,b):g.moveTo(a,b)});g.stroke();g.setLineDash([])}
+ if(W.sciany){g.lineCap='round';k.sciany.forEach((pl,j)=>{g.strokeStyle=(k.typy_scian||[])[j]=='inne'?'#475569':'#111827';g.lineWidth=Math.max(1.6,Math.min(4,wid.s*0.035));g.beginPath();pl.forEach((p,i)=>{const[a,b]=P(p[0],p[1]);i?g.lineTo(a,b):g.moveTo(a,b)});g.stroke()})}
+ k.znaczniki.forEach(z=>{if(z.rodzaj=='system'||!W[z.rodzaj])return;const[a,b]=P(z.x,z.y),rr=z===wyb?11:8;
+  g.fillStyle='#fff';g.beginPath();g.arc(a,b,rr+2,0,7);g.fill();g.fillStyle=KOL[z.rodzaj]||'#16a34a';g.beginPath();g.arc(a,b,rr,0,7);g.fill();
+  g.fillStyle='#fff';g.font='bold '+(rr+1)+'px system-ui';g.textAlign='center';g.textBaseline='middle';g.fillText(z.rodzaj=='przekroj'?'P':z.rodzaj=='foto'?'F':z.rodzaj=='punkt'?'•':'N',a,b+.5);g.textAlign='left';g.textBaseline='alphabetic';
+  if(wid.s>55){g.fillStyle='#374151';g.font='11px system-ui';g.fillText(etykieta(z).slice(0,34),a+rr+4,b+4)}});
+ const Lm=wid.s>=120?.5:wid.s>=50?1:wid.s>=20?2:5;g.fillStyle='#111827';g.fillRect(16,r.height-40,Lm*wid.s,4);g.font='12px system-ui';g.fillText(Lm+' m',16,r.height-46);
+ g.fillStyle='#111827';g.font='bold 15px system-ui';g.fillText((NZ[k.nr]||{}).nazwa||'Odcinek '+k.nr,r.width-g.measureText((NZ[k.nr]||{}).nazwa||'Odcinek '+k.nr).width-16,26)}
+function etykieta(z){return z.rodzaj=='foto'?'Zdjęcie '+(z.plik||'').replace('foto_','').replace('.jpg',''):z.opis}
+function trafiony(e){if(!M)return null;const r=c.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;let best=null,bd=14;
+ M.kondygnacje[seg].znaczniki.forEach(z=>{if(z.rodzaj=='system'||!W[z.rodzaj])return;const[a,b]=P(z.x,z.y),d=Math.hypot(a-mx,b-my);if(d<bd){bd=d;best=z}});return best}
+let drag=null,pinch=null;
+c.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,ox:wid.x,oy:wid.y,mv:0,rot:e.shiftKey,o0:obr()};c.setPointerCapture(e.pointerId);c.style.cursor='grabbing'});
+c.addEventListener('pointermove',e=>{if(!drag){const z=trafiony(e),t=$('tip');if(z){const r=c.getBoundingClientRect();t.style.display='block';t.style.left=(e.clientX-r.left+14)+'px';t.style.top=(e.clientY-r.top+10)+'px';t.textContent=etykieta(z)+' (kliknij)';c.style.cursor='pointer'}else{t.style.display='none';c.style.cursor='grab'}return}
+ if(pinch)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.mv=Math.max(drag.mv,Math.abs(dx)+Math.abs(dy));
+ if(drag.rot&&M){const k=M.kondygnacje[seg];(NZ[k.nr]??={}).obrot=(((drag.o0+dx*0.2)%360)+360)%360;if($('ob'))$('ob').value=obr().toFixed(1)}else{wid.x=drag.ox+dx;wid.y=drag.oy+dy}rys()});
+c.addEventListener('pointerup',e=>{if(drag&&drag.mv<5){const z=trafiony(e);if(z){wyb=z;rys();pokaz(z)}}drag=null;c.style.cursor='grab'});
+c.addEventListener('wheel',e=>{e.preventDefault();const r=c.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,f=e.deltaY<0?1.2:1/1.2;wid.x=mx-(mx-wid.x)*f;wid.y=my-(my-wid.y)*f;wid.s*=f;rys()},{passive:false});
+c.addEventListener('touchstart',e=>{if(e.touches.length==2){const[a,b]=e.touches;pinch={d:Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY),s:wid.s,x:wid.x,y:wid.y,cx:(a.clientX+b.clientX)/2,cy:(a.clientY+b.clientY)/2,k:Math.atan2(b.clientY-a.clientY,b.clientX-a.clientX),o0:obr()}}});
+c.addEventListener('touchmove',e=>{if(pinch&&e.touches.length==2){e.preventDefault();const[a,b]=e.touches,r=c.getBoundingClientRect(),f=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY)/pinch.d,mx=pinch.cx-r.left,my=pinch.cy-r.top;wid.s=pinch.s*f;wid.x=mx-(mx-pinch.x)*f;wid.y=my-(my-pinch.y)*f;
+ const dk=(Math.atan2(b.clientY-a.clientY,b.clientX-a.clientX)-pinch.k)*180/Math.PI;if(M&&Math.abs(dk)>3){const k=M.kondygnacje[seg];(NZ[k.nr]??={}).obrot=(((pinch.o0-dk)%360)+360)%360}rys()}},{passive:false});
+c.addEventListener('touchend',e=>{if(e.touches.length<2)pinch=null});
+c.addEventListener('dblclick',()=>{dopasuj();rys()});addEventListener('resize',()=>{rys();if(R3.ren)R3.rozmiar()});
+// ---------------------------------------------------------------- okno ze szczegolami
+function pokaz(z){let h='';const prz=z.rodzaj=='przekroj'?(S.przekroje||[]).find(p=>String(p.nr)==String(z.nr)):null;
+ if(z.plik)h+='<img src="'+plik(z.plik)+'">';
+ if(z.obraz)h+='<img src="'+plik('_wynik/'+z.obraz)+'">';
+ h+='<div class="opis"><div><b>'+esc(z.rodzaj=='foto'?'Zdjęcie':prz?'Przekrój '+prz.nr+': wysokość '+prz.wysokosc.toFixed(2)+' m'+(prz.szerokosc?', szerokość '+prz.szerokosc.toFixed(2)+' m':''):z.opis)+'</b><div class="mala">'+(z.t!=null?z.t.toFixed(0)+' s od startu':'')+(z.wys!=null?' · wysokość wzgl. '+z.wys.toFixed(2)+' m':'')+
+  (prz?' · szacunek na żywo w skanerze: '+esc(z.opis.replace(/^przekrój \d+: /,'')):'')+'</div></div><span class="sp"></span>'+
+  (z.plik?'<a class="btn" href="'+plik(z.plik)+'" target="_blank">Otwórz oryginał</a>':'')+(z.obraz?'<a class="btn" href="'+plik('_wynik/przekroje.dxf')+'">Przekroje DXF</a>':'')+
+  (M&&z.x!=null?'<button class="btn" onclick="naMapie('+z.x+','+z.y+')">Pokaż na rzucie</button>':'')+'<button class="btn" onclick="zamknij()">Zamknij ✕</button></div>';
+ $('mokno').innerHTML=h;$('modal').classList.add('otw')}
+function zamknij(){$('modal').classList.remove('otw')}
+document.addEventListener('keydown',e=>{if(e.key=='Escape')zamknij()});
+function naMapie(x,y){zamknij();pokazWidok('w2d');const r=c.getBoundingClientRect();wid.s=Math.max(wid.s,90);const q=R(x,y);wid.x=r.width/2-q[0]*wid.s;wid.y=r.height/2+q[1]*wid.s;rys()}
+function znPoTyp(f){if(!M)return null;for(const k of M.kondygnacje)for(const z of k.znaczniki)if(f(z))return z;return null}
+// ---------------------------------------------------------------- galerie i tabele
+function galeria(){const F=S.pliki.filter(p=>p.startsWith('foto_'));const zt={};S.znaczniki.forEach(z=>{if(z.opis.startsWith('FOTO '))zt[z.opis.slice(5)]=z});
+ $('gal').innerHTML=F.map(f=>'<figure onclick="pokazFoto(\''+f+'\')"><img loading="lazy" src="'+plik(f)+'"><figcaption><b>'+f.replace('foto_','').replace('.jpg','')+'</b>'+(zt[f]?zt[f].godz+' · '+zt[f].t+' s':'')+'</figcaption></figure>').join('')||'<div class="pusto">Brak zdjęć w tej sesji</div>'}
+function pokazFoto(f){pokaz(znPoTyp(z=>z.plik==f)||{rodzaj:'foto',plik:f,opis:f})}
+function przekroje(){const P_=S.przekroje||[];
+ $('galp').innerHTML=P_.map(p=>'<figure class="prz" onclick="pokazPrz(\''+p.nr+'\')"><img loading="lazy" src="'+plik('_wynik/przekroj_'+String(p.nr).padStart(2,'0')+'.jpg')+'"><figcaption><b>Przekrój '+p.nr+': '+p.wysokosc.toFixed(2)+' m'+(p.szerokosc?' × '+p.szerokosc.toFixed(2)+' m':'')+'</b>'+p.t.toFixed(0)+' s od startu</figcaption></figure>').join('')||'<div class="pusto">Brak przekrojów pionowych (albo mapa jeszcze się liczy)</div>'}
+function pokazPrz(nr){pokaz(znPoTyp(z=>z.rodzaj=='przekroj'&&String(z.nr)==String(nr))||{rodzaj:'przekroj',nr,opis:'Przekrój '+nr,obraz:'przekroj_'+String(nr).padStart(2,'0')+'.jpg'})}
+function znaczniki(){const Z=S.znaczniki.filter(z=>!/^(AUTO_|PRZEKROJ_(START|KONIEC|OK|OD_NOWA)|PAUZA|IMU_)/.test(z.opis));
+ $('tzn').innerHTML=Z.length?'<table><tr><th>godz.</th><th>s</th><th>opis</th><th>wys. wzgl.</th></tr>'+Z.map((z,i)=>'<tr class="klik" onclick="pokazZn('+i+')"><td>'+z.godz+'</td><td>'+(z.t??'')+'</td><td>'+esc(z.opis)+'</td><td>'+(+z.wys||0).toFixed(2)+' m</td></tr>').join('')+'</table>':'<div class="pusto">Brak znaczników</div>';
+ window._Z=Z}
+function pokazZn(i){const z=_Z[i];const m=znPoTyp(q=>Math.abs(q.t-z.t)<0.15&&q.opis.slice(0,6)==z.opis.slice(0,6)||(q.plik&&z.opis.includes(q.plik)));pokaz(m||{rodzaj:'notatka',opis:z.opis,t:z.t,wys:+z.wys})}
+function tab(Lw,kol,naz){if(!Lw.length)return'<p class="mala">brak wpisów</p>';return'<table><tr>'+naz.map(n=>'<th>'+n+'</th>').join('')+'</tr>'+Lw.map(r=>'<tr>'+kol.map(k=>'<td>'+esc(r[k])+'</td>').join('')+'</tr>').join('')+'</table>'}
+function inwent(){$('tinw').innerHTML='<h3>Oświetlenie</h3>'+tab(S.oprawy,['nr','typ','opraw','punktow','moc','moc_razem','uwagi'],['pomieszczenie','rodzaj','opraw','pkt/oprawę','W/pkt','W razem','uwagi'])+
+ '<h3>Grzejniki</h3>'+tab(S.grzejniki,['nr','rodzaj','sztuk','zeberek','szer','dl','uwagi'],['pomieszczenie','rodzaj','szt.','żeberek','szer. cm','dł. cm','uwagi'])+
+ '<h3>Okna i drzwi zewnętrzne</h3>'+tab(S.okna,['nr','typ','rodzaj','szer','wys_cm','rama','szyby','sztuk','uwagi'],['pomieszczenie','typ','rodzaj','szer. cm','wys. cm','rama','szyby','szt.','uwagi'])}
+function pliki(){const opis={'rzut.dxf':'Rzut kondygnacji (DXF, metry)','przekroje.dxf':'Przekroje pionowe (DXF)','model3d.dxf':'Model 3D (DXF, 3DFACE)','model3d.obj':'Model 3D (OBJ)','podglad.png':'Podgląd rzutu (PNG)','log.txt':'Dziennik liczenia','blad.txt':'Błąd liczenia'};
+ $('tpl').innerHTML='<h3>Wyniki</h3><table>'+(S.wyniki.filter(f=>!f.includes('przekroj_')).map(f=>{const n=f.replace('_wynik/','');return'<tr><td><a href="'+plik(f)+'" target="_blank">'+esc(n)+'</a></td><td class="mala">'+(opis[n]||'')+'</td></tr>'}).join('')||'<tr><td class="mala">brak – mapa: '+esc(S.stan)+'</td></tr>')+'</table>'+
+ '<h3>Dane z nagrania</h3><table>'+S.pliki.filter(f=>!f.startsWith('foto_')).map(f=>'<tr><td><a href="'+plik(f)+'">'+esc(f)+'</a></td></tr>').join('')+'</table>'+
+ '<h3>Informacje</h3><table>'+Object.entries(S.info).map(([a,b])=>'<tr><td>'+esc(a)+'</td><td>'+esc(b)+'</td></tr>').join('')+'</table>'}
+// ---------------------------------------------------------------- model 3D
+const R3={};
+async function tryb3d(){if(!M){$('info3d').textContent='Model 3D pojawi się po policzeniu mapy.';return}
+ const THREE=await import('three'),{OrbitControls}=await import('./static/OrbitControls.js');R3.T=THREE;
+ const box=$('p3d');if(!R3.ren){R3.ren=new THREE.WebGLRenderer({antialias:true,alpha:true});box.appendChild(R3.ren.domElement);R3.cam=new THREE.PerspectiveCamera(45,1,0.05,500);R3.ctl=new OrbitControls(R3.cam,R3.ren.domElement);R3.ctl.enableDamping=true;
+  R3.rozmiar=()=>{const r=box.getBoundingClientRect();R3.ren.setSize(r.width,r.height);R3.cam.aspect=r.width/r.height;R3.cam.updateProjectionMatrix()};
+  const pt=new THREE.Vector2(),ray=new THREE.Raycaster();R3.ren.domElement.addEventListener('click',e=>{const r=R3.ren.domElement.getBoundingClientRect();pt.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);ray.setFromCamera(pt,R3.cam);const h=ray.intersectObjects(R3.znaczniki||[]);if(h.length)pokaz(h[0].object.userData.z)});
+  (function petla(){requestAnimationFrame(petla);if(R3.scena&&$('w3d').classList.contains('akt')){R3.ctl.update();R3.ren.render(R3.scena,R3.cam)}})()}
+ R3.rozmiar();const sc=new THREE.Scene();R3.scena=sc;sc.add(new THREE.HemisphereLight(0xffffff,0xb0bccb,2.2));sc.add(new THREE.AmbientLight(0xffffff,0.6));const sl=new THREE.DirectionalLight(0xffffff,1.6);sl.position.set(10,-15,25);sc.add(sl);
+ const k=M.kondygnacje[seg],h=k.wysokosc_m||2.7,a=obr()*Math.PI/180;R3.znaczniki=[];
+ const grp=new THREE.Group();sc.add(grp);grp.rotation.z=a;grp.position.set(0,0,0);
+ const podl=new THREE.Mesh(new THREE.PlaneGeometry(k.szer+1,k.wys+1),new THREE.MeshStandardMaterial({color:0xe5e7eb}));podl.position.set(k.szer/2,k.wys/2,-0.01);grp.add(podl);
+ const mat=new THREE.MeshStandardMaterial({color:0xf8fafc,side:THREE.DoubleSide,roughness:.85}),mat2=new THREE.MeshStandardMaterial({color:0xcbd5e1,side:THREE.DoubleSide});
+ const kraw=new THREE.LineBasicMaterial({color:0x334155});
+ k.sciany.forEach((pl,j)=>{for(let i=0;i<pl.length-1;i++){const[x1,y1]=pl[i],[x2,y2]=pl[i+1],L_=Math.hypot(x2-x1,y2-y1);if(L_<0.05)continue;
+  const geo=new THREE.BoxGeometry(L_,0.04,h);const m=new THREE.Mesh(geo,(k.typy_scian||[])[j]=='inne'?mat2:mat);m.position.set((x1+x2)/2,(y1+y2)/2,h/2);m.rotation.z=Math.atan2(y2-y1,x2-x1);grp.add(m);
+  const e=new THREE.LineSegments(new THREE.EdgesGeometry(geo),kraw);e.position.copy(m.position);e.rotation.copy(m.rotation);grp.add(e)}});
+ k.znaczniki.forEach(z=>{if(z.rodzaj=='system'||!W[z.rodzaj])return;const s=new THREE.Mesh(new THREE.SphereGeometry(0.13,16,12),new THREE.MeshStandardMaterial({color:KOL[z.rodzaj]||'#16a34a',emissive:KOL[z.rodzaj]||'#16a34a',emissiveIntensity:.35}));
+  s.position.set(z.x,z.y,z.rodzaj=='przekroj'?h*0.5:1.6);s.userData.z=z;grp.add(s);R3.znaczniki.push(s)});
+ const cx=k.szer/2,cy=k.wys/2,dl=Math.max(k.szer,k.wys);R3.cam.up.set(0,0,1);R3.cam.position.set(cx+dl*0.2,cy-dl*1.0,dl*0.9);R3.ctl.target.set(cx,cy,0);R3.ctl.update();
+ $('info3d').innerHTML='<b>'+esc((NZ[k.nr]||{}).nazwa||'Odcinek '+k.nr)+'</b> · wysokość '+h.toFixed(2)+' m<br><span class="mala">'+esc(k.wysokosc_zrodlo||'')+'. Obracaj myszą, kółko – zoom, prawy przycisk – przesuwanie, kliknij kulkę – szczegóły.</span>'}
+lista();setInterval(()=>fetch('api/sesje').then(r=>r.json()).then(d=>{const zm=JSON.stringify(d)!=JSON.stringify(L);L=d;if(zm)rysujListe()}),20000);
+</script>
+</body>
+</html>

@@ -22,29 +22,29 @@ def kierunek(q, n):
     h = np.convolve(np.r_[h[-3:], h, h[:3]], np.ones(7), 'same')[3:-3]
     return (e[np.argmax(h)] + e[1] / 2)
 
-def odcinki(Q, os_):
+def odcinki(Q, os_, scal_tol=0.08, min_dl=None):
     """Odcinki scian rownoleglych do osi X (os_=0) albo Y (os_=1) z siatki zajetosci."""
     k = Q.copy() if os_ == 0 else Q[:, ::-1].copy()
     wiersz = np.round(k[:, 1] / KOM).astype(int)
     wyn = []
     for w in np.unique(wiersz):
         xs = np.unique(np.round(k[wiersz == w, 0] / KOM).astype(int))
-        if len(xs) < MIN_DL / KOM: continue
+        if len(xs) < (min_dl or MIN_DL) / KOM: continue
         przer = np.where(np.diff(xs) * KOM > PRZERWA)[0]
         for g in np.split(xs, przer + 1):
-            if (g[-1] - g[0]) * KOM >= MIN_DL:
+            if (g[-1] - g[0]) * KOM >= (min_dl or MIN_DL):
                 wyn.append([w * KOM, g[0] * KOM, g[-1] * KOM, len(g)])
     # scal sasiednie wiersze (ta sama sciana rozmyta na 2-4 komorki), waga = liczba komorek
     wyn.sort(key=lambda r: (r[0], r[1]))
     scal = []
     for r in wyn:
         for s in scal:
-            if abs(s[0] - r[0]) <= 0.08 and r[1] <= s[2] + PRZERWA and r[2] >= s[1] - PRZERWA:
+            if abs(s[0] - r[0]) <= scal_tol and r[1] <= s[2] + PRZERWA and r[2] >= s[1] - PRZERWA:
                 s[0] = (s[0] * s[3] + r[0] * r[3]) / (s[3] + r[3]); s[1] = min(s[1], r[1]); s[2] = max(s[2], r[2]); s[3] += r[3]
                 break
         else:
             scal.append(list(r))
-    scal = [s for s in scal if s[2] - s[1] >= MIN_DL and s[3] * KOM >= 0.6 * MIN_DL]
+    scal = [s for s in scal if s[2] - s[1] >= (min_dl or MIN_DL) and s[3] * KOM >= 0.6 * (min_dl or MIN_DL)]
     if os_ == 0: return [((s[1], s[0]), (s[2], s[0])) for s in scal]
     return [((s[0], s[1]), (s[0], s[2])) for s in scal]
 
@@ -98,13 +98,48 @@ def szkielet(Qd, kom=0.03, min_kf_mask=None):
     return wyn
 
 
+def scisnij(Q, os_n, wzdluz=0.35, wpoprz=0.12, rund=2):
+    """Smuge punktow jednego lica (rozmyta przez szum pozycji) sciaga do jej srodka: wspolrzedna wzdluz normalnej
+    zastepuje mediana sasiadow z prostokata wzdluz x wpoprz. Zostawia osobne lica oddalone o wiecej niz ok. 8 cm."""
+    from scipy.spatial import cKDTree
+    Q = Q.copy()
+    sk = np.ones(2); sk[1 - os_n] = wpoprz / wzdluz
+    for _ in range(rund):
+        T = cKDTree(Q * sk)
+        nb = T.query_ball_point(Q * sk, wpoprz)
+        Q[:, os_n] = [np.median(Q[i, os_n]) for i in nb]
+    return Q
+
+
+def lica(Qd, Nd, kat_st=20):
+    """Sciany jako osobne lica: punkty dzielone wg strony, z ktorej byly widziane (normalna do czujnika),
+    wiec dwa lica sciany dzialowej daja dwie linie z jej gruboscia. Lica rownolegle do osi (po prostowaniu
+    katow) -> odcinki; reszta (skosy, luki) -> szkielet. Zwraca (polilinie, typy) - typ 'lico' albo 'inne'."""
+    a = np.degrees(np.arctan2(Nd[:, 1], Nd[:, 0]))
+    wyn, typ = [], []
+    uzyte = np.zeros(len(Qd), bool)
+    for kier, os_ in ((0, 1), (180, 1), (90, 0), (-90, 0)):
+        m = np.abs((a - kier + 180) % 360 - 180) < kat_st
+        uzyte |= m
+        if m.sum() < 20: continue
+        Qc = scisnij(Qd[m], 1 - os_)
+        for p1, p2 in odcinki(Qc, os_, scal_tol=0.05, min_dl=0.3):
+            wyn.append(np.array([p1, p2])); typ.append('lico')
+    reszta = Qd[~uzyte]
+    if len(reszta) > 200:
+        for pl in szkielet(reszta, kom=0.03):
+            wyn.append(pl); typ.append('inne')
+    return wyn, typ
+
+
 def kondygnacja(kf, kt, a, b):
     P, N, ile = [], [], []
     for i, ((Tk, pk, nk), t) in enumerate(zip(kf, kt)):
         if not a <= t <= b: continue
         c, s = np.cos(Tk[2]), np.sin(Tk[2]); R = np.array([[c, s], [-s, c]])
         m = np.isfinite(nk[:, 0]) & (np.hypot(*pk.T) < 7.0)
-        P.append(pk[m] @ R + Tk[:2]); N.append(nk[m] @ R); ile.append(np.full(m.sum(), i))
+        n = nk[m] * np.where(np.sum(nk[m] * pk[m], 1) > 0, -1.0, 1.0)[:, None]   # normalna do czujnika = strona pomieszczenia
+        P.append(pk[m] @ R + Tk[:2]); N.append(n @ R); ile.append(np.full(m.sum(), i))
     return np.vstack(P), np.vstack(N), np.concatenate(ile)
 
 def main():

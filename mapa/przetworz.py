@@ -10,7 +10,7 @@ import numpy as np
 TU = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, TU); sys.path.insert(0, os.path.join(TU, '..'))
 import slam, sprawdz as S
-from eksport_dxf import kierunek, kondygnacja, szkielet, KOM, MIN_KF
+from eksport_dxf import kierunek, kondygnacja, szkielet, lica, KOM, MIN_KF
 
 WERSJA = 1
 
@@ -70,12 +70,13 @@ def przetworz(kat):
         _, odw = np.unique(kom[:, 0] * 1000003 + kom[:, 1], return_inverse=True)
         par = np.unique(np.stack([odw, ile], 1), axis=0)
         widz = np.bincount(par[:, 0], minlength=odw.max() + 1)
-        Qd = Qr[widz[odw] >= MIN_KF]
+        dobre = widz[odw] >= MIN_KF
+        Qd = Qr[dobre]; Nd = (Nn @ R)[dobre]
         if len(Qd) < 200:
             continue
         x0, y0 = Qd.min(0)
         Qd = Qd - [x0, y0]
-        sciany = szkielet(Qd)
+        sciany, typy = lica(Qd, Nd)
         m = (P[:, 0] >= a) & (P[:, 0] <= b)
         tr = P[m, 1:3] @ R - [x0, y0]
 
@@ -104,13 +105,16 @@ def przetworz(kat):
                     pass
             elif r['rodzaj'] == 'przekroj':
                 d_ = dict(x.split('=') for x in opis.split()[1:] if '=' in x)
+                r['nr'] = d_.get('nr', '')
+                if d_.get('nr', '').isdigit():
+                    r['obraz'] = f"przekroj_{int(d_['nr']):02d}.jpg"
                 r['opis'] = f"przekrój {d_.get('nr', '')}: " + (
                     f"{float(d_['a']):.2f} × {float(d_['b']):.2f} m" if d_.get('a') else 'brak wymiarów')
             zm.append(r)
         chm = np.round(Qd[::3] * 100).astype(int)
         kond.append({'nr': nr, 'od': round(a, 1), 'do': round(b, 1), 'poziom': round(float(h), 2),
                      'szer': round(float(Qd[:, 0].max()), 2), 'wys': round(float(Qd[:, 1].max()), 2),
-                     'sciany': [np.round(pl, 3).tolist() for pl in sciany],
+                     'sciany': [np.round(pl, 3).tolist() for pl in sciany], 'typy_scian': typy,
                      'chmura_cm': chm.ravel().tolist(),
                      'trasa': np.round(tr[::3], 2).tolist(), 'znaczniki': zm})
     odrz = {}
@@ -122,12 +126,55 @@ def przetworz(kat):
     with open(os.path.join(wy, 'mapa.json'), 'w', encoding='utf-8') as f:
         json.dump(wynik, f, ensure_ascii=False, separators=(',', ':'))
     dxf_i_podglad(kat)
+    prz = []
     try:
         import przekroje
-        przekroje.zapisz(kat, przekroje.policz(kat, z))
+        prz = przekroje.policz(kat, z)
+        przekroje.zapisz(kat, prz)
     except Exception as e:                 # przekroje sa dodatkiem - blad nie moze zatrzymac mapy
         print('przekroje: blad', e)
+    # wysokosc kondygnacji = mediana wysokosci z przekrojow w jej czasie (do modelu 3D)
+    for k in wynik['kondygnacje']:
+        h = [p['wysokosc'] for p in prz if k['od'] <= p['t'] <= k['do'] and 1.8 < p['wysokosc'] < 4.5]
+        k['wysokosc_m'] = round(float(np.median(h)), 2) if h else None
+        k['wysokosc_zrodlo'] = f'{len(h)} przekrojów' if h else 'brak przekrojów - przyjęto 2,70 m'
+        for r in k['znaczniki']:
+            if r.get('obraz') and not os.path.exists(os.path.join(wy, r['obraz'])):
+                r.pop('obraz')
+    with open(os.path.join(wy, 'mapa.json'), 'w', encoding='utf-8') as f:
+        json.dump(wynik, f, ensure_ascii=False, separators=(',', ':'))
+    model3d(kat)
     return wynik
+
+
+def model3d(kat):
+    """Model 3D z rzutu: kazda sciana wyciagnieta na wysokosc kondygnacji (z przekrojow, inaczej 2,70 m),
+    kondygnacje jedna nad druga wg barometru. Zapis: model3d.obj i model3d.dxf (3DFACE)."""
+    import ezdxf
+    wy = os.path.join(kat, '_wynik')
+    with open(os.path.join(wy, 'mapa.json'), encoding='utf-8') as f:
+        M = json.load(f)
+    nz = nazwy(kat)
+    doc = ezdxf.new('R2010', setup=True); doc.units = ezdxf.units.M
+    doc.layers.add('SCIANY_3D', color=7); doc.layers.add('PODLOGA_3D', color=8)
+    msp = doc.modelspace(); V, F = [], []
+    for k in M['kondygnacje']:
+        if nz.get(str(k['nr']), {}).get('ukryj'):
+            continue
+        k = obrocona(k, nz.get(str(k['nr']), {}).get('obrot') or 0)
+        h = k.get('wysokosc_m') or 2.7
+        z0 = 0.0
+        for pl in k['sciany']:
+            for (x1, y1), (x2, y2) in zip(pl[:-1], pl[1:]):
+                q = [(x1, y1, z0), (x2, y2, z0), (x2, y2, z0 + h), (x1, y1, z0 + h)]
+                msp.add_3dface(q, dxfattribs={'layer': 'SCIANY_3D'})
+                n0 = len(V); V += q; F.append((n0 + 1, n0 + 2, n0 + 3, n0 + 4))
+        msp.add_3dface([(0, 0, z0), (k['szer'], 0, z0), (k['szer'], k['wys'], z0), (0, k['wys'], z0)], dxfattribs={'layer': 'PODLOGA_3D'})
+    doc.saveas(os.path.join(wy, 'model3d.dxf'))
+    with open(os.path.join(wy, 'model3d.obj'), 'w') as f:
+        f.write('# model 3D z pomiaru LiDAR (GOLlidar), metry\n')
+        f.writelines(f'v {x:.3f} {y:.3f} {z:.3f}\n' for x, y, z in V)
+        f.writelines(f'f {a} {b} {c} {d}\n' for a, b, c, d in F)
 
 
 def nazwy(kat):
@@ -207,7 +254,7 @@ def dxf_i_podglad(kat):
 if __name__ == '__main__':
     k = sys.argv[1].rstrip('/')
     if '--tylko-dxf' in sys.argv:
-        dxf_i_podglad(k)
+        dxf_i_podglad(k); model3d(k)
     else:
         W = przetworz(k)
         print(f"{W['sesja']}: {len(W['kondygnacje'])} odcinkow, {W['skanow']} skanow, {W['czas_liczenia_s']} s")
