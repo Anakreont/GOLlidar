@@ -99,8 +99,38 @@ def gniazdo():
     return D(m, *otw)
 
 
+def kolano(kat=35.0):
+    """Kolano zamiast korka: nasuwane NA rurke (kolek M4 przez rurke), gorna plyta pochylona o 'kat' stopni
+    (kopula L2 do przodu = +Y). W plycie srubka 1/4"-20 x 16 mm lbem od srodka - na nia glowica / plytka LiDAR-u.
+    Kable ida rurka, przez kanal w kolanie i wychodza oknem z tylu (-Y). kat = 0 -> plyta pozioma (obecny LiDAR 2D)."""
+    Rz = RURA_D / 2 + LUZ / 2 + 4.0                 # promien zewnetrzny tulei
+    tul = c(0, 0, Rz, 0, 42)
+    a = np.radians(kat)
+    os_ = np.array([0, np.sin(a), np.cos(a)])        # pochylona os gornej czesci
+    p0 = np.array([0, 0, 42.0])                      # punkt obrotu
+    def wzd(r, l0, l1, n=72):                        # walec wzdluz pochylonej osi
+        m = cylinder(radius=r, height=l1 - l0, sections=n)
+        m.apply_transform(trimesh.transformations.rotation_matrix(-a, (1, 0, 0)))
+        m.apply_translation(p0 + os_ * (l0 + l1) / 2); return m
+    def hex_wzd(af, l0, l1):
+        m = cylinder(radius=af / np.sqrt(3), height=l1 - l0, sections=6)
+        m.apply_transform(trimesh.transformations.rotation_matrix(-a, (1, 0, 0)))
+        m.apply_translation(p0 + os_ * (l0 + l1) / 2); return m
+    kula = trimesh.creation.icosphere(subdivisions=4, radius=Rz); kula.apply_translation(p0)
+    gora = wzd(Rz, 0, 30)
+    m = U(tul, kula, gora)
+    otw = [c(0, 0, RURA_D / 2 + LUZ / 2, -1, 36),                       # rurka wchodzi na 36 mm
+           c(0, 0, RURA_DW / 2 - 2, 30, 43),                            # kanal kabli w gore
+           wzd(RURA_DW / 2 - 2, -2, 22),                                # kanal w pochylonej czesci
+           hex_wzd(LEB_14, 18, 24.5), wzd(SR_14 / 2, 24, 31),           # leb sruby 1/4" + trzpien
+           cy(0, 46, 9.0, -Rz - 5, 0),                                  # okno na kable z tylu (-Y)
+           cx(0, 14, SRUBA_ZACISK / 2, -Rz - 1, Rz + 1)]                # kolek M4 przez rurke
+    return D(m, *otw)
+
+
 if __name__ == "__main__":
-    for nazwa, f in (("korek", korek), ("obejma", obejma), ("gniazdo", gniazdo)):
+    for nazwa, f in (("korek", korek), ("obejma", obejma), ("gniazdo", gniazdo),
+                     ("kolano_0", lambda: kolano(0)), ("kolano_35", lambda: kolano(35))):
         m = f()
         assert m.is_watertight, nazwa
         m.export(f"{nazwa}.stl")

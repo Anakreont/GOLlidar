@@ -42,3 +42,9 @@ Rurka aluminiowa Ø40 × 2 mm (6060/6063), ok. 80 cm; kable idą w środku rurki
 
 Wyjście rurki przez otwór Ø42 w górnej ściance (za rączką) z gumową przelotką. Kable przez dławnicę PG9/PG11 obok.
 Przed drukiem zmierz rurkę suwmiarką i popraw `RURA_D`, `RURA_DW` w `tyczka.py`. Druk: PETG, 4 obrysy, wypełnienie 40 %.
+
+## Kolano zamiast korka
+
+`kolano_0.stl` (płyta pozioma – obecny LiDAR 2D) i `kolano_35.stl` (pochylone 35° – kopuła L2 do przodu). Inny kąt: `kolano(kat)` w `tyczka.py`.
+Nasuwane na rurkę na 36 mm, kołek M4 × 60 przez kolano i rurkę. W górnej płycie śruba 1/4"-20 × 16 mm łbem od środka (wkładana przez okno z tyłu), na nią głowica.
+Kable z rurki wychodzą oknem z tyłu (Ø18). Druk tuleją w dół; sufit kanału to most ok. 32 mm – bez podpór zwykle wychodzi, ewentualnie podpory tylko w kanale.
