@@ -133,9 +133,12 @@ def chmura_sesji(kat, **kw):
     z = slam.wczytaj_lub_dekoduj(kat); t0 = int(z['t0'])
     pozi = list(S_.poziomy(S_.wysokosci(os.path.join(kat, 'baro.bin'))))
     seg = kw.pop('segment', None)
-    pet = kw.pop('petle', False); pro = kw.pop('prostuj', True); kw_szlif = kw.pop('szlif', 0); kw.setdefault('rzutuj', False)
+    pet = kw.pop('petle', False); pro = kw.pop('prostuj', True); kw_szlif = kw.pop('szlif', 0); kw_zsz = kw.pop('zszyj', True); kw.setdefault('rzutuj', False)
     P, kf, info, pion = slam.mapa(kat, znak=-1, segmenty=[(b - t0) / 1e9 for a, b, h in pozi[:-1]], dane=z, **kw)
     kt = np.array([P[np.argmin(np.abs(P[:, 1:4] - Tk).sum(1)), 0] for Tk, _, _ in kf])
+    if kw_zsz:
+        Xz = posegraf.zszyj(kf, slam.mapa.frag, slam.mapa.frag_luka, log=print)
+        kf = [(Xz[i], kf[i][1], kf[i][2]) for i in range(len(kf))]
     granice = [(a - t0) / 1e9 for a, b, h in pozi] + [1e12]
     s_ = seg if seg is not None else int(np.argmax([np.sum((kt >= granice[i]) & (kt < granice[i + 1])) for i in range(len(pozi))]))
     idx = np.where((kt >= granice[s_]) & (kt < granice[s_ + 1]))[0]

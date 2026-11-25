@@ -210,3 +210,113 @@ def doszlifuj(kf, rund=2, promien=6.0, log=print):
         X = Xn
         log(f'  szlif {r_ + 1}: poprawiono {len(zm)} skanow, srednio {1000 * np.mean(zm) if zm else 0:.1f} mm')
     return X
+
+
+def _chmura(kf, idx, co=3):
+    P = [swiat(kf[i][0], kf[i][1][::co]) for i in idx]
+    N = []
+    for i in idx:
+        c, s = np.cos(kf[i][0][2]), np.sin(kf[i][0][2])
+        N.append(kf[i][2][::co] @ np.array([[c, s], [-s, c]]))
+    P, N = np.vstack(P), np.vstack(N); m = np.isfinite(N[:, 0])
+    return P[m], N[m]
+
+
+def zszyj(kf, frag, luki=None, v_max=1.2, katy=6.0, poczatek=40, log=print):
+    """Fragmenty trasy rozdzielone luka w sledzeniu (przechyl, brak IMU) dopasowuje sztywno do wczesniejszych
+    fragmentow tej samej kondygnacji po wspolnych scianach. Zasieg szukania rosnie z dlugoscia luki
+    (operator idzie dalej, gdy skaner nie sledzi): 0,5 m + v_max * luka. Dla kazdego obrotu (+-katy st.)
+    przesuniecie z korelacji rastrow (FFT) poczatku fragmentu z wczesniejsza mapa, potem ICP punkt-prosta.
+    Poprawka idzie na caly fragment i wszystkie nastepne. Przyjmowana tylko, gdy wyraznie lepsza i jednoznaczna."""
+    from scipy.spatial import cKDTree
+    from scipy import ndimage
+    from scipy.signal import fftconvolve
+    luki = luki or {}
+    X = np.array([k[0] for k in kf], float)
+    raport = []
+    for seg in np.unique(frag[:, 0]):
+        fr_s = list(dict.fromkeys(frag[frag[:, 0] == seg, 1].tolist()))
+        for f in fr_s[1:]:
+            A_idx = np.where((frag[:, 0] == seg) & (frag[:, 1] < f))[0]
+            B_idx = np.where((frag[:, 0] == seg) & (frag[:, 1] == f))[0]
+            if len(A_idx) < 15 or len(B_idx) < 8:
+                raport.append((int(seg), f, 'za maly')); continue
+            kf = [(X[i], kf[i][1], kf[i][2]) for i in range(len(kf))]
+            A, An = _chmura(kf, A_idx, 2); B, Bn = _chmura(kf, B_idx, 3); B0, _ = _chmura(kf, B_idx[:poczatek], 2)
+            zas = min(0.5 + v_max * float(luki.get(f, 3.0)), 10.0)
+            c0 = X[B_idx[0], :2].copy()
+            kom = 0.05; o = A.min(0) - zas - 1; sh = ((A.max(0) + zas + 1 - o) / kom).astype(int) + 1
+            G = np.ones(sh, bool); ij = ((A - o) / kom).astype(int); G[ij[:, 0], ij[:, 1]] = False
+            DT = np.minimum(ndimage.distance_transform_edt(G) * kom, 0.25)
+            Ar = ndimage.gaussian_filter((~G).astype(float), 1.0)
+            # wolna przestrzen wczesniejszej mapy: komorki, przez ktore przeszly promienie (do 15 cm przed sciana).
+            # Zle dopasowanie kladzie sciany fragmentu w srodku pokoju, ktory byl widziany jako pusty.
+            WOL = np.zeros(sh, bool)
+            for i in A_idx[::2]:
+                T_, p_ = X[i], kf[i][1][::4]
+                Pw = swiat(T_, p_); d_ = np.linalg.norm(p_, axis=1)
+                for f_ in np.arange(0.0, 1.0, 0.02):
+                    q_ = T_[:2] + (Pw - T_[:2]) * f_
+                    mq = d_ * (1 - f_) > 0.15
+                    k = ((q_[mq] - o) / kom).astype(int)
+                    WOL[k[:, 0], k[:, 1]] = True
+            WOL &= G
+            WOL = ndimage.binary_erosion(WOL, iterations=1)
+            rng = np.random.default_rng(0); Bs = B0[rng.choice(len(B0), min(len(B0), 3000), replace=False)]
+            Bc = B[rng.choice(len(B), min(len(B), 4000), replace=False)]
+            def ulamek(th, t, Q, wolne=False):
+                Y = (Q - c0) @ _R(th).T + c0 + t; k = ((Y - o) / kom).astype(int)
+                ok = (k[:, 0] >= 0) & (k[:, 1] >= 0) & (k[:, 0] < sh[0]) & (k[:, 1] < sh[1])
+                d = np.full(len(Y), 0.25); d[ok] = DT[k[ok, 0], k[ok, 1]]
+                hit = float(np.mean(d < 0.06))
+                if not wolne: return hit
+                w_ = np.zeros(len(Y), bool); w_[ok] = WOL[k[ok, 0], k[ok, 1]]
+                return hit - 2.0 * float(np.mean(w_))
+            kand = []
+            for a, Qk in [(a, Q_) for a in np.arange(-katy, katy + 1e-9, 1.0) for Q_ in (Bs, Bc)]:
+                th = np.radians(a); Y = (Qk - c0) @ _R(th).T + c0
+                m0 = Y.min(0); kq = ((Y - m0) / kom).astype(int); shq = kq.max(0) + 1
+                Qr = np.zeros(shq); np.add.at(Qr, (kq[:, 0], kq[:, 1]), 1); Qr = np.minimum(Qr, 2)
+                K = fftconvolve(Ar, Qr[::-1, ::-1], mode='full')
+                # przesuniecie t dla komorki (i,j): o + (i - shq + 1)*kom - m0
+                tx = (o[0] + (np.arange(K.shape[0]) - shq[0] + 1) * kom - m0[0])[:, None]
+                ty = (o[1] + (np.arange(K.shape[1]) - shq[1] + 1) * kom - m0[1])[None, :]
+                # tylko okno +-zasieg (oszczednosc pamieci)
+                wi = np.where(np.abs(tx[:, 0]) <= zas)[0]; wj = np.where(np.abs(ty[0]) <= zas)[0]
+                if len(wi) == 0 or len(wj) == 0: continue
+                K = K[wi[0]:wi[-1] + 1, wj[0]:wj[-1] + 1].copy(); tx = tx[wi[0]:wi[-1] + 1]; ty = ty[:, wj[0]:wj[-1] + 1]
+                K[np.hypot(tx, ty) > zas] = -1
+                for _ in range(4):                                  # kilka maksimow na obrot
+                    i, j = np.unravel_index(np.argmax(K), K.shape)
+                    if K[i, j] <= 0: break
+                    t = np.array([tx[i, 0], ty[0, j]])
+                    kand.append((ulamek(th, t, Bc, True), th, t))
+                    K[np.hypot(tx - t[0], ty - t[1]) < 0.4] = -1
+            kand.sort(key=lambda k: -k[0])
+            s0 = ulamek(0.0, np.zeros(2), Bc, True)
+            best = kand[0]
+            drugi = max([k[0] for k in kand[1:] if np.hypot(*(k[2] - best[2])) > 0.4] + [0.0])
+            th, t = best[1], best[2].copy()
+            tree = cKDTree(A)
+            for it in range(30):
+                Y = (B - c0) @ _R(th).T + c0 + t
+                d, j = tree.query(Y, distance_upper_bound=0.15 if it < 10 else 0.08)
+                m = np.isfinite(d)
+                if m.sum() < 50: break
+                n = An[j[m]]; r = np.sum((Y[m] - A[j[m]]) * n, 1); wv = 1 / np.maximum(np.abs(r), 0.01)
+                Yc = Y[m] - c0 - t
+                Jm = np.stack([n[:, 0], n[:, 1], n[:, 1] * Yc[:, 0] - n[:, 0] * Yc[:, 1]], 1)
+                H = (Jm * wv[:, None]).T @ Jm; g = (Jm * wv[:, None]).T @ r
+                dx = -np.linalg.solve(H + 1e-6 * np.eye(3), g)
+                t = t + dx[:2]; th += dx[2]
+                if np.abs(dx).max() < 1e-5: break
+            s1 = ulamek(th, t, Bc, True)
+            ok_ = (s1 > s0 + 0.10) and (s1 > 0.15) and (best[0] - drugi > 0.15)
+            raport.append((int(seg), f, f'luka {luki.get(f, 0):.1f} s, zasieg {zas:.1f} m: {s0*100:.0f}% -> {s1*100:.0f}% (drugie {drugi*100:.0f}%), '
+                           f'popr {100*t[0]:+.0f},{100*t[1]:+.0f} cm {np.degrees(th):+.1f} st. ' + ('PRZYJETA' if ok_ else 'odrzucona')))
+            if not ok_: continue
+            dal_idx = np.where((frag[:, 0] == seg) & (frag[:, 1] >= f))[0]
+            X[dal_idx, :2] = (X[dal_idx, :2] - c0) @ _R(th).T + c0 + t
+            X[dal_idx, 2] += th
+    for r in raport: log(f'  zszywanie kond.{r[0]} fragm.{r[1]}: {r[2]}')
+    return X

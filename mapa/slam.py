@@ -5,7 +5,9 @@ sys.path.insert(0, __import__('os').path.join(__import__('os').path.dirname(__im
 
 # parametry dopasowania (strojone na rzucie CAD domu Piotra, sesja 25.11 18:57)
 PAR = dict(imu_w=200.0, promien=8.0, kf_dl=0.25, kf_kat=8.0, co_ktory=2, przechyl_max=12.0, huber=0.03, max_d=0.3,
-           intens=0.3, sub_max=150, iters=15)
+           intens=0.3, sub_max=150, iters=15, luka_s=2.0, luka_frac=0.6, luka_rms=0.05)
+LOG_LUK = []
+TEST_LUKI = []   # testy: [(t_od, czas_s, dx, dy, dth_st)] - wyciecie skanow i sztuczny blad pozycji po luce
 
 
 def wczytaj(kat):
@@ -151,6 +153,7 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segme
     T = np.zeros(3); v = np.zeros(2); ostT = None; yaw_ost = None
     seg_ost = None; kfw = []   # kluczowe w ukladzie swiata (punkty, normalne, pozycja, segment)
     pauzy = przerwy(kat, int(z['t0'])); po_pauzie = False
+    frag = []; frag_luka = {}; fr_id = 0; t_ok = None; zaburz = None   # fragmenty: nowy po luce w sledzeniu (nie po PAUZIE)
     for (tt, ang, D) in sk:
         tm = tt.mean()
         if tm < t_od or tm > t_do: continue
@@ -161,16 +164,22 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segme
             kf_seg = []; seg_ost = seg
         pz = np.interp(tt, ti, prz)
         if pz.max() > PAR['przechyl_max']: info.append((tm, 'przechyl')); continue
+        tl_ = [l for l in TEST_LUKI if l[0] <= tm <= l[0] + l[1]]
+        if tl_: info.append((tm, 'test')); zaburz = tl_[0]; continue
         yp = np.interp(tt, ti, yaw); ym = np.interp(tm, ti, yaw)
         a = -ang + znak * (yp - ym)              # LD19 zgodnie z zegarem -> matematycznie przeciwnie; deskew obrotu
         p = np.stack([D * np.cos(a), D * np.sin(a)], 1)
         w = np.exp(-(pz.mean() ** 2) / (2 * 8 ** 2))
         def dodaj_kf():
             n = normalne(p); mk = np.isfinite(n[:, 0]); c, s_ = np.cos(T[2]), np.sin(T[2]); Rm = np.array([[c, s_], [-s_, c]])
-            kf.append((T.copy(), p, n)); kf_seg.append((T.copy(), p[mk] @ Rm + T[:2], n[mk] @ Rm))
+            kf.append((T.copy(), p, n)); frag.append((seg, fr_id)); kf_seg.append((T.copy(), p[mk] @ Rm + T[:2], n[mk] @ Rm))
         if not kf_seg:
-            dodaj_kf(); poses.append((tm, *T, w)); yaw_ost = ym; continue
+            dodaj_kf(); poses.append((tm, *T, w)); yaw_ost = ym; t_ok = tm; continue
         dth = znak * (ym - yaw_ost)
+        if zaburz is not None:
+            T = T + np.array([zaburz[2], zaburz[3], np.radians(zaburz[4])]); zaburz = None
+        luka = (not po_pauzie and t_ok is not None and tm - t_ok > PAR['luka_s'])
+        if luka: v = np.zeros(2)
         T0 = np.array([T[0] + v[0], T[1] + v[1], T[2] + dth])
         poz = np.array([x[0][:2] for x in kf_seg])
         bl = np.where(np.hypot(*(poz - T0[:2]).T) < promien)[0]
@@ -190,12 +199,32 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segme
             Tn, rms, ev, frac = wyn
         else:
             wyn = icp(ps, P, N, tree, T0, prior=(T0[2], imu_w), huber=PAR['huber'], max_d=PAR['max_d'], iters=PAR['iters'])
+            if luka:
+                # po luce w sledzeniu (przechyl, brak IMU): sprawdzamy, czy skan pewnie pasuje do starej mapy.
+                # Jesli nie - nie doklejamy na sile (to przesuwalo kuchnie/korytarz), tylko zaczynamy nowy
+                # fragment od zera; fragmenty zszywa potem posegraf.zszyj po wspolnych scianach.
+                q = None if wyn is None else (wyn[3], wyn[1], float(np.linalg.norm(wyn[0][:2] - T0[:2])))
+                if q is not None:
+                    # jednoznacznosc: start z +-0,5 m nie moze dawac innej, rownie dobrej pozycji (rownolegle sciany)
+                    for ddx, ddy in ((0.5, 0), (-0.5, 0), (0, 0.5), (0, -0.5)):
+                        r_ = icp(ps, P, N, tree, T0 + [ddx, ddy, 0], prior=(T0[2], imu_w), huber=PAR['huber'], max_d=0.6, iters=25)
+                        if (r_ is not None and np.linalg.norm(r_[0][:2] - wyn[0][:2]) > 0.15 and r_[3] > wyn[3] - 0.05
+                                and r_[1] < 1.5 * wyn[1] + 0.005):
+                            q = (q[0], q[1], q[2], 'niejednoznaczne'); break
+                LOG_LUK.append((tm, tm - t_ok, q))
+                if q is None or len(q) > 3 or q[0] < PAR['luka_frac'] or q[1] > PAR['luka_rms'] or q[2] > 0.5 + 0.6 * (tm - t_ok):
+                    fr_id += 1; info.append((tm, 'fragment')); frag_luka[fr_id] = tm - t_ok
+                    # start fragmentu w najlepszej znanej pozycji (wynik ICP, jesli byl) - zszywanie zmienia ja
+                    # tylko wtedy, gdy znajdzie wyraznie lepsze i jednoznaczne dopasowanie
+                    T = wyn[0].copy() if wyn is not None else np.array([T[0], T[1], T0[2]]); kf_seg = []
+                    dodaj_kf(); poses.append((tm, *T, w)); yaw_ost = ym; t_ok = tm; continue
             if wyn is None: info.append((tm, 'icp')); continue
             Tn, rms, ev, frac = wyn
             if frac < 0.3 or np.linalg.norm(Tn[:2] - T0[:2]) > 0.4: info.append((tm, 'skok')); Tn = T0
-        v = 0.5 * v + 0.5 * (Tn[:2] - T[:2]); T = Tn; yaw_ost = ym
+        v = 0.5 * v + 0.5 * (Tn[:2] - T[:2]); T = Tn; yaw_ost = ym; t_ok = tm
         poses.append((tm, *T, w))
         Tk = kf_seg[-1][0]
         if np.hypot(*(T[:2] - Tk[:2])) > PAR['kf_dl'] or abs(T[2] - Tk[2]) > np.radians(PAR['kf_kat']):
             dodaj_kf()
+    mapa.frag = np.array(frag, int).reshape(-1, 2); mapa.frag_luka = frag_luka
     return np.array(poses), kf, info, pion
