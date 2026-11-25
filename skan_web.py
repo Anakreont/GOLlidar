@@ -14,7 +14,7 @@ Na stronie: podglad biezacego obrotu LiDAR-u, przechyl, wysokosc, stan zapisu, p
 Start / Stop / Znacznik. Dane zapisywane sa w tym samym formacie co skan_log.py:
 ~/skany/<data>_<nazwa>/{lidar.bin,imu.bin,baro.bin,info.txt,znaczniki.txt}
 """
-import argparse, json, math, os, re, shutil, struct, subprocess, sys, threading, time
+import argparse, collections, json, math, os, re, shutil, struct, subprocess, sys, threading, time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -47,7 +47,50 @@ STAN = {
     "prz_nr": 0,               # liczba przekrojow w sesji
     "prz_wynik": "",           # wymiary ostatniego przekroju (szacunek na zywo)
     "prz_skany": [],           # obroty zebrane podczas trzymania
+    "pion0": (0.0, 0.0),       # pitch, roll zmierzone przy tyczce w pionie (montaz BNO wzgledem LiDAR-u)
+    "ip": "",
 }
+PLIK_PION0 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "imu_zero.json")
+IMU_HIST = collections.deque(maxlen=200)   # ostatnie 2 s (pitch, roll) do zerowania pionu
+
+
+def wczytaj_pion0():
+    try:
+        with open(PLIK_PION0) as f:
+            d = json.load(f)
+        STAN["pion0"] = (float(d["pitch0"]), float(d["roll0"]))
+    except (OSError, ValueError, KeyError):
+        pass
+
+
+def zeruj_pion():
+    """Zapamietuje srednie pitch/roll z ostatnich 2 s jako pion; surowe dane w imu.bin zostaja bez zmian."""
+    with LOCK:
+        h = list(IMU_HIST)
+    if len(h) < 100:
+        return None, "Brak danych z IMU"
+    p = [x[0] for x in h]; r = [x[1] for x in h]
+    if max(p) - min(p) > 1.5 or max(r) - min(r) > 1.5:
+        return None, "Za duży ruch – postaw tyczkę pionowo i nie ruszaj 2 s"
+    p0, r0 = sum(p) / len(p), sum(r) / len(r)
+    if math.hypot(p0, r0) > 20:
+        return None, f"Odchylenie {math.hypot(p0, r0):.0f}° – za duże jak na pion, sprawdź montaż"
+    with LOCK:
+        STAN["pion0"] = (p0, r0)
+    with open(PLIK_PION0, "w") as f:
+        json.dump({"pitch0": round(p0, 2), "roll0": round(r0, 2), "kiedy": datetime.now().isoformat()}, f)
+    znacznik(f"IMU_PION0 pitch0={p0:.2f} roll0={r0:.2f}", licz=False)
+    return (p0, r0), None
+
+
+def adres_ip():
+    while not KONIEC.is_set():
+        try:
+            ip = subprocess.run(["hostname", "-I"], capture_output=True, text=True, timeout=3).stdout.split()
+            STAN["ip"] = " ".join(a for a in ip if ":" not in a)
+        except (OSError, subprocess.SubprocessError):
+            pass
+        KONIEC.wait(10)
 PROG_PRZECHYLU = 15.0          # stopnie; powyzej tego skany sa oznaczane jako do pominiecia
 PRZ_WEJSCIE, PRZ_WYJSCIE = 60.0, 45.0   # przekroj pionowy: glowica polozona (60-125 st.), koniec ponizej 45 st.
 PRZ_MAX = 125.0
@@ -231,8 +274,10 @@ def watek_imu(port, baud):
                         del buf[:19]
                         with LOCK:
                             STAN["yaw"], STAN["pitch"], STAN["roll"] = yaw / 100, pitch / 100, roll / 100
-                            m = math.degrees(math.acos(max(-1.0, min(1.0, math.cos(math.radians(pitch / 100)) *
-                                                                         math.cos(math.radians(roll / 100))))))
+                            IMU_HIST.append((pitch / 100, roll / 100))
+                            p0, r0 = STAN["pion0"]
+                            m = math.degrees(math.acos(max(-1.0, min(1.0, math.cos(math.radians(pitch / 100 - p0)) *
+                                                                         math.cos(math.radians(roll / 100 - r0))))))
                             STAN["przechyl"] = m
                             if STAN["nagrywa"]:
                                 STAN["max_przechyl"] = max(STAN["max_przechyl"], m)
@@ -358,7 +403,8 @@ def start(budynek, kondygnacja):
         with open(os.path.join(kat, "info.txt"), "w") as f:
             f.write(f"nazwa={nazwa}\nbudynek={budynek}\nkondygnacja={kondygnacja}\nstart={datetime.now().isoformat()}\n"
                     f"lidar={ARGS.lidar}@{ARGS.lidar_baud}\nimu={ARGS.imu}@{ARGS.imu_baud}\n"
-                    f"baro=0x{ARGS.baro_adres:02x}\nlidar2={ARGS.lidar2 or ''}\nlidar_poziomy={STAN['podglad']}\n")
+                    f"baro=0x{ARGS.baro_adres:02x}\nlidar2={ARGS.lidar2 or ''}\nlidar_poziomy={STAN['podglad']}\n"
+                    f"imu_pitch0={STAN['pion0'][0]:.2f}\nimu_roll0={STAN['pion0'][1]:.2f}\n")
         for s in ("lidar", "imu", "baro") + (("lidar2",) if ARGS.lidar2 else ()):
             PLIKI[s] = open(os.path.join(kat, s + ".bin"), "ab")
             STAN["bajty"][s] = 0
@@ -967,6 +1013,9 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
  <div class="k"><small>Max przechył w sesji</small><b id="prz2">–</b><small id="wys2"></small></div></div>
 <div class="w" id="l2" style="display:none"><div class="k"><small>Drugi LiDAR (pionowy)</small><b id="l2s">–</b></div>
  <button class="sz" onclick="if(confirm('Zamienić role LiDAR-ów? Podgląd w zakładce Skan ma pokazywać ten poziomy.'))cmd('zamien_lidary')">Zamień poziomy / pionowy</button></div>
+<div class="w"><div class="k"><small>Adres strony</small><b id="ip">–</b></div>
+ <div class="k"><small>Pion IMU (pitch / roll)</small><b id="p0">–</b></div></div>
+<div class="w"><button class="sz" onclick="if(confirm('Tyczka stoi pionowo i nieruchomo?'))cmd('zeruj_pion',()=>alert('Pion zapisany'))">Zeruj pion (tyczka pionowo, 2 s)</button></div>
 <div class="w"><button class="sz" onclick="if(confirm('Zerować wysokość w tym miejscu?'))cmd('zeruj')">Zeruj wysokość</button>
  <button class="sz" onclick="if(confirm('Zatrzymać zapis i wyłączyć Raspberry Pi?'))cmd('wylacz')">Wyłącz RPi</button></div>
 </section>
@@ -1115,6 +1164,7 @@ function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);przekroj(s);
  $('l2').style.display=s.lidar2_wl?'':'none';if(s.lidar2_wl)kl($('l2s'),s.lidar2_ok?'działa':'BRAK',s.lidar2_ok?'ok':'zle');
  if(s.pitch===null){kl($('prz'),s.imu_wl?'BRAK':'wył.',s.imu_wl?'zle':'')}else{const m=s.przechyl;kl($('prz'),m.toFixed(1)+'°',m>15?'zle':m>8?'uw':'ok')}
  $('prz2').textContent=s.max_przechyl.toFixed(1)+'°';
+ $('ip').textContent=s.ip?s.ip.split(' ')[0]+':8080':'–';$('p0').textContent=s.pion0[0].toFixed(1)+'° / '+s.pion0[1].toFixed(1)+'°';
  if(s.wys===null){kl($('wys'),s.baro_wl?'BRAK':'wył.',s.baro_wl?'zle':'');$('wys2').textContent=''}else{kl($('wys'),(s.wys>=0?'+':'')+s.wys.toFixed(1)+' m');$('wys2').textContent='temp. '+s.temp.toFixed(0)+' °C'}
  $('roz').textContent=(s.rozmiar/1e6).toFixed(1)+' MB';$('zn').textContent='znaczniki: '+s.znaczniki+(s.prz_nr?' · przekroje: '+s.prz_nr:'');$('ses').textContent=(s.nazwa||'')+(s.nagrywa&&s.kondygnacja?' · kond. '+s.kondygnacja:'');
  kl($('dysk'),(s.wolne/1e9).toFixed(1)+' GB',s.wolne<1e9?'zle':'ok');
@@ -1154,7 +1204,8 @@ class Handler(BaseHTTPRequestHandler):
                 s = {k: STAN[k] for k in ("nagrywa", "nazwa", "hz", "pkt_obrot", "yaw", "pitch", "roll",
                                           "max_przechyl", "wys", "temp", "znaczniki", "komunikat", "pauza", "auto_pauza",
                                           "przechyl", "prz_faza", "prz_zostalo", "prz_nr", "prz_wynik",
-                                          "budynek", "kondygnacja")}
+                                          "budynek", "kondygnacja", "ip")}
+                s["pion0"] = [round(v, 1) for v in STAN["pion0"]]
                 s["obrot"] = STAN["obrot"]
                 s["pom"] = STAN["pom"][-5:]
                 s["grz"] = STAN["grz"][-5:]
@@ -1281,6 +1332,9 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 STAN["p0"] = None
             self._json({"ok": True})
+        elif u.path == "/zeruj_pion":
+            w, blad = zeruj_pion()
+            self._json({"blad": blad} if blad else {"ok": True, "pitch0": round(w[0], 1), "roll0": round(w[1], 1)})
         elif u.path == "/wylacz":
             stop()
             self._json({"ok": True})
@@ -1306,7 +1360,8 @@ def main():
     os.makedirs(ARGS.katalog, exist_ok=True)
     if ARGS.lidar2 == "auto":
         ARGS.lidar2 = "/dev/ttyUSB1" if os.path.exists("/dev/ttyUSB1") and ARGS.lidar != "/dev/ttyUSB1" else ""
-    watki = [(watek_lidar, (ARGS.lidar, ARGS.lidar_baud)), (watek_flush, ())]
+    wczytaj_pion0()
+    watki = [(watek_lidar, (ARGS.lidar, ARGS.lidar_baud)), (watek_flush, ()), (adres_ip, ())]
     if ARGS.lidar2:
         watki.append((watek_lidar, (ARGS.lidar2, ARGS.lidar_baud, "lidar2")))
         if ustawienia().get("podglad") in ("lidar", "lidar2"):

@@ -181,13 +181,34 @@ def main():
     if os.path.exists(ip):
         r = list(ramki_rvc(ip))
         if r:
-            pit = [abs(x[2]) for x in r]
-            rol = [abs(x[3]) for x in r]
-            print(f"IMU: {len(r)} ramek ({len(r) / max(czas, 1):.0f} Hz), "
-                  f"przechyl sredni {sum(pit) / len(pit):.1f} / {sum(rol) / len(rol):.1f} st., "
-                  f"max {max(pit):.1f} / {max(rol):.1f} st.")
-            if max(max(pit), max(rol)) > 8:
-                print("  UWAGA: przechyly powyzej 8 st. - trzymaj tyczke bardziej pionowo.")
+            p0 = r0 = None
+            try:
+                with open(os.path.join(kat, "info.txt")) as f:
+                    info = dict(l.strip().split("=", 1) for l in f if "=" in l)
+                p0, r0 = float(info["imu_pitch0"]), float(info["imu_roll0"])
+            except (OSError, KeyError, ValueError):
+                pass
+            zrodlo = "z info.txt (Zeruj pion)"
+            if p0 is None or (p0 == 0 and r0 == 0):
+                # brak zerowania: pion = mediana z pierwszych 10 s (nagranie zaczyna sie od postoju)
+                pocz = [x for x in r if x[0] - r[0][0] < 10e9]
+                p0 = sorted(x[2] for x in pocz)[len(pocz) // 2]
+                r0 = sorted(x[3] for x in pocz)[len(pocz) // 2]
+                zrodlo = "szacunek z pierwszych 10 s - zrob 'Zeruj pion' przed nagraniem"
+            prz = [math.degrees(math.acos(max(-1.0, min(1.0, math.cos(math.radians(x[2] - p0)) *
+                                                                 math.cos(math.radians(x[3] - r0)))))) for x in r]
+            chod = sorted(m for m in prz if m < 45)          # bez przekrojow pionowych (glowica polozona)
+            n = len(chod) or 1
+            print(f"IMU: {len(r)} ramek ({len(r) / max(czas, 1):.0f} Hz), pion pitch {p0:+.1f} / roll {r0:+.1f} st. ({zrodlo})")
+            if chod:
+                print(f"  przechyl od pionu (bez przekrojow): mediana {chod[n // 2]:.1f}, 95% < {chod[int(n * .95)]:.1f}, "
+                      f"max {chod[-1]:.1f} st.; > 8 st.: {100 * sum(m > 8 for m in chod) / n:.0f}%, "
+                      f"> 12 st.: {100 * sum(m > 12 for m in chod) / n:.0f}%")
+                if chod[int(n * .95)] > 8:
+                    print("  UWAGA: duzo skanow z przechylem > 8 st. - trzymaj tyczke bardziej pionowo.")
+            yaw = [x[1] for x in r if x[0] - r[0][0] < 120e9]
+            if len(yaw) > 100:
+                print(f"  yaw w pierwszych 2 min: od {min(yaw):+.1f} do {max(yaw):+.1f} st. (przy postoju = dryf)")
         else:
             print("IMU: plik jest, ale brak poprawnych ramek RVC (sprawdz zworke PS0 i baud 115200).")
     bp = os.path.join(kat, "baro.bin")
