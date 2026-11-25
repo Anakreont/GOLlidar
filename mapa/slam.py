@@ -17,7 +17,7 @@ def wczytaj_lub_dekoduj(kat):
     os.makedirs(os.path.dirname(p), exist_ok=True)
     return dekoduj(kat, p)
 
-def obroty(z, rmin=0.15, rmax=9.0):
+def obroty(z, rmin=0.3, rmax=9.0):
     """Dzieli pakiety na obroty; kazdy punkt z czasem z interpolacji wewnatrz pakietu."""
     a0, a1, d, tl = z['a0'], z['a1'], z['d'], z['tl']
     krok = ((a1 - a0) % 360) / 11
@@ -30,6 +30,9 @@ def obroty(z, rmin=0.15, rmax=9.0):
     for g in gr[1:-1]:
         A, D, Tt = ang[g].ravel(), d[g].ravel(), tp[g].ravel()
         m = (D > rmin) & (D < rmax)
+        # operator: glowa/plecak/tyczka widziane z tylu glowicy (kat 130-230 st., < 0,7 m) poruszaja sie razem
+        # z czujnikiem - zatruwaja dopasowanie, wiec ten wycinek odrzucamy
+        m &= ~((D < 0.7) & (A > 130) & (A < 230))
         if m.sum() < 150: continue
         out.append((Tt[m], np.radians(A[m]), D[m]))
     return out
