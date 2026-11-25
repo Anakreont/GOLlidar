@@ -65,8 +65,8 @@ def korek():
 def obejma():
     """Obejma na sciane skrzyni: plyta przykrecana 4 srubami M5 przez sciane (od zewnatrz duze podkladki),
     zacisk rurki 2 srubami M4. Druk: plyta pionowo, otwor na rurke pionowo (tak jak lezy w modelu)."""
-    H = 44.0; y0 = OD_SCIANY; R = (RURA_D + LUZ) / 2
-    P = R + 12
+    H = 60.0; y0 = OD_SCIANY; R = (RURA_D + LUZ) / 2
+    P = R + 5 + 16                                                   # sruby M5 7 mm od korpusu zacisku
     plyta = b(-P, P, 0, 5, 0, H)
     blok = b(-R - 5, R + 5, 0, y0, 0, H)
     piers = c(0, y0, R + 5, 0, H)
@@ -74,12 +74,12 @@ def obejma():
     m = U(plyta, blok, piers, uszy)
     otw = [c(0, y0, R, -1, H + 1),                                   # rurka
            b(-1.2, 1.2, y0, y0 + R + 14, -1, H + 1)]                 # szczelina zacisku
-    for z in (11, H - 11):
+    for z in (13, H - 13):
         otw += [cx(y0 + R + 6.5, z, SRUBA_ZACISK / 2, -11, 11),     # sruba zaciskowa M4
                 hexx(y0 + R + 6.5, z, NAKR_M4, 6.5, 11),            # nakretka M4
                 cx(y0 + R + 6.5, z, 4.2, -11, -6.5)]                # leb sruby
-    for x in (-(P - 6), P - 6):
-        for z in (8, H - 8):
+    for x in (-(P - 8), P - 8):
+        for z in (9, H - 9):
             otw += [cy(x, z, SRUBA_SCIANA / 2, -1, 6)]               # M5 przez sciane skrzyni
     return D(m, *otw)
 
@@ -88,13 +88,13 @@ def gniazdo():
     """Kubek na dno skrzyni: rurka stoi w nim i opiera sie o dno kubka. Plyta 4 x M5 przez dno skrzyni.
     Uklad: sciana skrzyni w Y = 0, os rurki w Y = OD_SCIANY (tak samo jak w obejmie)."""
     y0 = OD_SCIANY; R = (RURA_D + LUZ) / 2
-    P = R + 12
-    plyta = b(-P, P, 1.0, y0 + R + 14, 0, 5)
+    P = R + 4 + 16
+    plyta = b(-P, P, 1.0, y0 + R + 18, 0, 5)
     kubek = c(0, y0, R + 4, 0, 33)
     m = U(plyta, kubek)
     otw = [c(0, y0, R, 4, 34)]                                       # rurka (dno kubka 4 mm)
-    for x in (-(P - 6), P - 6):
-        for y in (7, y0 + R + 8):
+    for x in (-(P - 8), P - 8):
+        for y in (8, y0 + R + 10):
             otw += [c(x, y, SRUBA_SCIANA / 2, -1, 6)]
     return D(m, *otw)
 
