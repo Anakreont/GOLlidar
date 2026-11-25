@@ -252,7 +252,9 @@ class H(BaseHTTPRequestHandler):
                 dane = f.read()
             nz = json.dumps(__import__('json').load(open(os.path.join(k, '_wynik', 'nazwy.json'), encoding='utf-8'))
                             if os.path.exists(os.path.join(k, '_wynik', 'nazwy.json')) else {}, ensure_ascii=False)
-            return self._wyslij(200, 'application/json; charset=utf-8', b'{"mapa":' + dane + b',"nazwy":' + nz.encode() + b'}')
+            pk = os.path.join(k, 'kontrola.json')
+            ko = open(pk, 'rb').read() if os.path.exists(pk) else b'[]'
+            return self._wyslij(200, 'application/json; charset=utf-8', b'{"mapa":' + dane + b',"nazwy":' + nz.encode() + b',"kontrola":' + ko + b'}')
         if u.path == '/plik':
             f = q.get('f', '')
             if not k or not PLIK_RE.match(f):
@@ -328,6 +330,17 @@ class H(BaseHTTPRequestHandler):
             if os.path.exists(cel):
                 cel += time.strftime('_%Y%m%d%H%M%S')
             shutil.move(k, cel)
+            return self._json({'ok': True})
+        if u.path == '/api/kontrola':
+            dl = int(self.headers.get('Content-Length') or 0)
+            try:
+                L = json.loads(self.rfile.read(min(dl, 200000)) or b'[]')
+                L = [{'seg': int(x['seg']), 'a': [float(v) for v in x['a'][:2]], 'b': [float(v) for v in x['b'][:2]],
+                      'laser_m': float(x['laser_m']), 'opis': str(x.get('opis', ''))[:80], 'kiedy': str(x.get('kiedy', ''))[:30]} for x in L]
+            except (ValueError, KeyError, TypeError):
+                return self._json({'blad': 'zle dane'}, 400)
+            with open(os.path.join(k, 'kontrola.json'), 'w', encoding='utf-8') as f:
+                json.dump(L, f, ensure_ascii=False)
             return self._json({'ok': True})
         if u.path == '/api/nazwy':
             dl = int(self.headers.get('Content-Length') or 0)

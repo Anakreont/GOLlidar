@@ -53,7 +53,14 @@ def przetworz(kat):
     for s_ in range(len(pozi)):
         idx = np.where((kt >= granice[s_]) & (kt < granice[s_ + 1]))[0]
         if len(idx) > 20:
-            X[idx] = posegraf.prostuj([kf[i] for i in idx])
+            sub = [kf[i] for i in idx]
+            try:                              # zamykanie petli w obrebie kondygnacji (rozne pietra nakladaja sie w 2D)
+                Xg, L = posegraf.graf(sub, kt[idx], log=lambda *a: None)
+                print(f'  petle: {len(L)}')
+                sub = [(Xg[j], sub[j][1], sub[j][2]) for j in range(len(sub))]
+            except Exception as e:
+                print('  petle: blad', e)
+            X[idx] = posegraf.prostuj(sub)
     P = posegraf.przenies(P, kt, X0, X)
     kf = [(X[i], kf[i][1], kf[i][2]) for i in range(len(kf))]
     zn = _znaczniki(kat, t0)
@@ -141,7 +148,7 @@ def przetworz(kat):
             if not p or not p.get('szerokosc'):
                 continue
             best = None
-            for dk in (90.0, 0.0):
+            for dk in (90.0,):     # przy polozonej glowicy kierunek 0 st. LD19 patrzy w dol, wiec przekroj lezy wzdluz osi 90/270 st. (w poprzek przodu)
                 a_ = np.radians(r['kier'] + dk); u = np.array([np.cos(a_), np.sin(a_)])
                 d = (Qd - [r['x'], r['y']]); wz = d @ u; pp = np.abs(d @ [-u[1], u[0]])
                 m = pp < 0.06
@@ -152,7 +159,7 @@ def przetworz(kat):
                 szer = dp + dm
                 if best is None or abs(szer - p['szerokosc']) < abs(best[0] - p['szerokosc']):
                     best = (szer, dk, u, dp, dm)
-            if best:
+            if best and abs(best[0] / p['szerokosc'] - 1) < 0.10:   # wieksza roznica = obrot tyczki przy przekroju albo skosy - linii nie rysujemy
                 szer, dk, u, dp, dm = best
                 r['linia'] = [[round(r['x'] - u[0] * dm, 2), round(r['y'] - u[1] * dm, 2)], [round(r['x'] + u[0] * dp, 2), round(r['y'] + u[1] * dp, 2)]]
                 r['szer_rzut'] = round(float(szer), 3); r['szer_przekroj'] = p['szerokosc']

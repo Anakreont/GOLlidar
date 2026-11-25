@@ -114,7 +114,7 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
 <div id="modal" onclick="if(event.target===this)zamknij()"><div class="okno" id="mokno"></div></div>
 <script>
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let L=[],S=null,M=null,NZ={},seg=0,wid={x:0,y:0,s:50},wyb=null,rozwin={};
+let L=[],S=null,M=null,NZ={},KO=[],tryb=null,pA=null,seg=0,wid={x:0,y:0,s:50},wyb=null,rozwin={};
 const KOL={foto:'#2563eb',przekroj:'#9333ea',punkt:'#ea580c',notatka:'#16a34a',oprawy:'#0891b2',grzejnik:'#dc2626',okno:'#ca8a04'};
 const NAZ={sciany:'Ściany',chmura:'Chmura punktów',trasa:'Trasa',foto:'Zdjęcia',przekroj:'Przekroje',punkt:'Punkty',notatka:'Notatki',oprawy:'Oprawy',grzejnik:'Grzejniki',okno:'Okna'};
 const ZNAK={foto:'📷',przekroj:'⊥',punkt:'•',notatka:'✎',oprawy:'💡',grzejnik:'♨',okno:'▭'};
@@ -141,7 +141,7 @@ function oproznijKosz(){if(confirm('Opróżnić kosz? Tego nie da się cofnąć.
 function czysc(){$('nag').innerHTML='<div class="tyt"><b>Wybierz nagranie z listy</b></div>';$('panel').innerHTML='';rys()}
 // ---------------------------------------------------------------- sesja
 function otworz(n){fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{S=d;S.n=n;M=null;wyb=null;rysujListe();naglowek();galeria();przekroje();znaczniki();inwent();pliki();
- fetch('api/mapa?n='+n).then(r=>r.ok?r.json():null).then(j=>{if(j){M=j.mapa;NZ=j.nazwy||{};seg=0;}else M=null;panel();warstwy();dopasuj();rys();if($('w3d').classList.contains('akt'))tryb3d()})})}
+ fetch('api/mapa?n='+n).then(r=>r.ok?r.json():null).then(j=>{if(j){M=j.mapa;NZ=j.nazwy||{};KO=j.kontrola||[];seg=0;}else{M=null;KO=[]}panel();warstwy();dopasuj();rys();if($('w3d').classList.contains('akt'))tryb3d()})})}
 function naglowek(){const i=S.info,ma=S.wyniki.includes('_wynik/rzut.dxf');
  $('nag').innerHTML='<div class="tyt"><b>'+esc(i.budynek||'?')+' › '+esc(i.kondygnacja||'?')+'</b><div>'+esc((i.start||'').replace('T',' ').slice(0,16))+' · '+esc(S.n)+' · <span class="pill '+esc(S.stan)+'">'+esc(S.stan)+'</span></div></div>'+
  (ma?'<a class="btn gl" href="'+plik('_wynik/rzut.dxf')+'">⬇ Rzut DXF</a>':'')+
@@ -164,7 +164,21 @@ function panel(){if(!M){$('panel').innerHTML='<h3>Mapa</h3><p class="mala">Stan:
  '<div class="rzad"><button class="btn gl" onclick="zapisz()">Zapisz nazwę i obrót</button></div><div class="mala">Zapis zmienia też pliki DXF i model 3D.</div>'+
  '<h3>Podsumowanie</h3><div class="stat"><div><b>'+k.szer.toFixed(1)+' × '+k.wys.toFixed(1)+' m</b>obrys</div><div><b>'+(k.wysokosc_m?k.wysokosc_m.toFixed(2)+' m':'–')+'</b>wysokość</div>'+
  '<div><b>'+zn.filter(r=>r.rodzaj=='foto').length+'</b>zdjęć</div><div><b>'+zn.filter(r=>r.rodzaj=='przekroj').length+'</b>przekrojów</div></div>'+
- '<p class="mala">'+esc(k.wysokosc_zrodlo||'')+' · policzono '+esc(M.policzono)+'</p>'}
+ '<p class="mala">'+esc(k.wysokosc_zrodlo||'')+' · policzono '+esc(M.policzono)+'</p>'+panelKontrola()}
+function odl(m){return Math.hypot(m.b[0]-m.a[0],m.b[1]-m.a[1])}
+function statKontrola(L_){if(!L_.length)return null;const e=L_.map(m=>odl(m)-m.laser_m),n=e.length,me=e.reduce((a,b)=>a+b,0)/n,mae=e.reduce((a,b)=>a+Math.abs(b),0)/n,rmse=Math.sqrt(e.reduce((a,b)=>a+b*b,0)/n),mx=Math.max(...e.map(Math.abs));
+ return{n,me,mae,rmse,mx,st:n<3?'NOT_VALIDATED':rmse<=0.03?'PASS':rmse<=0.05?'WARNING':'FAIL'}}
+function panelKontrola(){const k=M.kondygnacje[seg],L_=KO.filter(m=>m.seg==k.nr),s=statKontrola(L_);
+ return '<h3>Pomiary kontrolne</h3><div class="rzad"><button class="btn'+(tryb=='kontrola'?' gl':'')+'" onclick="trybKontrola()">📏 '+(tryb=='kontrola'?(pA?'kliknij drugi punkt…':'kliknij pierwszy punkt…'):'Dodaj pomiar (2 punkty + dalmierz)')+'</button></div>'+
+ (L_.length?'<table>'+L_.map(m=>'<tr><td>'+esc(m.opis||'pomiar')+'<br><span class="mala">skan '+odl(m).toFixed(3)+' · dalmierz '+m.laser_m.toFixed(3)+' m</span></td><td><b>'+((odl(m)-m.laser_m)*100).toFixed(1)+' cm</b></td><td><button class="btn" onclick="usunKontrola('+KO.indexOf(m)+')">✕</button></td></tr>').join('')+'</table>':'<p class="mala">Kliknij dwa punkty na ścianach i wpisz wymiar z dalmierza. Program liczy błąd mapy.</p>')+
+ (s?'<div class="stat"><div><b>'+(s.rmse*100).toFixed(1)+' cm</b>RMSE</div><div><b>'+(s.me*100).toFixed(1)+' cm</b>błąd średni</div><div><b>'+(s.mx*100).toFixed(1)+' cm</b>maks.</div><div><b>'+s.st+'</b>'+s.n+' pomiarów</div></div><p class="mala">PASS: RMSE ≤ 3 cm, WARNING ≤ 5 cm, FAIL > 5 cm; poniżej 3 pomiarów – NOT_VALIDATED. Pomiarów kontrolnych nie używamy do poprawiania mapy.</p>':'')}
+function trybKontrola(){tryb=tryb=='kontrola'?null:'kontrola';pA=null;panel();c.style.cursor=tryb?'crosshair':'grab'}
+function zapiszKontrola(){post('api/kontrola?n='+S.n,()=>{panel();rys()},JSON.stringify(KO))}
+function usunKontrola(i){if(confirm('Usunąć ten pomiar kontrolny?')){KO.splice(i,1);zapiszKontrola()}}
+function przyciagnij(e){const k=M.kondygnacje[seg],r=c.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;let best=null,bd=14;
+ k.sciany.forEach(pl=>pl.forEach(p=>{const[a,b]=P(p[0],p[1]),d=Math.hypot(a-mx,b-my);if(d<bd){bd=d;best=[p[0],p[1]]}}));
+ const ch=k.chmura_cm;for(let i=0;i<ch.length;i+=2){const[a,b]=P(ch[i]/100,ch[i+1]/100),d=Math.hypot(a-mx,b-my);if(d<bd*0.8){bd=d/0.8;best=[ch[i]/100,ch[i+1]/100]}}
+ if(best)return best;const a_=obr()*Math.PI/180,X=(mx-wid.x)/wid.s,Y=(wid.y-my)/wid.s,cx=k.szer/2,cy=k.wys/2,dx=X-cx,dy=Y-cy;return[cx+dx*Math.cos(-a_)-dy*Math.sin(-a_),cy+dx*Math.sin(-a_)+dy*Math.cos(-a_)]}
 function zapisz(){const k=M.kondygnacje[seg];NZ[k.nr]={nazwa:$('nz').value,ukryj:$('uk').checked,obrot:obr()};post('api/nazwy?n='+S.n,()=>{panel();otworz(S.n)},JSON.stringify(NZ))}
 function obroc(d){const k=M.kondygnacje[seg];(NZ[k.nr]??={}).obrot=(((obr()+d)%360)+360)%360;$('ob').value=obr().toFixed(1);rys()}
 function ustObrot(v){const k=M.kondygnacje[seg];(NZ[k.nr]??={}).obrot=((+String(v).replace(',','.')%360)+360)%360;rys()}
@@ -194,6 +208,9 @@ function rys(){const r=c.getBoundingClientRect(),d=devicePixelRatio||1;if(!r.wid
   g.fillStyle='#fff';g.beginPath();g.arc(a,b,rr+2,0,7);g.fill();g.fillStyle=KOL[z.rodzaj]||'#16a34a';g.beginPath();g.arc(a,b,rr,0,7);g.fill();
   g.fillStyle='#fff';g.font='bold '+(rr+1)+'px system-ui';g.textAlign='center';g.textBaseline='middle';g.fillText(z.rodzaj=='przekroj'?'P':z.rodzaj=='foto'?'F':z.rodzaj=='punkt'?'•':'N',a,b+.5);g.textAlign='left';g.textBaseline='alphabetic';
   if(wid.s>55){g.fillStyle='#374151';g.font='11px system-ui';g.fillText(etykieta(z).slice(0,34),a+rr+4,b+4)}});
+ KO.filter(m=>m.seg==k.nr).forEach(m=>{const[a1,b1]=P(m.a[0],m.a[1]),[a2,b2]=P(m.b[0],m.b[1]);g.strokeStyle='#16a34a';g.lineWidth=2.5;g.beginPath();g.moveTo(a1,b1);g.lineTo(a2,b2);g.stroke();
+  [[a1,b1],[a2,b2]].forEach(([x,y])=>{g.fillStyle='#16a34a';g.beginPath();g.arc(x,y,4,0,7);g.fill()});const e_=(odl(m)-m.laser_m)*100;g.fillStyle='#14532d';g.font='bold 12px system-ui';g.fillText((m.opis?m.opis+': ':'')+e_.toFixed(1)+' cm',(a1+a2)/2+6,(b1+b2)/2-6)});
+ if(pA){const[a,b]=P(pA[0],pA[1]);g.fillStyle='#16a34a';g.beginPath();g.arc(a,b,6,0,7);g.fill()}
  const Lm=wid.s>=120?.5:wid.s>=50?1:wid.s>=20?2:5;g.fillStyle='#111827';g.fillRect(16,r.height-40,Lm*wid.s,4);g.font='12px system-ui';g.fillText(Lm+' m',16,r.height-46);
  g.fillStyle='#111827';g.font='bold 15px system-ui';g.fillText((NZ[k.nr]||{}).nazwa||'Odcinek '+k.nr,r.width-g.measureText((NZ[k.nr]||{}).nazwa||'Odcinek '+k.nr).width-16,26)}
 function etykieta(z){return z.rodzaj=='foto'?'Zdjęcie '+(z.plik||'').replace('foto_','').replace('.jpg',''):z.opis}
@@ -204,7 +221,12 @@ c.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,ox:wid.x,oy:w
 c.addEventListener('pointermove',e=>{if(!drag){const z=trafiony(e),t=$('tip');if(z){const r=c.getBoundingClientRect();t.style.display='block';t.style.left=(e.clientX-r.left+14)+'px';t.style.top=(e.clientY-r.top+10)+'px';t.textContent=etykieta(z)+' (kliknij)';c.style.cursor='pointer'}else{t.style.display='none';c.style.cursor='grab'}return}
  if(pinch)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.mv=Math.max(drag.mv,Math.abs(dx)+Math.abs(dy));
  if(drag.rot&&M){const k=M.kondygnacje[seg];(NZ[k.nr]??={}).obrot=(((drag.o0+dx*0.2)%360)+360)%360;if($('ob'))$('ob').value=obr().toFixed(1)}else{wid.x=drag.ox+dx;wid.y=drag.oy+dy}rys()});
-c.addEventListener('pointerup',e=>{if(drag&&drag.mv<5){const z=trafiony(e);if(z){wyb=z;rys();pokaz(z)}}drag=null;c.style.cursor='grab'});
+c.addEventListener('pointerup',e=>{if(drag&&drag.mv<5){
+ if(tryb=='kontrola'&&M){const q=przyciagnij(e);if(!pA){pA=q;panel();rys()}else{const k=M.kondygnacje[seg],d=Math.hypot(q[0]-pA[0],q[1]-pA[1]);
+  const v=prompt('Skan: '+d.toFixed(3)+' m. Wpisz wymiar z dalmierza (w cm albo m):','');const opis=v?prompt('Opis (np. sala 12 długość):',''):null;
+  if(v){let L_=parseFloat(String(v).replace(',','.'));if(L_>30)L_/=100;KO.push({seg:k.nr,a:pA,b:q,laser_m:L_,opis:opis||'',kiedy:new Date().toISOString().slice(0,16)});zapiszKontrola()}
+  pA=null;tryb=null;c.style.cursor='grab';panel();rys()}}
+ else{const z=trafiony(e);if(z){wyb=z;rys();pokaz(z)}}}drag=null;if(!tryb)c.style.cursor='grab'});
 c.addEventListener('wheel',e=>{e.preventDefault();const r=c.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,f=e.deltaY<0?1.2:1/1.2;wid.x=mx-(mx-wid.x)*f;wid.y=my-(my-wid.y)*f;wid.s*=f;rys()},{passive:false});
 c.addEventListener('touchstart',e=>{if(e.touches.length==2){const[a,b]=e.touches;pinch={d:Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY),s:wid.s,x:wid.x,y:wid.y,cx:(a.clientX+b.clientX)/2,cy:(a.clientY+b.clientY)/2,k:Math.atan2(b.clientY-a.clientY,b.clientX-a.clientX),o0:obr()}}});
 c.addEventListener('touchmove',e=>{if(pinch&&e.touches.length==2){e.preventDefault();const[a,b]=e.touches,r=c.getBoundingClientRect(),f=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY)/pinch.d,mx=pinch.cx-r.left,my=pinch.cy-r.top;wid.s=pinch.s*f;wid.x=mx-(mx-pinch.x)*f;wid.y=my-(my-pinch.y)*f;

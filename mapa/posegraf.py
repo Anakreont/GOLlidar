@@ -52,12 +52,13 @@ def optymalizuj(X0, kraw, staly=0, f_scale=1.0):
     return w.x.reshape(-1, 3)
 
 
-def petle(X, kf, kt, juz=set(), odstep_s=8.0, promien=2.5, log=print):
+def petle(X, kf, kt, juz=None, odstep_s=8.0, promien=1.5, krok=3, log=print):
     """Szuka zamkniec petli: skan i dopasowany do mapy lokalnej skanow j z innego czasu."""
+    juz = set() if juz is None else juz
     nowe = []
     poz = X[:, :2]; drzewo = cKDTree(poz)
     for i in range(len(kf)):
-        if i % 2:                       # co drugi skan - wystarczy, a dwa razy szybciej
+        if i % krok:
             continue
         kand = [j for j in drzewo.query_ball_point(poz[i], promien) if abs(kt[i] - kt[j]) > odstep_s and j < i]
         if not kand:
@@ -76,8 +77,8 @@ def petle(X, kf, kt, juz=set(), odstep_s=8.0, promien=2.5, log=print):
             continue
         tree = cKDTree(P); src = kf[i][1][::2]
         best = None
-        for dd in np.radians([0, -4, 4, -8, 8, -12, 12, -16, 16, -20, 20]):
-            for dxy in ([0, 0], [0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3]):
+        for dd in np.radians([0, -3, 3, -6, 6]):
+            for dxy in ([0, 0],):
                 T0 = X[i] + [dxy[0], dxy[1], dd]
                 r = slam.icp(src, P, N, tree, T0, iters=25, max_d=0.3)
                 if r is None:
@@ -96,7 +97,7 @@ def petle(X, kf, kt, juz=set(), odstep_s=8.0, promien=2.5, log=print):
     return nowe
 
 
-def graf(kf, kt, rund=3, log=print):
+def graf(kf, kt, rund=2, log=print):
     X = np.array([k[0] for k in kf], float)
     kraw = [(i, i + 1, wzgl(X[i], X[i + 1]), 1.0) for i in range(len(kf) - 1)]
     juz = set(); wszystkie_petle = []

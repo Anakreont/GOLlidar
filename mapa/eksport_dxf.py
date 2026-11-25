@@ -11,6 +11,7 @@ import slam, sprawdz as S
 
 KOM = 0.025           # rozmiar komorki siatki [m]
 NAZWY = {}
+WYCINANIE = False      # wycinanie 'przez wolna przestrzen' - za agresywne dla dalekich scian, do dopracowania
 MIN_KF = 3            # komorka musi byc widziana z tylu kluczowych skanow (odsiewa szyby, ludzi, odbicia)
 MIN_DL = 0.40         # najkrotszy odcinek sciany [m]
 PRZERWA = 0.12        # przerwa w scianie, ktora jeszcze laczymy [m]
@@ -132,6 +133,35 @@ def lica(Qd, Nd, kat_st=20):
     return wyn, typ
 
 
+def przezroczyste(Q, ile, poz, kom=0.05, krok_pkt=3):
+    """Wycinanie 'przez wolna przestrzen': komorka, przez ktora wiazki z innych miejsc wielokrotnie przechodzily,
+    a rzadko w nia trafialy, to nie sciana, tylko cos chwilowego albo pozornego (ludzie, otwarte drzwi, odbicia
+    w lustrze i szybie widziane z drugiej strony). Zwraca maske punktow do zachowania."""
+    ij = np.floor(Q / kom).astype(np.int64)
+    o = ij.min(0) - 2; ij -= o
+    sh = ij.max(0) + 3
+    traf = np.zeros(sh, np.int32); wolne = np.zeros(sh, np.int32)
+    kl = np.unique(np.stack([ij[:, 0] * sh[1] + ij[:, 1], ile], 1), axis=0)[:, 0]   # trafienia liczone w skanach
+    np.add.at(traf.ravel(), kl, 1)
+    for k in np.unique(ile):
+        sel = np.where(ile == k)[0][::krok_pkt]
+        if not len(sel): continue
+        s = poz[k]; p = Q[sel]
+        dl = np.hypot(*(p - s).T)
+        n = np.maximum((dl / kom).astype(int) - 4, 0)          # do 20 cm przed trafieniem (szum pozycji)
+        nmax = n.max() if len(n) else 0
+        if nmax <= 0: continue
+        f = np.arange(nmax)[None, :] / np.maximum(dl / kom, 1)[:, None]
+        ok = np.arange(nmax)[None, :] < n[:, None]
+        X = s[0] + (p[:, 0] - s[0])[:, None] * f; Y = s[1] + (p[:, 1] - s[1])[:, None] * f
+        ci = np.floor(X[ok] / kom).astype(np.int64) - o[0]; cj = np.floor(Y[ok] / kom).astype(np.int64) - o[1]
+        w = (ci >= 0) & (cj >= 0) & (ci < sh[0]) & (cj < sh[1])
+        c = np.unique(ci[w] * sh[1] + cj[w])                    # kazdy skan liczy komorke raz
+        np.add.at(wolne.ravel(), c, 1)
+    w_ = wolne[ij[:, 0], ij[:, 1]]; t_ = traf[ij[:, 0], ij[:, 1]]
+    return ~((w_ >= 10) & (w_ > 6 * t_))
+
+
 def kondygnacja(kf, kt, a, b):
     P, N, ile = [], [], []
     for i, ((Tk, pk, nk), t) in enumerate(zip(kf, kt)):
@@ -140,7 +170,12 @@ def kondygnacja(kf, kt, a, b):
         m = np.isfinite(nk[:, 0]) & (np.hypot(*pk.T) < 7.0)
         n = nk[m] * np.where(np.sum(nk[m] * pk[m], 1) > 0, -1.0, 1.0)[:, None]   # normalna do czujnika = strona pomieszczenia
         P.append(pk[m] @ R + Tk[:2]); N.append(n @ R); ile.append(np.full(m.sum(), i))
-    return np.vstack(P), np.vstack(N), np.concatenate(ile)
+    P, N, ile = np.vstack(P), np.vstack(N), np.concatenate(ile)
+    if WYCINANIE:
+        poz = {i: kf[i][0][:2] for i in np.unique(ile)}
+        zost = przezroczyste(P, ile, poz)
+        P, N, ile = P[zost], N[zost], ile[zost]
+    return P, N, ile
 
 def main():
     kat, wy = sys.argv[1], sys.argv[2]

@@ -17,6 +17,17 @@ def wczytaj_lub_dekoduj(kat):
     os.makedirs(os.path.dirname(p), exist_ok=True)
     return dekoduj(kat, p)
 
+def pion_z_info(kat):
+    """Pion zapisany przyciskiem 'Zeruj pion' (info.txt), jesli byl ustawiony."""
+    import os
+    try:
+        d = dict(l.strip().split('=', 1) for l in open(os.path.join(kat, 'info.txt'), encoding='utf-8') if '=' in l)
+        p, r = float(d['imu_pitch0']), float(d['imu_roll0'])
+        return (p, r) if (p or r) else None
+    except (OSError, KeyError, ValueError):
+        return None
+
+
 def przerwy(kat, t0):
     """Przedzialy PAUZA_START..PAUZA_KONIEC w sekundach od poczatku nagrania (z znaczniki.txt)."""
     import os
@@ -32,9 +43,15 @@ def przerwy(kat, t0):
     return out
 
 
-def obroty(z, rmin=0.3, rmax=9.0):
+def obroty(z, rmin=0.3, rmax=9.0, pion=None):
     """Dzieli pakiety na obroty; kazdy punkt z czasem z interpolacji wewnatrz pakietu."""
     a0, a1, d, tl = z['a0'], z['a1'], z['d'], z['tl']
+    inten = z['i'].astype(float)
+    # slabe odbicia (przez szybe, po skosie, ciemne powierzchnie): intensywnosc ponizej 30 % mediany dla tej odleglosci
+    przedz = np.arange(0, 16.5, 0.5)
+    dd, ii = d.ravel(), inten.ravel()
+    med = np.array([np.median(ii[(dd >= a) & (dd < a + 0.5)]) if np.sum((dd >= a) & (dd < a + 0.5)) > 50 else np.nan for a in przedz])
+    med = np.where(np.isfinite(med), med, np.nanmin(med) if np.isfinite(med).any() else 0)
     krok = ((a1 - a0) % 360) / 11
     ang = (a0[:, None] + krok[:, None] * np.arange(12)) % 360
     dtp = np.median(np.diff(tl))
@@ -55,10 +72,22 @@ def obroty(z, rmin=0.3, rmax=9.0):
     for j0 in range(0, len(gr), okno // 2):
         b = blisko[max(0, j0 - okno // 2): j0 + okno]
         if len(b): maska[j0: j0 + okno // 2] = b.mean(0) > 0.6
+    # rzutowanie na poziom: przy przechyle wiazka biegnie skosnie i odleglosc do pionowej sciany jest za duza o 1/cos(elewacji).
+    # Os BNO wzgledem LiDAR-u ustalona z przekrojow: roll +85 st. = kierunek 0 st. LD19 w dol, wiec elewacja wiazki o kacie A
+    # wynosi ok. -roll*cos(A) + pitch*sin(A) (przechyl liczony od pionu z postoju / Zeruj pion).
+    rzut = pion is not None and not bool(z.get('bez_imu', False))
+    if rzut:
+        ti = z['ti']; pr = z['pitch'] - pion[0]; rr = z['roll'] - pion[1]
     out = []
     for j, g in enumerate(gr):
         A, D, Tt = ang[g].ravel(), d[g].ravel(), tp[g].ravel()
-        m = (D > rmin) & (D < rmax)
+        I_ = inten[g].ravel()
+        slabe = I_ < 0.3 * np.interp(D, przedz + 0.25, med)
+        if rzut:
+            p_ = np.radians(np.interp(Tt, ti, pr)); r_ = np.radians(np.interp(Tt, ti, rr)); Ar = np.radians(A)
+            elew = -r_ * np.cos(Ar) + p_ * np.sin(Ar)
+            D = D * np.cos(np.clip(elew, -0.35, 0.35))
+        m = (D > rmin) & (D < rmax) & ~slabe
         m &= ~((D < 0.7) & (A > 130) & (A < 230))
         m &= ~((D < 0.9) & maska[j][(A // 10).astype(int) % 36])
         if m.sum() < 150: continue
@@ -101,13 +130,16 @@ def icp(src, tgt, ntg, tree, T0, iters=15, huber=0.05, max_d=0.5, prior=None):
     ev = np.linalg.eigvalsh(H[:2, :2])
     return np.array([x, y, th]), np.sqrt(np.mean(r ** 2 * w)), ev, m.mean()
 
-def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=200.0, pion=None, log=False, segmenty=None, promien=8.0, dane=None):
-    z = dane if dane is not None else wczytaj(kat); sk = obroty(z)
+def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=200.0, pion=None, log=False, segmenty=None, promien=8.0, dane=None, rzutuj=True):
+    z = dane if dane is not None else wczytaj(kat)
     if bool(z.get('bez_imu', False)): imu_w = 0.0
     ti, yaw = z['ti'], np.radians(z['yaw'])
     pit, rol = z['pitch'], z['roll']
     if pion is None:
+        pion = pion_z_info(kat)
+    if pion is None:
         m10 = ti < ti[0] + 10; pion = (np.median(pit[m10]), np.median(rol[m10]))
+    sk = obroty(z, pion=pion if rzutuj else None)
     prz = np.degrees(np.arccos(np.clip(np.cos(np.radians(pit - pion[0])) * np.cos(np.radians(rol - pion[1])), -1, 1)))
     poses, kf, info = [], [], []
     T = np.zeros(3); v = np.zeros(2); ostT = None; yaw_ost = None
