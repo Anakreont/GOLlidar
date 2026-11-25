@@ -934,10 +934,10 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 <div class="w"><input id="kon" placeholder="kondygnacja" autocomplete="off">
  <button id="bk" class="sz rec" style="flex:0 0 96px" onclick="cmd('kondygnacja?k='+encodeURIComponent($('kon').value),wibr)">Zmień</button></div>
 <div class="chips"><button class="chip" onclick="$('kon').value='piwnica'">piwnica</button><button class="chip" onclick="$('kon').value='parter'">parter</button><button class="chip" onclick="$('kon').value='1 piętro'">1 piętro</button><button class="chip" onclick="$('kon').value='2 piętro'">2 piętro</button><button class="chip" onclick="$('kon').value='3 piętro'">3 piętro</button><button class="chip" onclick="$('kon').value='poddasze'">poddasze</button></div>
-<div class="w nrec"><button id="bs" onclick="cmd('start?budynek='+encodeURIComponent($('bud').value)+'&kondygnacja='+encodeURIComponent($('kon').value))">START</button></div>
-<div class="w rec"><input id="snr" placeholder="pomieszczenie, np. sala 12" autocomplete="off" enterkeyhint="done" oninput="$('pnr').value=$('gnr').value=$('onr').value=this.value" onkeydown="if(event.key=='Enter'){zapSala();this.blur()}">
- <button class="nb" style="flex:0 0 110px" onclick="zapSala()">Jestem tu</button></div>
-<div class="w rec"><small id="sost" style="color:#9ab;padding:0 6px"></small></div>
+<div class="w nrec"><button id="bs" onclick="cmd('start?budynek='+encodeURIComponent($('bud').value)+'&kondygnacja='+encodeURIComponent($('kon').value),()=>{if($('snr').value.trim())setTimeout(zapSala,700)})">START</button></div>
+<div class="w"><input id="snr" placeholder="pomieszczenie, w którym stoisz, np. sala 12" autocomplete="off" enterkeyhint="done" oninput="$('pnr').value=$('gnr').value=$('onr').value=this.value" onkeydown="if(event.key=='Enter'){zapSala();this.blur()}">
+ <button class="nb rec" style="flex:0 0 110px" onclick="zapSala()">Jestem tu</button></div>
+<div class="w"><small id="sost" style="color:#9ab;padding:0 6px"></small></div>
 <div class="w rec"><button id="bpa" onclick="cmd('pauza')">PAUZA</button>
  <button id="bp" style="flex:0 0 34%" onclick="if(confirm('Zakończyć nagranie?'))cmd('stop')">STOP</button></div>
 </section>
