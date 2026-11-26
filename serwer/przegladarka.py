@@ -107,6 +107,8 @@ def stan_wyniku(n, k):
         if os.path.getmtime(mj) >= os.path.getmtime(lid) and wersja_mapy(mj) >= WERSJA_MAPY:
             return 'gotowe'
         return 'nieaktualna'          # starsza wersja programu albo dane doszly po policzeniu - przelicza tylko recznie
+    if os.path.exists(os.path.join(k, '_wynik', 'zatrzymane.txt')):
+        return 'zatrzymane'
     return 'do policzenia'
 
 
@@ -175,6 +177,46 @@ def znaczniki(k):
 
 
 W_START = {}                   # sesja -> czas rozpoczecia liczenia mapy
+PROC = {}                      # (rodzaj, sesja) -> Popen - do zatrzymywania z przegladarki
+ZATRZ = set()                  # (rodzaj, sesja) zatrzymane recznie
+
+
+def uruchom(klucz, cmd, **kw):
+    """Jak subprocess.run, ale proces (z dziecmi - wlasna grupa) da sie zatrzymac przyciskiem."""
+    if kw.pop('capture_output', False):
+        kw['stdout'] = subprocess.PIPE; kw['stderr'] = subprocess.PIPE
+    p = subprocess.Popen(cmd, start_new_session=True, **kw)
+    with BLOK:
+        PROC[klucz] = p
+    try:
+        out, err = p.communicate()
+    finally:
+        with BLOK:
+            PROC.pop(klucz, None)
+    return subprocess.CompletedProcess(cmd, p.returncode, out, err)
+
+
+def zatrzymaj(n):
+    """Zatrzymuje wszystko dla sesji: liczenie mapy, porownanie, dopasowanie CAD, kawalki; usuwa z kolejki."""
+    import signal
+    ile = 0
+    with BLOK:
+        for rodz in ('mapa', 'por', 'cad', 'kaw'):
+            p = PROC.get((rodz, n))
+            if p:
+                ZATRZ.add((rodz, n))
+                try:
+                    os.killpg(p.pid, signal.SIGKILL); ile += 1
+                except OSError:
+                    pass
+        if W_TOKU.get(n) == 'czeka':
+            W_TOKU.pop(n); ile += 1
+        if W_POR.get(n) == 'czeka':
+            W_POR.pop(n); ile += 1
+        if W_CAD.get(n) == 'czeka':
+            W_CAD.pop(n); ile += 1
+    return ile
+
 TEMPO_DOM = 6.0                # s liczenia na 1 MB lidar.bin, zanim zmierzymy na Dellu
 
 
@@ -269,13 +311,17 @@ def pracownik():
             with BLOK:
                 W_TOKU[n] = 'liczy'; W_START[n] = time.time()
             with open(log, 'w') as f:
-                r = subprocess.run([sys.executable, os.path.join(REPO, 'mapa', 'przetworz.py'), k], stdout=f, stderr=subprocess.STDOUT, env=ENV_DZIECI)
+                r = uruchom(('mapa', n), [sys.executable, os.path.join(REPO, 'mapa', 'przetworz.py'), k], stdout=f, stderr=subprocess.STDOUT, env=ENV_DZIECI)
         with BLOK:
             dt = time.time() - W_START.pop(n, time.time())
         if r.returncode == 0:
             zapisz_tempo(dt, mb_lidar(k))
         blad = os.path.join(k, '_wynik', 'blad.txt')
-        if r.returncode != 0:
+        with BLOK:
+            stop = ('mapa', n) in ZATRZ; ZATRZ.discard(('mapa', n))
+        if stop:                                  # zatrzymane recznie - automat tego nie ponawia
+            open(os.path.join(k, '_wynik', 'zatrzymane.txt'), 'w').write(time.strftime('%Y-%m-%d %H:%M'))
+        elif r.returncode != 0:
             with open(log, errors='replace') as f, open(blad, 'w') as g:
                 if r.returncode in (-9, 137):
                     g.write('Proces zabity przez system - zabraklo pamieci (OOM). Przelicz, gdy nic innego sie nie liczy.\n\n')
@@ -303,8 +349,10 @@ def pracownik_por():
             with BLOK:
                 W_POR[n] = 'liczy'
             with open(os.path.join(wy, 'przebieg.log'), 'w') as f:
-                r = subprocess.run([sk, k, '--metody', ','.join(metody)], stdout=f, stderr=subprocess.STDOUT)
-        if r.returncode != 0:
+                r = uruchom(('por', n), [sk, k, '--metody', ','.join(metody)], stdout=f, stderr=subprocess.STDOUT)
+        with BLOK:
+            stop = ('por', n) in ZATRZ; ZATRZ.discard(('por', n))
+        if r.returncode != 0 and not stop:
             with open(os.path.join(wy, 'przebieg.log'), errors='replace') as f, open(blad, 'w') as g:
                 g.write(f.read()[-3000:])
         with BLOK:
@@ -355,14 +403,35 @@ def pracownik_cad():
             with LICZ_RECZNE:
                 with BLOK:
                     W_CAD[n] = 'liczy'
-                r = subprocess.run(cmd, capture_output=True, text=True)
+                r = uruchom(('cad', n), cmd, capture_output=True, text=True)
             with open(os.path.join(wy, 'cad_log.txt'), 'w') as f:
-                f.write(r.stdout + r.stderr)
-            if r.returncode != 0:
+                f.write((r.stdout or '') + (r.stderr or ''))
+            with BLOK:
+                stop = ('cad', n) in ZATRZ; ZATRZ.discard(('cad', n))
+            if r.returncode != 0 and not stop:
                 with open(blad, 'w') as f:
                     f.write((r.stdout + r.stderr)[-3000:])
         with BLOK:
             W_CAD.pop(n, None)
+
+
+W_KAW = {}                     # sesja -> 'liczy' (ciecie mapy na kawalki do recznego sklejania w CAD)
+
+
+def licz_kawalki(n, k):
+    wy = os.path.join(k, '_wynik')
+    try:
+        with LICZ_RECZNE:
+            with BLOK:
+                W_KAW[n] = 'liczy'
+            r = uruchom(('kaw', n), [sys.executable, os.path.join(REPO, 'mapa', 'kawalki.py'), k], capture_output=True, text=True, env=ENV_DZIECI)
+        with open(os.path.join(wy, 'kawalki_log.txt'), 'w') as f:
+            f.write((r.stdout or '') + (r.stderr or ''))
+        with BLOK:
+            ZATRZ.discard(('kaw', n))
+    finally:
+        with BLOK:
+            W_KAW.pop(n, None)
 
 
 def stan_cad(n, k):
@@ -416,7 +485,8 @@ def automat():
         try:
             for s in sesje():
                 k = katalog(s['n'])
-                if s['stan'] == 'do policzenia' and not os.path.exists(os.path.join(k, '_wynik', 'blad.txt')):
+                if s['stan'] == 'do policzenia' and not os.path.exists(os.path.join(k, '_wynik', 'blad.txt')) \
+                        and not os.path.exists(os.path.join(k, '_wynik', 'zatrzymane.txt')):
                     zlec(s['n'])
         except OSError:
             pass
@@ -521,6 +591,8 @@ class H(BaseHTTPRequestHandler):
             prz = json.load(open(pj, encoding='utf-8')) if os.path.exists(pj) else []
             return self._json({'info': info(k), 'stan': stan_wyniku(q['n'], k), 'postep': postepy().get(q['n']), 'pliki': pliki, 'wyniki': wyn, 'przekroje': prz,
                                'porownanie': stan_por(q['n'], k), 'cad': stan_cad(q['n'], k),
+                               'kawalki': {'stan': W_KAW.get(q['n']) or ('gotowe' if os.path.exists(os.path.join(k, '_wynik', 'kawalki.dxf')) else
+                                           ('brak danych' if not os.path.exists(os.path.join(k, '_wynik', 'kf.npz')) else 'brak'))},
                                'znaczniki': znaczniki(k), 'oprawy': SW.wiersze_pom(k), 'grzejniki': SW.wiersze_grz(k),
                                'okna': SW.wiersze_okn(k)})
         if u.path == '/api/mapa':
@@ -640,6 +712,11 @@ class H(BaseHTTPRequestHandler):
             with open(os.path.join(katalog_cad(b), 'cad.json'), 'w', encoding='utf-8') as f:
                 json.dump(ust, f, ensure_ascii=False)
             return self._json({'ok': True, 'rzut': ust})
+        if u.path == '/api/zatrzymaj_wszystko':
+            with BLOK:
+                nazwy = set(W_TOKU) | set(W_POR) | set(W_CAD) | set(W_KAW) | {n_ for _, n_ in PROC}
+            ile = sum(zatrzymaj(n_) for n_ in nazwy)
+            return self._json({'ok': True, 'ile': ile})
         if u.path == '/api/oproznij_kosz':
             shutil.rmtree(os.path.join(ARGS.katalog, '_kosz'), ignore_errors=True)
             return self._json({'ok': True})
@@ -647,9 +724,10 @@ class H(BaseHTTPRequestHandler):
         if not k:
             return self._json({'blad': 'nie ma takiej sesji'}, 404)
         if u.path == '/api/przelicz':
-            b = os.path.join(k, '_wynik', 'blad.txt')
-            if os.path.exists(b):
-                os.remove(b)
+            for b in ('blad.txt', 'zatrzymane.txt'):
+                b = os.path.join(k, '_wynik', b)
+                if os.path.exists(b):
+                    os.remove(b)
             with BLOK:                       # juz czeka w kolejce automatu -> przesun na poczatek
                 if W_TOKU.get(q['n']) == 'czeka':
                     W_TOKU.pop(q['n'])
@@ -666,6 +744,17 @@ class H(BaseHTTPRequestHandler):
                     return self._json({'blad': 'porownanie tej sesji juz jest w kolejce'}, 409)
                 W_POR[q['n']] = 'czeka'
             KOLEJKA_POR.put((q['n'], metody))
+            return self._json({'ok': True})
+        if u.path == '/api/zatrzymaj':
+            return self._json({'ok': True, 'ile': zatrzymaj(q['n'])})
+        if u.path == '/api/kawalki':
+            if not os.path.exists(os.path.join(k, '_wynik', 'kf.npz')):
+                return self._json({'blad': 'najpierw przelicz mape ta wersja programu (brak kf.npz)'}, 409)
+            with BLOK:
+                if q['n'] in W_KAW:
+                    return self._json({'blad': 'juz sie liczy'}, 409)
+                W_KAW[q['n']] = 'czeka'
+            threading.Thread(target=licz_kawalki, args=(q['n'], k), daemon=True).start()
             return self._json({'ok': True})
         if u.path == '/api/dopasuj':
             if not ustawienia_cad(info(k).get('budynek', '')):

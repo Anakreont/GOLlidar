@@ -31,7 +31,7 @@ aside{overflow:auto;background:#fff;border-right:1px solid var(--linia);padding:
 .ses:hover{background:var(--bg)}.ses.akt{background:var(--akcent2)}
 .ses .t{flex:1}.ses .t small{color:var(--szary)}
 .pill{font-size:11px;padding:2px 8px;border-radius:10px;background:#e5e7eb;color:#374151}
-.pill.nieaktualna{background:#e0e7ff;color:#3730a3}.zazn{display:flex;gap:6px;align-items:center;padding:8px 10px;margin:6px;border-radius:10px;background:#eef2ff;font-size:13px;flex-wrap:wrap}
+.pill.zatrzymane{background:#f3f4f6;color:#6b7280}.pill.nieaktualna{background:#e0e7ff;color:#3730a3}.zazn{display:flex;gap:6px;align-items:center;padding:8px 10px;margin:6px;border-radius:10px;background:#eef2ff;font-size:13px;flex-wrap:wrap}
 .ses input.wyb{margin:0 6px 0 0;width:16px;height:16px;flex:none}.gl .wybb{font-size:11px;color:var(--szary);cursor:pointer;margin-left:6px;text-decoration:underline}
 .pill.gotowe{background:#dcfce7;color:#166534}.pill.liczy,.pill.czeka{background:#fef3c7;color:#92400e}.pill.błąd{background:#fee2e2;color:#991b1b}.pill.nagrywanie{background:#dbeafe;color:#1e40af}
 .puste{color:var(--szary);font-size:13px;padding:6px 4px}
@@ -87,6 +87,7 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
  <div class="menu" id="mPorz"><button class="btn ciemny" onclick="this.parentNode.classList.toggle('otw')">Porządki ▾</button>
   <div class="lista">
    <button onclick="usunPuste()">🧹 Usuń puste nagrania (bez danych)</button>
+   <button onclick="zatrzymajWszystko()">⏹ Zatrzymaj wszystkie liczenia i wyczyść kolejkę</button>
    <button onclick="usunWszystkieMapy()">🔄 Przelicz wszystkie mapy od nowa</button>
    <div class="mala" style="padding:6px 10px">Mapy liczą się same tylko dla nowych nagrań. Nieaktualne (stara wersja programu) przeliczasz sam: zaznacz je na liście i „Przelicz zaznaczone”.</div>
    <button onclick="przywrocKosz()">♻️ Przywróć wszystko z kosza</button>
@@ -140,7 +141,7 @@ function lista(){fetch('api/sesje').then(r=>r.json()).then(d=>{L=d;rysujListe()}
 const ZAZN=new Set();
 function wybierz(n,on){on?ZAZN.add(n):ZAZN.delete(n);rysujListe()}
 function wybierzBud(b){L.filter(s=>s.budynek==b&&s.stan!='brak danych'&&s.stan!='nagrywanie').forEach(s=>ZAZN.add(s.n));rysujListe()}
-function wybierzNieakt(b){L.filter(s=>s.budynek==b&&(s.stan=='nieaktualna'||s.stan=='błąd')).forEach(s=>ZAZN.add(s.n));rysujListe()}
+function wybierzNieakt(b){L.filter(s=>s.budynek==b&&(s.stan=='nieaktualna'||s.stan=='błąd'||s.stan=='zatrzymane')).forEach(s=>ZAZN.add(s.n));rysujListe()}
 async function przeliczZazn(){const l=L.filter(s=>ZAZN.has(s.n)).sort((a,b)=>a.mb-b.mb);if(!l.length)return;
  if(!confirm('Przeliczyć '+l.length+' map? Liczą się po kolei w tle (najpierw najmniejsze).'))return;
  for(const s of l)await fetch('api/przelicz?n='+s.n,{method:'POST'});ZAZN.clear();lista()}
@@ -161,12 +162,19 @@ function czysc(){$('nag').innerHTML='<div class="tyt"><b>Wybierz nagranie z list
 // ---------------------------------------------------------------- sesja
 function otworz(n){fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{S=d;S.n=n;M=null;wyb=null;rysujListe();naglowek();galeria();przekroje();znaczniki();inwent();pliki();porownanie();cad();
  fetch('api/mapa?n='+n).then(r=>r.ok?r.json():null).then(j=>{if(j){M=j.mapa;NZ=j.nazwy||{};KO=j.kontrola||[];seg=0;}else{M=null;KO=[]}panel();warstwy();dopasuj();rys();if($('w3d').classList.contains('akt'))tryb3d()})})}
+function kawTxt(){const K=S.kawalki||{};if(K.stan=='gotowe')return'<a class="btn" title="Mapa pocięta na przekrojach i przerwach – każdy kawałek jako blok do przesuwania/obracania w CAD" href="'+plik('_wynik/kawalki.dxf')+'">⬇ Kawałki DXF</a><a class="btn" href="'+plik('_wynik/kawalki.png')+'" target="_blank">podgląd</a>';
+ if(K.stan=='liczy'||K.stan=='czeka')return'<span class="btn">✂ tnę na kawałki…</span>';
+ if(K.stan=='brak')return'<button class="btn" title="Potnij mapę na kawałki w miejscach przekrojów i przerw – do ręcznego sklejania w CAD" onclick="kawLicz()">✂ Kawałki</button>';return''}
+function kawLicz(){post('api/kawalki?n='+S.n,()=>{S.kawalki={stan:'liczy'};naglowek();const n=S.n;const f=()=>fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(!S||S.n!=n)return;S.kawalki=d.kawalki;S.wyniki=d.wyniki;naglowek();if(d.kawalki.stan!='gotowe')setTimeout(f,10000)});setTimeout(f,10000)})}
+function zajeta(){const z=x=>x=='liczy'||x=='czeka';return z(S.stan)||z((S.porownanie||{}).stan)||z((S.cad||{}).stan)||z((S.kawalki||{}).stan)}
+function zatrzymaj(){if(confirm('Zatrzymać liczenie tej sesji (mapa, porównanie, CAD, kawałki) i usunąć ją z kolejki?'))post('api/zatrzymaj?n='+S.n,()=>{setTimeout(()=>{lista();otworz(S.n)},1500)})}
+function zatrzymajWszystko(){if(confirm('Zatrzymać WSZYSTKIE liczenia i wyczyścić kolejkę?'))post('api/zatrzymaj_wszystko',j=>{alert('Zatrzymano: '+j.ile);setTimeout(()=>{lista();if(S)otworz(S.n)},1500)})}
 function naglowek(){const i=S.info,ma=S.wyniki.includes('_wynik/rzut.dxf');
  $('nag').innerHTML='<div class="tyt"><b>'+esc(i.budynek||'?')+' › '+esc(i.kondygnacja||'?')+'</b><div>'+esc((i.start||'').replace('T',' ').slice(0,16))+' · '+esc(S.n)+' · <span class="pill '+esc(S.stan)+'">'+stanTxt(S.stan,S.postep)+'</span></div></div>'+
  (ma?'<a class="btn gl" href="'+plik('_wynik/rzut.dxf')+'">⬇ Rzut DXF</a>':'')+
  (S.wyniki.includes('_wynik/przekroje.dxf')?'<a class="btn" href="'+plik('_wynik/przekroje.dxf')+'">⬇ Przekroje DXF</a>':'')+
  (S.wyniki.includes('_wynik/model3d.dxf')?'<a class="btn" href="'+plik('_wynik/model3d.dxf')+'">⬇ Model 3D DXF</a><a class="btn" href="'+plik('_wynik/model3d.obj')+'">OBJ</a>':'')+
- '<select class="btn" title="Jednostka plików DXF (rysunek 1:1)" onchange="ustawJedn(this.value)">'+['m','cm','mm'].map(j=>'<option value="'+j+'"'+(j==JEDN?' selected':'')+'>DXF w '+j+'</option>').join('')+'</select>'+
+ (zajeta()?'<button class="btn" style="color:var(--czerw)" onclick="zatrzymaj()">⏹ Zatrzymaj</button>':'')+kawTxt()+'<select class="btn" title="Jednostka plików DXF (rysunek 1:1)" onchange="ustawJedn(this.value)">'+['m','cm','mm'].map(j=>'<option value="'+j+'"'+(j==JEDN?' selected':'')+'>DXF w '+j+'</option>').join('')+'</select>'+
  '<button class="btn" onclick="przelicz()">🔄 Przelicz</button><div class="menu"><button class="btn" onclick="this.parentNode.classList.toggle(\'otw\')">⋯</button><div class="lista">'+
  '<button onclick="usunMape()">Usuń mapę tej sesji (policzy się od nowa)</button><button style="color:var(--czerw)" onclick="usunSesje()">Przenieś całą sesję do kosza</button></div></div>'}
 function przelicz(){post('api/przelicz?n='+S.n,()=>{alert('Zlecone – mapa liczy się ok. 1 min na każde 8 min nagrania.');lista()})}
