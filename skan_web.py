@@ -251,65 +251,129 @@ def policz_przekroj(nr, skany):
 
 
 # ----------------------------------------------------------------------------- IMU (BNO085 UART-RVC)
+def imu_probka(yaw, pitch, roll, prz):
+    """Jedna probka orientacji (stopnie) - wspolne dla trybu RVC i SHTP: stan strony, auto-pauza, przekroje."""
+    with LOCK:
+        STAN["yaw"], STAN["pitch"], STAN["roll"] = yaw, pitch, roll
+        IMU_HIST.append((pitch, roll))
+        p0, r0 = STAN["pion0"]
+        m = math.degrees(math.acos(max(-1.0, min(1.0, math.cos(math.radians(pitch - p0)) *
+                                                     math.cos(math.radians(roll - r0))))))
+        STAN["przechyl"] = m
+        if STAN["nagrywa"]:
+            STAN["max_przechyl"] = max(STAN["max_przechyl"], m)
+        zmiana = None
+        if m > PROG_PRZECHYLU and not STAN["auto_pauza"]:
+            STAN["auto_pauza"], zmiana = True, "AUTO_PRZECHYL_START"
+        elif m < PROG_PRZECHYLU - 3 and STAN["auto_pauza"]:
+            STAN["auto_pauza"], zmiana = False, "AUTO_PRZECHYL_KONIEC"
+        teraz = time.time()
+        zdarzenia = prz.krok(teraz, m) if STAN["nagrywa"] else []   # przekroj takze w pauzie (zdjety plecak)
+        if not STAN["nagrywa"] and prz.faza:
+            prz.faza = 0
+        skany, nr = None, 0
+        for z in zdarzenia:
+            if z in ("START", "OD_NOWA"):
+                STAN["prz_skany"] = []
+                STAN["prz_wynik"] = ""
+            elif z == "OK":
+                STAN["prz_nr"] += 1
+                nr, skany = STAN["prz_nr"], STAN["prz_skany"]
+                STAN["prz_skany"] = []
+        STAN["prz_faza"], STAN["prz_zostalo"] = prz.faza, prz.zostalo(teraz)
+    if zmiana:
+        znacznik(zmiana, licz=False)
+    for z in zdarzenia:
+        if z == "OK":
+            znacznik(f"PRZEKROJ_OK nr={nr} przechyl={m:.0f}", licz=False)
+            threading.Thread(target=policz_przekroj, args=(nr, skany), daemon=True).start()
+        elif z != "OD_NOWA":
+            znacznik(f"PRZEKROJ_{z} przechyl={m:.0f}", licz=False)
+
+
 def watek_imu(port, baud):
-    buf = bytearray()
+    """BNO085: tryb wybierany zworka na plytce. --imu-tryb auto sprawdza najpierw UART-SHTP (3 Mbps, surowy
+    zyroskop), a gdy czujnik nie odpowiada - UART-RVC (115200)."""
     prz = Przekroj()
+    tryb = ARGS.imu_tryb
     while not KONIEC.is_set():
-        try:
-            with serial.Serial(port, baud, timeout=0.05) as s:
-                while not KONIEC.is_set():
-                    d = s.read(1024)
-                    if not d:
+        if tryb in ("auto", "shtp"):
+            ok = _imu_shtp(port, prz, probny=(tryb == "auto"))
+            if ok:
+                tryb = "shtp"
+                continue
+            if tryb == "shtp":
+                time.sleep(1)
+                continue
+        if not _imu_rvc(port, baud, prz) and ARGS.imu_tryb == "auto":
+            tryb = "auto"                       # brak ramek RVC przez 3 s - moze czujnik jednak w SHTP
+
+
+def _imu_rvc(port, baud, prz):
+    """Zwraca False po 3 s bez poprawnej ramki RVC."""
+    buf = bytearray()
+    try:
+        with serial.Serial(port, baud, timeout=0.05) as s:
+            ost = time.time()
+            while not KONIEC.is_set():
+                d = s.read(1024)
+                if time.time() - ost > 3.0:
+                    return False
+                if not d:
+                    continue
+                zapisz("imu", d)
+                buf += d
+                while len(buf) >= 19:
+                    if buf[0] != 0xAA or buf[1] != 0xAA:
+                        del buf[0]
                         continue
+                    if sum(buf[2:18]) & 0xFF != buf[18]:
+                        del buf[0]
+                        continue
+                    yaw, pitch, roll = struct.unpack_from("<hhh", buf, 3)
+                    del buf[:19]
+                    ost = time.time(); STAN["imu_tryb"] = "rvc"
+                    imu_probka(yaw / 100, pitch / 100, roll / 100, prz)
+    except (serial.SerialException, OSError):
+        time.sleep(1)
+    return True
+
+
+def _imu_shtp(port, prz, probny=False):
+    """Zwraca False, gdy czujnik nie odpowiada w trybie SHTP (wtedy probujemy RVC)."""
+    import imu_shtp as H
+    st = H.Strumien(); byly = False
+    try:
+        with serial.Serial(port, H.BAUD, timeout=0.05) as s:
+            H.wyslij_konfiguracje(s)
+            ost = time.time(); seq = 3; n = 0
+            while not KONIEC.is_set():
+                d = s.read(4096)
+                teraz = time.time()
+                if d and byly:
                     zapisz("imu", d)
-                    buf += d
-                    while len(buf) >= 19:
-                        if buf[0] != 0xAA or buf[1] != 0xAA:
-                            del buf[0]
+                for _, kan, tr in st.feed(d or b""):
+                    if kan != 3:
+                        continue
+                    for rid, _, _, w in H.raporty(tr):
+                        if rid != H.GRV:
                             continue
-                        if sum(buf[2:18]) & 0xFF != buf[18]:
-                            del buf[0]
-                            continue
-                        yaw, pitch, roll = struct.unpack_from("<hhh", buf, 3)
-                        del buf[:19]
-                        with LOCK:
-                            STAN["yaw"], STAN["pitch"], STAN["roll"] = yaw / 100, pitch / 100, roll / 100
-                            IMU_HIST.append((pitch / 100, roll / 100))
-                            p0, r0 = STAN["pion0"]
-                            m = math.degrees(math.acos(max(-1.0, min(1.0, math.cos(math.radians(pitch / 100 - p0)) *
-                                                                         math.cos(math.radians(roll / 100 - r0))))))
-                            STAN["przechyl"] = m
-                            if STAN["nagrywa"]:
-                                STAN["max_przechyl"] = max(STAN["max_przechyl"], m)
-                            zmiana = None
-                            if m > PROG_PRZECHYLU and not STAN["auto_pauza"]:
-                                STAN["auto_pauza"], zmiana = True, "AUTO_PRZECHYL_START"
-                            elif m < PROG_PRZECHYLU - 3 and STAN["auto_pauza"]:
-                                STAN["auto_pauza"], zmiana = False, "AUTO_PRZECHYL_KONIEC"
-                            teraz = time.time()
-                            zdarzenia = prz.krok(teraz, m) if STAN["nagrywa"] else []   # przekroj takze w pauzie (zdjety plecak)
-                            if not STAN["nagrywa"] and prz.faza:
-                                prz.faza = 0
-                            skany, nr = None, 0
-                            for z in zdarzenia:
-                                if z in ("START", "OD_NOWA"):
-                                    STAN["prz_skany"] = []
-                                    STAN["prz_wynik"] = ""
-                                elif z == "OK":
-                                    STAN["prz_nr"] += 1
-                                    nr, skany = STAN["prz_nr"], STAN["prz_skany"]
-                                    STAN["prz_skany"] = []
-                            STAN["prz_faza"], STAN["prz_zostalo"] = prz.faza, prz.zostalo(teraz)
-                        if zmiana:
-                            znacznik(zmiana, licz=False)
-                        for z in zdarzenia:
-                            if z == "OK":
-                                znacznik(f"PRZEKROJ_OK nr={nr} przechyl={m:.0f}", licz=False)
-                                threading.Thread(target=policz_przekroj, args=(nr, skany), daemon=True).start()
-                            elif z != "OD_NOWA":
-                                znacznik(f"PRZEKROJ_{z} przechyl={m:.0f}", licz=False)
-        except (serial.SerialException, OSError):
-            time.sleep(1)
+                        if not byly:
+                            byly = True
+                            STAN["imu_tryb"] = "shtp"
+                            zapisz("imu", d)
+                        ost = teraz; n += 1
+                        if n % 2 == 0:            # 200 Hz -> 100 Hz dla strony i historii pionu
+                            imu_probka(*H.katy(w), prz)
+                if teraz - ost > 2.0:
+                    if probny and not byly:
+                        return False
+                    H.wyslij_konfiguracje(s, seq)    # czujnik po resecie (np. chwilowy zanik zasilania)
+                    seq += 3; ost = teraz
+        return byly
+    except (serial.SerialException, OSError):
+        time.sleep(1)
+        return byly
 
 
 # ----------------------------------------------------------------------------- barometr BMP280
@@ -404,7 +468,8 @@ def start(budynek, kondygnacja):
             f.write(f"nazwa={nazwa}\nbudynek={budynek}\nkondygnacja={kondygnacja}\nstart={datetime.now().isoformat()}\n"
                     f"lidar={ARGS.lidar}@{ARGS.lidar_baud}\nimu={ARGS.imu}@{ARGS.imu_baud}\n"
                     f"baro=0x{ARGS.baro_adres:02x}\nlidar2={ARGS.lidar2 or ''}\nlidar_poziomy={STAN['podglad']}\n"
-                    f"imu_pitch0={STAN['pion0'][0]:.2f}\nimu_roll0={STAN['pion0'][1]:.2f}\n")
+                    f"imu_pitch0={STAN['pion0'][0]:.2f}\nimu_roll0={STAN['pion0'][1]:.2f}\n"
+                    f"imu_tryb={STAN.get('imu_tryb', '')}\n")
         for s in ("lidar", "imu", "baro") + (("lidar2",) if ARGS.lidar2 else ()):
             PLIKI[s] = open(os.path.join(kat, s + ".bin"), "ab")
             STAN["bajty"][s] = 0
@@ -1168,7 +1233,7 @@ function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);przekroj(s);
  
  kl($('lid'),s.lidar_ok?s.hz.toFixed(1)+' Hz':'BRAK',s.lidar_ok?'ok':'zle');$('lid2').textContent=s.pkt_obrot+' pkt/obrót';$('fn').textContent=s.foto||'';
  $('l2').style.display=s.lidar2_wl?'':'none';if(s.lidar2_wl)kl($('l2s'),s.lidar2_ok?'działa':'BRAK',s.lidar2_ok?'ok':'zle');
- if(s.pitch===null){kl($('prz'),s.imu_wl?'BRAK':'wył.',s.imu_wl?'zle':'')}else{const m=s.przechyl;kl($('prz'),m.toFixed(1)+'°',m>15?'zle':m>8?'uw':'ok')}
+ if(s.pitch===null){kl($('prz'),s.imu_wl?'BRAK':'wył.',s.imu_wl?'zle':'')}else{const m=s.przechyl;kl($('prz'),m.toFixed(1)+'°'+(s.imu_tryb==='shtp'?' żyro':''),m>15?'zle':m>8?'uw':'ok')}
  $('prz2').textContent=s.max_przechyl.toFixed(1)+'°';
  $('ip').textContent=s.ip?s.ip.split(' ')[0]+':8080':'–';$('p0').textContent=s.pion0[0].toFixed(1)+'° / '+s.pion0[1].toFixed(1)+'°';
  if(s.wys===null){kl($('wys'),s.baro_wl?'BRAK':'wył.',s.baro_wl?'zle':'');$('wys2').textContent=''}else{kl($('wys'),(s.wys>=0?'+':'')+s.wys.toFixed(1)+' m');$('wys2').textContent='temp. '+s.temp.toFixed(0)+' °C'}
@@ -1218,6 +1283,7 @@ class Handler(BaseHTTPRequestHandler):
                                           "przechyl", "prz_faza", "prz_zostalo", "prz_nr", "prz_wynik",
                                           "budynek", "kondygnacja", "ip")}
                 s["pion0"] = [round(v, 1) for v in STAN["pion0"]]
+                s["imu_tryb"] = STAN.get("imu_tryb", "")
                 s["obrot"] = STAN["obrot"]
                 s["pom"] = STAN["pom"][-5:]
                 s["grz"] = STAN["grz"][-5:]
@@ -1370,7 +1436,9 @@ def main():
     ap.add_argument("--lidar-baud", type=int, default=230400)
     ap.add_argument("--lidar2", default="auto", help="port drugiego (pionowego) LiDAR-u; auto = /dev/ttyUSB1, jesli istnieje; pusty = brak")
     ap.add_argument("--imu", default="/dev/ttyACM0")
-    ap.add_argument("--imu-baud", type=int, default=115200)
+    ap.add_argument("--imu-baud", type=int, default=115200, help="tylko tryb RVC")
+    ap.add_argument("--imu-tryb", default="auto", choices=("auto", "rvc", "shtp"),
+                    help="BNO085: shtp = surowy zyroskop (mostek P1), rvc = mostek P0; auto rozpoznaje")
     ap.add_argument("--bez-imu", action="store_true")
     ap.add_argument("--baro-adres", type=lambda x: int(x, 0), default=0x76)
     ap.add_argument("--bez-baro", action="store_true")

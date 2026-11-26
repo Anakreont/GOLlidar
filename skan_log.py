@@ -29,15 +29,21 @@ STOP = threading.Event()
 LICZNIK = {}
 
 
-def loguj_port(nazwa, port, baud, sciezka):
-    """Czyta port szeregowy i dopisuje rekordy do pliku binarnego."""
+def loguj_port(nazwa, port, baud, sciezka, shtp=False):
+    """Czyta port szeregowy i dopisuje rekordy do pliku binarnego. shtp: BNO085 w trybie UART-SHTP -
+    po otwarciu portu (i co 3 s bez danych) wysyla konfiguracje raportow."""
     LICZNIK[nazwa] = 0
     while not STOP.is_set():
         try:
             with serial.Serial(port, baud, timeout=0.05) as s, open(sciezka, "ab") as f:
+                ost = 0.0
                 while not STOP.is_set():
+                    if shtp and time.time() - ost > 3.0:
+                        import imu_shtp
+                        imu_shtp.wyslij_konfiguracje(s); ost = time.time()
                     dane = s.read(4096)
                     if dane:
+                        ost = time.time()
                         f.write(struct.pack("<QH", time.time_ns(), len(dane)))
                         f.write(dane)
                         LICZNIK[nazwa] += len(dane)
@@ -88,21 +94,25 @@ def main():
     ap.add_argument("--imu", default="/dev/ttyUSB1")
     ap.add_argument("--imu-baud", type=int, default=115200, help="BNO085 UART-RVC: 115200")
     ap.add_argument("--bez-imu", action="store_true")
+    ap.add_argument("--imu-shtp", action="store_true", help="BNO085 w trybie UART-SHTP (mostek P1, 3 Mbps, surowy zyroskop)")
     ap.add_argument("--katalog", default=os.path.expanduser("~/skany"))
     a = ap.parse_args()
+    if a.imu_shtp:
+        a.imu_baud = 3000000
 
     kat = os.path.join(a.katalog, datetime.now().strftime("%Y%m%d_%H%M%S_") + a.nazwa)
     os.makedirs(kat, exist_ok=True)
     with open(os.path.join(kat, "info.txt"), "w") as f:
         f.write(f"nazwa={a.nazwa}\nstart={datetime.now().isoformat()}\n"
                 f"lidar={a.lidar}@{a.lidar_baud}\n"
-                f"imu={'brak' if a.bez_imu else a.imu + '@' + str(a.imu_baud)}\n")
+                f"imu={'brak' if a.bez_imu else a.imu + '@' + str(a.imu_baud)}\n"
+                f"imu_tryb={'shtp' if a.imu_shtp else 'rvc'}\n")
 
     watki = [threading.Thread(target=loguj_port, daemon=True,
                               args=("lidar", a.lidar, a.lidar_baud, os.path.join(kat, "lidar.bin")))]
     if not a.bez_imu:
         watki.append(threading.Thread(target=loguj_port, daemon=True,
-                                      args=("imu", a.imu, a.imu_baud, os.path.join(kat, "imu.bin"))))
+                                      args=("imu", a.imu, a.imu_baud, os.path.join(kat, "imu.bin"), a.imu_shtp)))
     if a.baro:
         watki.append(threading.Thread(target=loguj_baro, daemon=True,
                                       args=(a.baro_adres, os.path.join(kat, "baro.bin"))))

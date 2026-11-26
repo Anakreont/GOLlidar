@@ -58,7 +58,22 @@ def pakiety_ld(sciezka):
 
 
 def ramki_rvc(sciezka):
-    """BNO085 UART-RVC: 0xAA 0xAA, indeks, yaw, pitch, roll (0,01 st.), ax, ay, az, 3 bajty, suma."""
+    """BNO085 UART-RVC: 0xAA 0xAA, indeks, yaw, pitch, roll (0,01 st.), ax, ay, az, 3 bajty, suma.
+    Plik z trybu UART-SHTP: katy z kwaternionu Game Rotation Vector (co drugi, ok. 100 Hz)."""
+    import imu_shtp as H
+    pierwsze = b"".join(d for _, (_, d) in zip(range(400), rekordy(sciezka)))
+    if H.wyglada_na_shtp(pierwsze):
+        st = H.Strumien(); n = 0
+        for t, d in rekordy(sciezka):
+            for _, kan, tr in st.feed(d, t):
+                if kan != 3:
+                    continue
+                for rid, _, _, w in H.raporty(tr):
+                    if rid == H.GRV:
+                        n += 1
+                        if n % 2 == 0:
+                            yield (t,) + H.katy(w)
+        return
     buf = bytearray()
     for t, d in rekordy(sciezka):
         buf += d

@@ -5,7 +5,18 @@ sys.path.insert(0, __import__('os').path.join(__import__('os').path.dirname(__im
 
 # parametry dopasowania (strojone na rzucie CAD domu Piotra, sesja 25.11 18:57)
 PAR = dict(imu_w=200.0, promien=8.0, kf_dl=0.25, kf_kat=8.0, co_ktory=2, przechyl_max=12.0, huber=0.03, max_d=0.3,
-           intens=0.3, sub_max=150, iters=15, luka_s=2.0, luka_frac=0.6, luka_rms=0.05)
+           intens=0.3, sub_max=150, iters=15, luka_s=2.0, luka_frac=0.6, luka_rms=0.05,
+           # 26.11 (opinie innych AI): degeneracja ICP w korytarzach, pas wysokosci zamiast odrzucania przechylu
+           deg=True, deg_prog=40.0,        # wartosc wlasna bloku przesuniecia ponizej progu = slaby kierunek -> ruch z przewidywania
+           pas=True, pas_gora=0.8, pas_dol=0.9,   # punkty wyzej/nizej od glowicy (sufit, meble, podloga) odrzucane przy przechyle
+           przechyl_zm=99.0,               # skan odrzucany, gdy przechyl zmienia sie w trakcie obrotu o wiecej (wkladanie w przekroj)
+           yaw_zyro=True,
+           luka_kurs=9.0,                  # po luce: szukanie kursu +-9 st. (BNO po przekroju), 0 = wylaczone
+           postoj_mg=25.0)                 # odch. std |przysp.| w 0,5 s ponizej progu = operator stoi -> przewidywany ruch zerowy                  # IMU SHTP: kurs z calki zyroskopu zamiast z katow BNO
+STAT = {}
+import os as _os, json as _json
+if _os.environ.get('LIDAR_PAR'):            # proby porownawcze: LIDAR_PAR='{"deg": false}' python3 przetworz.py ...
+    PAR.update(_json.loads(_os.environ['LIDAR_PAR']))
 LOG_LUK = []
 TEST_LUKI = []   # testy: [(t_od, czas_s, dx, dy, dth_st)] - wyciecie skanow i sztuczny blad pozycji po luce
 
@@ -54,7 +65,7 @@ def przerwy(kat, t0):
     return out
 
 
-def obroty(z, rmin=0.3, rmax=9.0, pion=None):
+def obroty(z, rmin=0.3, rmax=9.0, pion=None, pion_pas=None):
     """Dzieli pakiety na obroty; kazdy punkt z czasem z interpolacji wewnatrz pakietu."""
     a0, a1, d, tl = z['a0'], z['a1'], z['d'], z['tl']
     inten = z['i'].astype(float)
@@ -87,22 +98,33 @@ def obroty(z, rmin=0.3, rmax=9.0, pion=None):
     # Os BNO wzgledem LiDAR-u ustalona z przekrojow: roll +85 st. = kierunek 0 st. LD19 w dol, wiec elewacja wiazki o kacie A
     # wynosi ok. -roll*cos(A) + pitch*sin(A) (przechyl liczony od pionu z postoju / Zeruj pion).
     rzut = pion is not None and not bool(z.get('bez_imu', False))
-    if rzut:
-        ti = z['ti']; pr = z['pitch'] - pion[0]; rr = z['roll'] - pion[1]
+    imu = pion_pas is not None and not bool(z.get('bez_imu', False))
+    if imu:
+        ti = z['ti']; pp = pion if pion is not None else pion_pas; pr = z['pitch'] - pp[0]; rr = z['roll'] - pp[1]
+    n_pas = [0, 0]
     out = []
     for j, g in enumerate(gr):
         A, D, Tt = ang[g].ravel(), d[g].ravel(), tp[g].ravel()
         I_ = inten[g].ravel()
         slabe = I_ < PAR['intens'] * np.interp(D, przedz + 0.25, med)
-        if rzut:
+        pasm = np.ones(len(D), bool)
+        if imu:
             p_ = np.radians(np.interp(Tt, ti, pr)); r_ = np.radians(np.interp(Tt, ti, rr)); Ar = np.radians(A)
             elew = -r_ * np.cos(Ar) + p_ * np.sin(Ar)
-            D = D * np.cos(np.clip(elew, -0.35, 0.35))
-        m = (D > rmin) & (D < rmax) & ~slabe
+            if PAR['pas']:
+                # wysokosc punktu wzgledem glowicy (ok. 1,9 m nad podloga): przy przechyle daleka wiazka trafia
+                # w sufit, lampy, lawki lub podloge - takie punkty nie sa sciana na wysokosci skanu
+                h = D * np.sin(np.clip(elew, -1.2, 1.2))
+                pasm = (h < PAR['pas_gora']) & (h > -PAR['pas_dol'])
+                n_pas[0] += int((~pasm & (D > rmin)).sum()); n_pas[1] += len(D)
+            if rzut:
+                D = D * np.cos(np.clip(elew, -0.35, 0.35))
+        m = (D > rmin) & (D < rmax) & ~slabe & pasm
         m &= ~((D < 0.7) & (A > 130) & (A < 230))
         m &= ~((D < 0.9) & maska[j][(A // 10).astype(int) % 36])
         if m.sum() < 150: continue
         out.append((Tt[m], np.radians(A[m]), D[m]))
+    STAT['pas_odrzucone'] = n_pas[0] / max(1, n_pas[1])
     return out
 
 def normalne(p):
@@ -117,7 +139,9 @@ def normalne(p):
         n[i] = v[:, 0]
     return n
 
-def icp(src, tgt, ntg, tree, T0, iters=15, huber=0.05, max_d=0.5, prior=None):
+def icp(src, tgt, ntg, tree, T0, iters=15, huber=0.05, max_d=0.5, prior=None, deg=None):
+    """deg = (x0, y0, prog): w kierunkach przesuniecia slabo okreslonych przez sciany (wartosc wlasna H ponizej
+    progu - typowo wzdluz korytarza) pozycja trzymana przy przewidywaniu (x0, y0) zamiast swobodnie dryfowac."""
     x, y, th = T0
     for _ in range(iters):
         c, s = np.cos(th), np.sin(th)
@@ -134,11 +158,17 @@ def icp(src, tgt, ntg, tree, T0, iters=15, huber=0.05, max_d=0.5, prior=None):
         H = (J * w[:, None]).T @ J; g = (J * w[:, None]).T @ r
         if prior is not None:
             H[2, 2] += prior[1]; g[2] += prior[1] * (th - prior[0])
+        if deg is not None:
+            ew, ev_ = np.linalg.eigh(H[:2, :2])
+            for k in range(2):
+                if ew[k] < deg[2]:
+                    vv = ev_[:, k]; lam = deg[2] - ew[k]
+                    H[:2, :2] += lam * np.outer(vv, vv); g[:2] += lam * vv * (vv @ (np.array([x, y]) - deg[:2]))
         try: dx = -np.linalg.solve(H + 1e-6 * np.eye(3), g)
         except np.linalg.LinAlgError: return None
         x, y, th = x + dx[0], y + dx[1], th + dx[2]
         if np.abs(dx).max() < 1e-4: break
-    ev = np.linalg.eigvalsh(H[:2, :2])
+    ev = np.linalg.eigvalsh(((J * w[:, None]).T @ J)[:2, :2])     # bez sztucznego wiezu - do oceny degeneracji
     return np.array([x, y, th]), np.sqrt(np.mean(r ** 2 * w)), ev, m.mean()
 
 def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segmenty=None, promien=None, dane=None, rzutuj=True):
@@ -146,12 +176,22 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segme
     z = dane if dane is not None else wczytaj(kat)
     if bool(z.get('bez_imu', False)): imu_w = 0.0
     ti, yaw = z['ti'], np.radians(z['yaw'])
+    if PAR['yaw_zyro'] and 'yaw_zyro' in z:
+        yaw = np.radians(z['yaw_zyro'])
     pit, rol = z['pitch'], z['roll']
     if pion is None:
         pion = pion_z_info(kat)
     if pion is None:
         m10 = ti < ti[0] + 10; pion = (np.median(pit[m10]), np.median(rol[m10]))
-    sk = obroty(z, pion=pion if rzutuj else None)
+    sk = obroty(z, pion=pion if rzutuj else None, pion_pas=pion)
+    am = np.linalg.norm(np.asarray(z['acc'], float), axis=1)
+    c1 = np.concatenate([[0], np.cumsum(am)]); c2 = np.concatenate([[0], np.cumsum(am ** 2)])
+    def stoi(t):
+        a_, b_ = np.searchsorted(ti, [t - 0.5, t]); n_ = b_ - a_
+        if n_ < 10 or not am.any(): return False
+        m_ = (c1[b_] - c1[a_]) / n_
+        return (c2[b_] - c2[a_]) / n_ - m_ * m_ < PAR['postoj_mg'] ** 2
+    STAT.update(skany=len(sk), slabe=0, przechyl=0, zmiana=0, ev=[])
     prz = np.degrees(np.arccos(np.clip(np.cos(np.radians(pit - pion[0])) * np.cos(np.radians(rol - pion[1])), -1, 1)))
     poses, kf, info = [], [], []
     T = np.zeros(3); v = np.zeros(2); ostT = None; yaw_ost = None
@@ -170,7 +210,8 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segme
         if seg != seg_ost:
             kf_seg = []; seg_ost = seg
         pz = np.interp(tt, ti, prz)
-        if pz.max() > PAR['przechyl_max']: info.append((tm, 'przechyl')); continue
+        if pz.max() > PAR['przechyl_max']: info.append((tm, 'przechyl')); STAT['przechyl'] += 1; continue
+        if pz.max() - pz.min() > PAR['przechyl_zm']: info.append((tm, 'przechyl')); STAT['zmiana'] += 1; continue
         tl_ = [l for l in TEST_LUKI if l[0] <= tm <= l[0] + l[1]]
         if tl_: info.append((tm, 'test')); zaburz = tl_[0]; continue
         yp = np.interp(tt, ti, yaw); ym = np.interp(tm, ti, yaw)
@@ -186,7 +227,7 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segme
         if zaburz is not None:
             T = T + np.array([zaburz[2], zaburz[3], np.radians(zaburz[4])]); zaburz = None
         luka = (not po_pauzie and t_ok is not None and tm - t_ok > PAR['luka_s'])
-        if luka: v = np.zeros(2)
+        if luka or stoi(tm): v = np.zeros(2)
         T0 = np.array([T[0] + v[0], T[1] + v[1], T[2] + dth])
         poz = np.array([x[0][:2] for x in kf_seg])
         bl = np.where(np.hypot(*(poz - T0[:2]).T) < promien)[0]
@@ -205,7 +246,19 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segme
             if wyn is None: info.append((tm, 'icp')); continue
             Tn, rms, ev, frac = wyn
         else:
-            wyn = icp(ps, P, N, tree, T0, prior=(T0[2], imu_w), huber=PAR['huber'], max_d=PAR['max_d'], iters=PAR['iters'])
+            dg = np.array([T0[0], T0[1], PAR['deg_prog']]) if (PAR['deg'] and not luka) else None
+            wyn = icp(ps, P, N, tree, T0, prior=(T0[2], imu_w), huber=PAR['huber'], max_d=PAR['max_d'], iters=PAR['iters'], deg=dg)
+            if luka and PAR['luka_kurs'] > 0:
+                # po przekroju (glowica na boku) kurs z BNO bywa przesuniety o kilka stopni (zszywanie poprawialo
+                # fragmenty o 5-6 st.): szukamy tez obroconych startow ze slabym wiezem kursu
+                for dk in np.radians(np.arange(-PAR['luka_kurs'], PAR['luka_kurs'] + 0.1, 3.0)):
+                    if abs(dk) < 1e-6: continue
+                    r_ = icp(ps, P, N, tree, T0 + [0, 0, dk], prior=(T0[2] + dk, 5.0), huber=PAR['huber'], max_d=0.5, iters=25)
+                    if r_ is not None and (wyn is None or r_[3] - 2 * r_[1] > wyn[3] - 2 * wyn[1] + 0.02):
+                        wyn = r_
+            if wyn is not None:
+                STAT.setdefault('ev', []).append(wyn[2][0])
+                if wyn[2][0] < PAR['deg_prog']: STAT['slabe'] += 1
             if luka:
                 # po luce w sledzeniu (przechyl, brak IMU): sprawdzamy, czy skan pewnie pasuje do starej mapy.
                 # Jesli nie - nie doklejamy na sile (to przesuwalo kuchnie/korytarz), tylko zaczynamy nowy
@@ -214,7 +267,8 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segme
                 if q is not None:
                     # jednoznacznosc: start z +-0,5 m nie moze dawac innej, rownie dobrej pozycji (rownolegle sciany)
                     for ddx, ddy in ((0.5, 0), (-0.5, 0), (0, 0.5), (0, -0.5)):
-                        r_ = icp(ps, P, N, tree, T0 + [ddx, ddy, 0], prior=(T0[2], imu_w), huber=PAR['huber'], max_d=0.6, iters=25)
+                        Ts = np.array([T0[0] + ddx, T0[1] + ddy, wyn[0][2]])
+                        r_ = icp(ps, P, N, tree, Ts, prior=(wyn[0][2], imu_w), huber=PAR['huber'], max_d=0.6, iters=25)
                         if (r_ is not None and np.linalg.norm(r_[0][:2] - wyn[0][:2]) > 0.15 and r_[3] > wyn[3] - 0.05
                                 and r_[1] < 1.5 * wyn[1] + 0.005):
                             q = (q[0], q[1], q[2], 'niejednoznaczne'); break

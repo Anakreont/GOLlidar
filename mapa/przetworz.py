@@ -12,7 +12,7 @@ sys.path.insert(0, TU); sys.path.insert(0, os.path.join(TU, '..'))
 import slam, sprawdz as S
 from eksport_dxf import kierunek, kondygnacja, szkielet, lica, KOM, MIN_KF
 
-WERSJA = 6
+WERSJA = 7   # 7: degeneracja w korytarzach, pas wysokosci, szukanie kursu po luce, IMU SHTP
 DZIEL_BARO = False   # True: dawny podzial sesji na kondygnacje wg barometru
 PETLE = False          # zamykanie petli (posegraf.graf) - do dopracowania wag, na razie gorzej niz bez
 RZUTUJ = False
@@ -61,6 +61,12 @@ def przetworz(kat):
     if not pozi:
         pozi = [(t0, t0 + int(z['tl'][-1] * 1e9), 0.0)]
     P, kf, info, pion = slam.mapa(kat, znak=-1, segmenty=[(b - t0) / 1e9 for a, b, h in pozi[:-1]], dane=z, rzutuj=RZUTUJ)
+    st = slam.STAT; ev = np.array(st.get('ev') or [0.0])
+    print(f"SLAM: skanow {st.get('skany')}, slaby kierunek (korytarz) {st.get('slabe')} "
+          f"[min. wart. wlasna: 10%={np.percentile(ev,10):.0f} 50%={np.percentile(ev,50):.0f}], "
+          f"odrzucone przechyl {st.get('przechyl')} + zmiana przechylu {st.get('zmiana')}, "
+          f"punkty poza pasem wysokosci {100*st.get('pas_odrzucone',0):.1f}%, fragmentow {len(set(map(tuple, slam.mapa.frag.tolist())))}, "
+          f"kurs: {'zyroskop' if (slam.PAR['yaw_zyro'] and 'yaw_zyro' in z) else 'BNO'}", flush=True)
     kt = [P[np.argmin(np.abs(P[:, 1:4] - Tk).sum(1)), 0] for Tk, _, _ in kf]
     # katy proste: prostowanie kursu osobno w kazdym odcinku (kondygnacji)
     import posegraf
