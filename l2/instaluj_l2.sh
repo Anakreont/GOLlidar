@@ -24,6 +24,7 @@ fi
   ros-noetic-eigen-conversions ros-noetic-message-generation ros-noetic-message-runtime \
   ros-noetic-nav-msgs ros-noetic-geometry-msgs ros-noetic-sensor-msgs ros-noetic-rospy ros-noetic-std-msgs \
   ros-noetic-pcl-ros ros-noetic-tf eigen
+"$MM" run -p "$CEL" pip install -q rosbags   # l2_bag.py: zapis rosbag z surowego l2.bin bez rospy
 rm -rf "$WS/build" "$WS/devel"      # po nieudanej probie
 mkdir -p "$WS/src"
 if [ ! -d "$WS/src/point_lio_unilidar" ]; then
@@ -39,7 +40,7 @@ echo "== kompiluje point_lio_unilidar (kilka minut)"
 mkdir -p "$HOME/bin"
 cat > "$HOME/bin/l2_mapa" <<EOS
 #!/usr/bin/env bash
-# l2_mapa <nagranie.bag> [katalog_wyniku]  - Point-LIO na nagraniu L2, potem rzut (sciany spod sufitu, ciecie 1,0-1,2 m)
+# l2_mapa <nagranie.bag albo katalog sesji z l2.bin> [katalog_wyniku]  - Point-LIO na nagraniu L2, potem rzut (sciany spod sufitu, ciecie 1,0-1,2 m)
 exec "$MM" run -p "$CEL" bash "$TU/l2_mapa.sh" "$WS" "\$@"
 EOS
 chmod +x "$HOME/bin/l2_mapa"

@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 # Wywolywane przez ~/bin/l2_mapa wewnatrz srodowiska ~/ros1_l2.  Argumenty: <ws> <bag> [wynik]
 set -eo pipefail
-WS="$1"; BAG="$(realpath "$2")"; WY="$(realpath -m "${3:-$(dirname "$BAG")/l2_wynik}")"
-TU="$(cd "$(dirname "$0")" && pwd)"
-mkdir -p "$WY"
+WS="$1"; WE="$(realpath "$2")"; TU="$(cd "$(dirname "$0")" && pwd)"
+if [ -d "$WE" ]; then                     # katalog sesji skanera z l2.bin -> najpierw rosbag
+  [ -f "$WE/l2.bin" ] || { echo "brak $WE/l2.bin"; exit 1; }
+  WY="$(realpath -m "${3:-$WE/_wynik/l2}")"; mkdir -p "$WY"
+  BAG="$WY/l2.bag"
+  python "$TU/l2_bag.py" "$WE" "$BAG"
+else
+  BAG="$WE"; WY="$(realpath -m "${3:-$(dirname "$BAG")/l2_wynik}")"; mkdir -p "$WY"
+fi
 source "$WS/devel/setup.bash"
 export ROS_MASTER_URI=http://localhost:11411 ROS_HOSTNAME=localhost
 PCD="$WS/src/point_lio_unilidar/PCD/scans.pcd"; rm -f "$PCD"

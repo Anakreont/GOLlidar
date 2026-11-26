@@ -37,8 +37,9 @@ def czas_ns():
 LOCK = threading.Lock()
 STAN = {
     "nagrywa": False, "nazwa": "", "katalog": "", "t_start": 0.0,
-    "bajty": {"lidar": 0, "lidar2": 0, "imu": 0, "baro": 0},
-    "ost": {"lidar": 0.0, "lidar2": 0.0, "imu": 0.0, "baro": 0.0},        # czas ostatnich danych
+    "bajty": {"lidar": 0, "lidar2": 0, "imu": 0, "baro": 0, "l2": 0},
+    "ost": {"lidar": 0.0, "lidar2": 0.0, "imu": 0.0, "baro": 0.0, "l2": 0.0},
+    "l2_pkt": 0, "l2_hz": 0.0, "l2_imu_hz": 0.0,  # Unitree L2: pakiety chmury i IMU na sekunde        # czas ostatnich danych
     "podglad": "lidar",        # ktory LiDAR jest poziomy (podglad na stronie, przekroje); drugi jest pionowy
     "foto": 0,                 # liczba zdjec w biezacej sesji
     "obrot": [], "hz": 0.0, "pkt_obrot": 0,
@@ -517,8 +518,10 @@ def start(budynek, kondygnacja):
                     f"lidar={ARGS.lidar}@{ARGS.lidar_baud}\nimu={ARGS.imu}@{ARGS.imu_baud}\n"
                     f"baro=0x{ARGS.baro_adres:02x}\nlidar2={ARGS.lidar2 or ''}\nlidar_poziomy={STAN['podglad']}\n"
                     f"imu_pitch0={STAN['pion0'][0]:.2f}\nimu_roll0={STAN['pion0'][1]:.2f}\n"
-                    f"imu_tryb={STAN.get('imu_tryb', '')}\n")
-        for s in ("lidar", "imu", "baro") + (("lidar2",) if ARGS.lidar2 else ()):
+                    f"imu_tryb={STAN.get('imu_tryb', '')}\n"
+                    f"l2={(ARGS.l2_ip + ':' + str(ARGS.l2_port)) if (ARGS.l2 != 'nie' and (ARGS.l2 == 'tak' or time.time() - STAN['ost']['l2'] < 5)) else ''}\n")
+        l2 = ARGS.l2 != "nie" and (ARGS.l2 == "tak" or time.time() - STAN["ost"]["l2"] < 5)
+        for s in ("lidar", "imu", "baro") + (("lidar2",) if ARGS.lidar2 else ()) + (("l2",) if l2 else ()):
             PLIKI[s] = open(os.path.join(kat, s + ".bin"), "ab")
             STAN["bajty"][s] = 0
         kal = STAN.get("_baro_kal")
@@ -966,6 +969,46 @@ def pauza():
     return nowy
 
 
+def watek_l2():
+    """Unitree L2 przez Ethernet (UDP): kazdy datagram zapisywany surowo do l2.bin z czasem maliny (jak inne
+    czujniki). Na stronie tylko liczniki pakietow; mape liczy Dell (l2/l2_bag.py -> Point-LIO)."""
+    import socket
+    import l2_protokol as P
+    while not KONIEC.is_set():
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4 * 1024 * 1024)
+            s.bind(("0.0.0.0", ARGS.l2_host_port))
+            s.settimeout(0.5)
+            ost_start, n_ch, n_imu, t_lic = 0.0, 0, 0, time.monotonic()
+            while not KONIEC.is_set():
+                teraz = time.monotonic()
+                if time.time() - STAN["ost"]["l2"] > 3 and teraz - ost_start > 5:
+                    try:                                     # L2 w uspieniu: polecenie startu pracy
+                        s.sendto(P.start_obrotu(), (ARGS.l2_ip, ARGS.l2_port))
+                    except OSError:
+                        pass                                 # brak trasy do L2 (kabel odlaczony) - probujemy dalej
+                    ost_start = teraz
+                try:
+                    d, _ = s.recvfrom(65535)
+                except socket.timeout:
+                    d = b""
+                if d:
+                    zapisz("l2", d)
+                    if len(d) >= 8 and d[:4] == P.NAGLOWEK:
+                        typ = int.from_bytes(d[4:8], "little")
+                        n_ch += typ == P.CHMURA; n_imu += typ == P.IMU
+                if teraz - t_lic >= 1.0:
+                    with LOCK:
+                        STAN["l2_hz"], STAN["l2_imu_hz"] = n_ch / (teraz - t_lic), n_imu / (teraz - t_lic)
+                        STAN["l2_pkt"] += n_ch
+                    n_ch, n_imu, t_lic = 0, 0, teraz
+        except OSError as e:
+            STAN["komunikat"] = f"L2: {e}"
+            time.sleep(2)
+
+
 def watek_flush():
     while not KONIEC.is_set():
         time.sleep(5)
@@ -1129,6 +1172,7 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
  <div class="k"><small>Kopia na pendrive</small><b id="pen">–</b><small id="pen2"></small></div></div>
 <div class="w"><div class="k"><small>LiDAR</small><b id="lid2">–</b></div>
  <div class="k"><small>Max przechył w sesji</small><b id="prz2">–</b><small id="wys2"></small></div></div>
+<div class="w" id="u2" style="display:none"><div class="k"><small>Unitree L2 (3D)</small><b id="u2s">–</b></div></div>
 <div class="w" id="l2" style="display:none"><div class="k"><small>Drugi LiDAR (pionowy)</small><b id="l2s">–</b></div>
  <button class="sz" onclick="if(confirm('Zamienić role LiDAR-ów? Podgląd w zakładce Skan ma pokazywać ten poziomy.'))cmd('zamien_lidary')">Zamień poziomy / pionowy</button></div>
 <div class="w"><div class="k"><small>Adres strony</small><b id="ip">–</b></div>
@@ -1286,6 +1330,7 @@ function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);przekroj(s);
  $('bpa').textContent=s.pauza?'WZNÓW (plecak założony, stoję w tym samym miejscu)':'PAUZA (zdejmuję plecak / schylam się)';document.body.classList.toggle('nagr',s.nagrywa);$('bpa').style.background=s.pauza?'#1f9d68':'#b70';
  
  kl($('lid'),s.lidar_ok?s.hz.toFixed(1)+' Hz':'BRAK',s.lidar_ok?'ok':'zle');$('lid2').textContent=s.pkt_obrot+' pkt/obrót';$('fn').textContent=s.foto||'';
+ $('u2').style.display=s.u2_wl?'':'none';if(s.u2_wl)kl($('u2s'),s.u2_ok?s.u2_hz+' pak./s · IMU '+s.u2_imu+'/s':'BRAK DANYCH',s.u2_ok&&s.u2_hz>100?'ok':'zle');
  $('l2').style.display=s.lidar2_wl?'':'none';if(s.lidar2_wl)kl($('l2s'),s.lidar2_ok?'działa':'BRAK',s.lidar2_ok?'ok':'zle');
  if(s.pitch===null){kl($('prz'),s.imu_wl?'BRAK':'wył.',s.imu_wl?'zle':'')}else{const m=s.przechyl;kl($('prz'),m.toFixed(1)+'°'+(s.imu_tryb==='shtp'?' żyro':''),m>15?'zle':m>8?'uw':'ok')}
  $('prz2').textContent=s.max_przechyl.toFixed(1)+'°';
@@ -1355,6 +1400,9 @@ class Handler(BaseHTTPRequestHandler):
                 s["rozmiar"] = sum(STAN["bajty"].values())
                 s["lidar_ok"] = teraz - STAN["ost"][STAN["podglad"]] < 1.5
                 s["lidar2_wl"] = bool(ARGS.lidar2)
+                s["u2_ok"] = teraz - STAN["ost"]["l2"] < 1.5
+                s["u2_wl"] = ARGS.l2 != "nie" and (s["u2_ok"] or STAN["l2_pkt"] > 0 or ARGS.l2 == "tak")
+                s["u2_hz"], s["u2_imu"] = round(STAN["l2_hz"]), round(STAN["l2_imu_hz"])
                 drugi = "lidar2" if STAN["podglad"] == "lidar" else "lidar"
                 s["lidar2_ok"] = teraz - STAN["ost"][drugi] < 1.5
                 s["podglad"] = STAN["podglad"]
@@ -1500,6 +1548,11 @@ def main():
     ap.add_argument("--bez-imu", action="store_true")
     ap.add_argument("--baro-adres", type=lambda x: int(x, 0), default=0x76)
     ap.add_argument("--bez-baro", action="store_true")
+    ap.add_argument("--l2", default="auto", choices=("auto", "tak", "nie"),
+                    help="Unitree L2 przez Ethernet: auto = nagrywa, gdy L2 przysyla dane w chwili START")
+    ap.add_argument("--l2-ip", default="192.168.2.62", help="adres L2 (po zmianie z fabrycznego 192.168.1.62)")
+    ap.add_argument("--l2-port", type=int, default=6101)
+    ap.add_argument("--l2-host-port", type=int, default=6201, help="port na malinie, na ktory L2 wysyla dane")
     ap.add_argument("--katalog", default=os.path.expanduser("~/skany"))
     ap.add_argument("--port", type=int, default=8080)
     ARGS = ap.parse_args()
@@ -1516,6 +1569,8 @@ def main():
         watki.append((watek_imu, (ARGS.imu, ARGS.imu_baud)))
     if not ARGS.bez_baro:
         watki.append((watek_baro, (ARGS.baro_adres,)))
+    if ARGS.l2 != "nie":
+        watki.append((watek_l2, ()))
     for f, a in watki:
         threading.Thread(target=f, args=a, daemon=True).start()
     try:
