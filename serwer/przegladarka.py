@@ -238,7 +238,8 @@ class H(BaseHTTPRequestHandler):
             pliki = sorted(p for p in os.listdir(k) if os.path.isfile(os.path.join(k, p)))
             wyn = sorted('_wynik/' + p for p in os.listdir(os.path.join(k, '_wynik'))
                          if p in ('rzut.dxf', 'podglad.png', 'przekroje.dxf', 'model3d.dxf', 'model3d.obj', 'log.txt', 'blad.txt')
-                         or (p.startswith('przekroj_') and p.endswith('.jpg'))) if os.path.isdir(os.path.join(k, '_wynik')) else []
+                         or (p.startswith('przekroj_') and p.endswith('.jpg'))
+                         or (p.startswith('porownanie_') and p.endswith('.png'))) if os.path.isdir(os.path.join(k, '_wynik')) else []
             pj = os.path.join(k, '_wynik', 'przekroje.json')
             prz = json.load(open(pj, encoding='utf-8')) if os.path.exists(pj) else []
             return self._json({'info': info(k), 'stan': stan_wyniku(q['n'], k), 'pliki': pliki, 'wyniki': wyn, 'przekroje': prz,
