@@ -42,7 +42,7 @@ class Limit:
     tylko, gdy zostaje >= LIDAR_RAM_ZAPAS_GB wolnej pamieci (domyslnie 4 GB). Pierwsze rusza zawsze."""
     def __init__(self):
         self.ile = 0; self.c = threading.Condition()
-        self.max = max(1, int(os.environ.get('LIDAR_ROWNOLEGLE', '3')))
+        self.max = max(1, int(os.environ.get('LIDAR_ROWNOLEGLE', '1')))   # 3 naraz = OOM na Dellu (26.11)
         self.zapas = float(os.environ.get('LIDAR_RAM_ZAPAS_GB', '4'))
 
     def __enter__(self):
@@ -187,7 +187,9 @@ def pracownik():
             r = subprocess.run([sys.executable, os.path.join(REPO, 'mapa', 'przetworz.py'), k], stdout=f, stderr=subprocess.STDOUT, env=ENV_DZIECI)
         blad = os.path.join(k, '_wynik', 'blad.txt')
         if r.returncode != 0:
-            with open(log) as f, open(blad, 'w') as g:
+            with open(log, errors='replace') as f, open(blad, 'w') as g:
+                if r.returncode in (-9, 137):
+                    g.write('Proces zabity przez system - zabraklo pamieci (OOM). Przelicz, gdy nic innego sie nie liczy.\n\n')
                 g.write(f.read()[-3000:])
         elif os.path.exists(blad):
             os.remove(blad)
