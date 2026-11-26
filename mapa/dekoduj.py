@@ -52,7 +52,7 @@ def dekoduj(kat, wy=None):
         ti = np.arange(tl[0], tl[-1], 0.01)
         z = dict(tl=tl, a0=np.array(A0), a1=np.array(A1), d=np.array(D, float) / 1000, i=np.array(I),
                  ti=ti, yaw=np.zeros_like(ti), pitch=np.zeros_like(ti), roll=np.zeros_like(ti), acc=np.zeros((len(ti), 3)),
-                 t0=T[0], bez_imu=True, wersja_dek=2)
+                 t0=T[0], bez_imu=True, wersja_dek=3)
         if wy:
             np.savez_compressed(wy, **z)
         return z
@@ -84,17 +84,22 @@ def dekoduj(kat, wy=None):
     ti = ai * cnt + bi
     yaw = np.degrees(np.unwrap(np.radians(R[:, 1] / 100)))
     z = dict(tl=tl, a0=np.array(A0), a1=np.array(A1), d=np.array(D, float) / 1000, i=np.array(I),
-             ti=ti, yaw=yaw, pitch=R[:, 2] / 100, roll=R[:, 3] / 100, acc=R[:, 4:7], t0=T[0], wersja_dek=2)
+             ti=ti, yaw=yaw, pitch=R[:, 2] / 100, roll=R[:, 3] / 100, acc=R[:, 4:7], t0=T[0], wersja_dek=3)
     if wy:
         np.savez_compressed(wy, **z)
     return z
 
 
-def _os_czasu(t_odb, seq, t_ref):
+def _os_czasu(t_odb, seq, t_ref, okres=0.005):
     """Czas probek z numerow kolejnych (8 bit) i czasu odbioru skorygowanego o opoznienia raportu: odporna
-    regresja po dolnej obwiedni (jak dla ramek RVC). Zwraca czas w s od t_ref."""
-    n = np.concatenate([[0], np.cumsum(np.diff(seq) % 256)]).astype(float)
-    tp = (np.asarray(t_odb) - t_ref)
+    regresja po dolnej obwiedni (jak dla ramek RVC). Licznik rozwijany z pomoca czasu odbioru, bo przy
+    dluzszej przerwie (zanik zasilania, odlaczenie USB) gubi sie wiecej niz 256 probek naraz.
+    Zwraca czas w s od t_ref, okres i liczbe zgubionych probek."""
+    tp = (np.asarray(t_odb, float) - t_ref)
+    d = (np.diff(seq) % 256).astype(float)
+    d += 256 * np.round((np.diff(tp) / okres - d) / 256)
+    d = np.maximum(d, 1)
+    n = np.concatenate([[0], np.cumsum(d)])
     a, b = np.polyfit(n, tp, 1)
     for _ in range(5):
         r = tp - (a * n + b); m = r < np.percentile(r, 20)
@@ -107,48 +112,64 @@ def dekoduj_shtp(kat, t0, tl, A0, A1, D, I):
     predkosci obrotu wokol pionu), przyspieszenia. Wszystko na osi czasu kwaternionu (~200 Hz)."""
     import imu_shtp as H
     st = H.Strumien(); G, W, Acc, RVm, Mg = [], [], [], [], []
+    pk = 0
     for t, d in S.rekordy(kat + '/imu.bin'):
         for tt, kan, tr in st.feed(d, t):
             if kan != 3: continue
+            pk += 1
             for rid, seq, dt, w in H.raporty(tr):
-                rek = ((tt - t0) / 1e9 + dt, seq, w)
+                rek = ((tt - t0) / 1e9 + dt, seq, w, pk, dt)
                 {H.GRV: G, H.ZYRO: W, H.ACC: Acc, H.RV: RVm, H.MAG: Mg}.get(rid, []).append(rek)
     if len(G) < 100:
         raise RuntimeError('IMU SHTP: za malo kwaternionow w imu.bin - czy czujnik dostal konfiguracje?')
-    tg, a, zg = _os_czasu([g[0] for g in G], np.array([g[1] for g in G]), 0.0)
+    tg, a, zg = _os_czasu([g[0] for g in G], np.array([g[1] for g in G]), 0.0, H.RAPORTY[0][1] * 1e-6)
+    # pozostale raporty na osi czasu kwaternionu: czas pakietu z kwaternionu w tym samym (lub sasiednim)
+    # pakiecie + wlasne opoznienie raportu; osobne rozwijanie licznikow rozjezdzalo sie po przerwach
+    pkG = np.array([g[3] for g in G], float); refG = tg - np.array([g[4] for g in G])
+    def os_raportu(L):
+        return np.interp(np.array([v[3] for v in L], float), pkG, refG) + np.array([v[4] for v in L])
     q = np.array([g[2] for g in G])
     q /= np.linalg.norm(q, axis=1)[:, None]
     x, y, zq, w = q.T
-    yaw = np.degrees(np.unwrap(np.arctan2(2 * (w * zq + x * y), 1 - 2 * (y * y + zq * zq))))
+    # znak kursu jak w trybie RVC (sprawdzone na nagraniu Gol1 26.11: kurs z ICP = -yaw RVC, a +yaw kwaternionu)
+    yaw = -np.degrees(np.unwrap(np.arctan2(2 * (w * zq + x * y), 1 - 2 * (y * y + zq * zq))))
     pitch = np.degrees(np.arcsin(np.clip(2 * (w * y - zq * x), -1, 1)))
     roll = np.degrees(np.arctan2(2 * (w * x + y * zq), 1 - 2 * (x * x + y * y)))
     print(f'IMU SHTP: {len(G)} kwaternionow, okres {a*1000:.3f} ms, zgubione {zg}; zyroskop {len(W)}, przysp. {len(Acc)}')
     yaw_z = yaw.copy(); om = np.zeros((len(tg), 3))
     if len(W) > 100:
-        tw, _, _ = _os_czasu([v[0] for v in W], np.array([v[1] for v in W]), 0.0)
+        tw = os_raportu(W)
         Wv = np.array([v[2] for v in W])
         om = np.stack([np.interp(tg, tw, Wv[:, k]) for k in range(3)], 1)
         # predkosc obrotu w ukladzie swiata: R(q) * omega; skladowa pionowa calkowana daje kurs niezalezny
         # od filtra BNO (przekroj z glowica na boku nie psuje go jak katy Eulera blisko 90 st.)
         wz = (2 * (x * zq - w * y)) * om[:, 0] + (2 * (y * zq + w * x)) * om[:, 1] + (1 - 2 * (x * x + y * y)) * om[:, 2]
-        yaw_z = yaw[0] + np.degrees(np.concatenate([[0], np.cumsum(0.5 * (wz[1:] + wz[:-1]) * np.diff(tg))]))
+        inc = -np.degrees(0.5 * (wz[1:] + wz[:-1]) * np.diff(tg))
+        # przerwy w danych (zgubione probki kwaternionu lub zyroskopu): przyrost kursu z kwaternionu
+        przerwa = np.diff(tg) > 0.02
+        gw = np.where(np.diff(tw) > 0.02)[0]
+        for j in gw:
+            przerwa[max(0, np.searchsorted(tg, tw[j]) - 1): np.searchsorted(tg, tw[j + 1]) + 1] = True
+        inc[przerwa] = np.diff(yaw)[przerwa]
+        yaw_z = yaw[0] + np.concatenate([[0], np.cumsum(inc)])
+        print(f'IMU SHTP: kurs zyroskop - kwaternion na koncu {yaw_z[-1] - yaw[-1]:+.1f} st., przerw w danych {int(przerwa.sum())}')
     acc = np.zeros((len(tg), 3))
     if len(Acc) > 100:
-        ta, _, _ = _os_czasu([v[0] for v in Acc], np.array([v[1] for v in Acc]), 0.0)
+        ta = os_raportu(Acc)
         Av = np.array([v[2] for v in Acc])
         acc = np.stack([np.interp(tg, ta, Av[:, k]) for k in range(3)], 1) * (1000 / 9.80665)   # mg jak w RVC
     # kurs z magnetometrem (Rotation Vector) i natezenie pola - na razie tylko do oceny zaklocen w budynku
     yaw_mag = np.full(len(tg), np.nan); pole = np.full(len(tg), np.nan)
     if len(RVm) > 100:
         qm = np.array([v[2] for v in RVm]); xm, ym_, zm, wm = qm.T
-        ymg = np.degrees(np.unwrap(np.arctan2(2 * (wm * zm + xm * ym_), 1 - 2 * (ym_ * ym_ + zm * zm))))
-        yaw_mag = np.interp(tg, [v[0] for v in RVm], ymg)
+        ymg = -np.degrees(np.unwrap(np.arctan2(2 * (wm * zm + xm * ym_), 1 - 2 * (ym_ * ym_ + zm * zm))))
+        yaw_mag = np.interp(tg, os_raportu(RVm), ymg)
     if len(Mg) > 100:
-        pole = np.interp(tg, [v[0] for v in Mg], np.linalg.norm([v[2] for v in Mg], axis=1))
+        pole = np.interp(tg, os_raportu(Mg), np.linalg.norm([v[2] for v in Mg], axis=1))
         print(f'IMU SHTP: pole magnetyczne mediana {np.nanmedian(pole):.0f} uT, 5-95% {np.nanpercentile(pole,5):.0f}-{np.nanpercentile(pole,95):.0f} uT')
     return dict(tl=tl, a0=np.array(A0), a1=np.array(A1), d=np.array(D, float) / 1000, i=np.array(I),
                 ti=tg, yaw=yaw, yaw_mag=yaw_mag, pole_uT=pole, yaw_zyro=yaw_z, pitch=pitch, roll=roll, acc=acc, omega=om, t0=t0,
-                imu_tryb='shtp', wersja_dek=2)
+                imu_tryb='shtp', wersja_dek=3)
 
 
 if __name__ == '__main__':

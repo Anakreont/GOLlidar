@@ -100,7 +100,7 @@ def katy(q):
     yaw = math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
     pitch = math.asin(max(-1.0, min(1.0, 2 * (w * y - z * x))))
     roll = math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
-    return math.degrees(yaw), math.degrees(pitch), math.degrees(roll)
+    return -math.degrees(yaw), math.degrees(pitch), math.degrees(roll)      # kurs ze znakiem jak w RVC
 
 
 def wyglada_na_shtp(dane):

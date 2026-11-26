@@ -10,9 +10,9 @@ PAR = dict(imu_w=200.0, promien=8.0, kf_dl=0.25, kf_kat=8.0, co_ktory=2, przechy
            deg=True, deg_prog=40.0,        # wartosc wlasna bloku przesuniecia ponizej progu = slaby kierunek -> ruch z przewidywania
            pas=True, pas_gora=0.8, pas_dol=0.9,   # punkty wyzej/nizej od glowicy (sufit, meble, podloga) odrzucane przy przechyle
            przechyl_zm=99.0,               # skan odrzucany, gdy przechyl zmienia sie w trakcie obrotu o wiecej (wkladanie w przekroj)
-           yaw_zyro=True,
+           yaw_zyro=False,
            luka_kurs=9.0,                  # po luce: szukanie kursu +-9 st. (BNO po przekroju), 0 = wylaczone
-           postoj_mg=25.0)                 # odch. std |przysp.| w 0,5 s ponizej progu = operator stoi -> przewidywany ruch zerowy                  # IMU SHTP: kurs z calki zyroskopu zamiast z katow BNO
+           postoj_mg=25.0)                 # odch. std |przysp.| w 0,5 s ponizej progu = operator stoi -> przewidywany ruch zerowy                  # IMU SHTP: kurs z calki zyroskopu; wylaczone - przy zanikach zasilania (USB) gubi skoki, ktore kwaternion zachowuje
 STAT = {}
 import os as _os, json as _json
 if _os.environ.get('LIDAR_PAR'):            # proby porownawcze: LIDAR_PAR='{"deg": false}' python3 przetworz.py ...
@@ -25,7 +25,7 @@ def wczytaj(kat):
     z = np.load(kat + '_dek.npz')
     return {k: z[k] for k in z.files}
 
-WERSJA_DEK = 2   # zmiana dekodowania -> stara pamiec podreczna dek.npz liczona od nowa
+WERSJA_DEK = 3   # zmiana dekodowania -> stara pamiec podreczna dek.npz liczona od nowa
 
 def wczytaj_lub_dekoduj(kat):
     """Zdekodowane dane z pamieci podrecznej <sesja>/_wynik/dek.npz (odswiezanej, gdy lidar.bin jest nowszy)."""
