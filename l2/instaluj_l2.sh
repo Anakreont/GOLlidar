@@ -24,7 +24,7 @@ if [ ! -d "$WS/src/point_lio_unilidar" ]; then
   git clone --depth 1 https://github.com/unitreerobotics/point_lio_unilidar "$WS/src/point_lio_unilidar"
 fi
 echo "== kompiluje point_lio_unilidar (kilka minut)"
-"$MM" run -p "$CEL" bash -c "cd '$WS' && catkin_make -DCMAKE_BUILD_TYPE=Release -j4"
+"$MM" run -p "$CEL" bash -c "cd '$WS' && catkin_make -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -j4"
 mkdir -p "$HOME/bin"
 cat > "$HOME/bin/l2_mapa" <<EOS
 #!/usr/bin/env bash
