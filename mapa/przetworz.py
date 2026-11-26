@@ -1,5 +1,5 @@
 """Przetwarza jedna sesje skanera na wyniki dla przegladarki:
-    <sesja>/_wynik/mapa.json   - kondygnacje (odcinki z barometru): sciany, chmura, trasa, znaczniki w ukladzie mapy
+    <sesja>/_wynik/mapa.json   - kondygnacje (cala sesja = jedna; podzial wg barometru tylko przy DZIEL_BARO): sciany, chmura, trasa, znaczniki w ukladzie mapy
     <sesja>/_wynik/rzut.dxf    - rzut z nazwami kondygnacji (nazwy.json), bez ukrytych odcinkow
     <sesja>/_wynik/podglad.png - podglad rzutu
 Uzycie:  python3 przetworz.py <katalog_sesji> [--tylko-dxf]
@@ -12,7 +12,8 @@ sys.path.insert(0, TU); sys.path.insert(0, os.path.join(TU, '..'))
 import slam, sprawdz as S
 from eksport_dxf import kierunek, kondygnacja, szkielet, lica, KOM, MIN_KF
 
-WERSJA = 4
+WERSJA = 5
+DZIEL_BARO = False   # True: dawny podzial sesji na kondygnacje wg barometru
 PETLE = False          # zamykanie petli (posegraf.graf) - do dopracowania wag, na razie gorzej niz bez
 RZUTUJ = False
 ZSZYJ = True         # zszywanie fragmentow po lukach w sledzeniu (posegraf.zszyj)
@@ -44,7 +45,9 @@ def przetworz(kat):
     z = slam.wczytaj_lub_dekoduj(kat)
     t0 = int(z['t0'])
     w = S.wysokosci(os.path.join(kat, 'baro.bin')) if os.path.exists(os.path.join(kat, 'baro.bin')) else []
-    pozi = list(S.poziomy(w)) if w else []
+    # Barometr NIE dzieli sesji na kondygnacje: Piotr nagrywa kazde pietro osobna sesja, a skoki cisnienia
+    # (schody, cieplo w kuchni, wentylacja, drzwi) dzielily jedno pietro na osobne, niepolaczone mapy.
+    pozi = list(S.poziomy(w)) if (w and DZIEL_BARO) else []
     if not pozi:
         pozi = [(t0, t0 + int(z['tl'][-1] * 1e9), 0.0)]
     P, kf, info, pion = slam.mapa(kat, znak=-1, segmenty=[(b - t0) / 1e9 for a, b, h in pozi[:-1]], dane=z, rzutuj=RZUTUJ)

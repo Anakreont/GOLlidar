@@ -68,9 +68,30 @@ def stan_wyniku(n, k):
         return 'nagrywanie'
     if os.path.exists(os.path.join(k, '_wynik', 'blad.txt')) and not os.path.exists(mj):
         return 'błąd'
-    if os.path.exists(mj) and os.path.getmtime(mj) >= os.path.getmtime(lid):
+    if os.path.exists(mj) and os.path.getmtime(mj) >= os.path.getmtime(lid) and wersja_mapy(mj) >= WERSJA_MAPY:
         return 'gotowe'
     return 'do policzenia'
+
+
+def _wersja_kodu():
+    try:
+        m = re.search(r'^WERSJA = (\d+)', open(os.path.join(REPO, 'mapa', 'przetworz.py'), encoding='utf-8').read(), re.M)
+        return int(m.group(1)) if m else 0
+    except OSError:
+        return 0
+
+
+WERSJA_MAPY = _wersja_kodu()     # mapy policzone starsza wersja przetworz.py licza sie od nowa (automat)
+
+
+def wersja_mapy(mj):
+    """Wersja z poczatku mapa.json ({"wersja":N,...}) - bez wczytywania calego pliku."""
+    try:
+        with open(mj, 'rb') as f:
+            m = re.match(rb'\{"wersja":(\d+)', f.read(40))
+        return int(m.group(1)) if m else 0
+    except OSError:
+        return 0
 
 
 def sesje():

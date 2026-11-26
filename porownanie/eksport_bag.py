@@ -1,5 +1,5 @@
 """Zamienia sesje skanera (lidar.bin, imu.bin, baro.bin, znaczniki.txt) na nagrania ROS 2 (rosbag2),
-osobno dla kazdej kondygnacji, do liczenia gotowymi programami SLAM (slam_toolbox, Cartographer).
+cala sesja jako jedna kondygnacja (opcja --dziel-baro: podzial wg barometru), do liczenia gotowymi programami SLAM (slam_toolbox, Cartographer).
 
     python3 eksport_bag.py <katalog_sesji> <katalog_wyjsciowy> [--kondygnacja N] [--bez-imu]
 
@@ -23,7 +23,7 @@ BAZA = 1000.0      # s - przesuniecie czasu nagrania (ROS nie lubi czasu 0)
 RMIN, RMAX = 0.3, 9.0
 
 
-def skany(kat, bez_imu=False):
+def skany(kat, bez_imu=False, dziel_baro=False):
     """Lista (t_srodka, kat_matematyczny[rad], odleglosc[m]) + funkcja kursu + opis kondygnacji."""
     z = slam.wczytaj_lub_dekoduj(kat)
     t0 = int(z['t0'])
@@ -50,7 +50,7 @@ def skany(kat, bez_imu=False):
         out.append((tm, a, D))
     pozi = []
     pb = os.path.join(kat, 'baro.bin')
-    if os.path.exists(pb):
+    if dziel_baro and os.path.exists(pb):
         pozi = [((a - t0) / 1e9, (b - t0) / 1e9, h) for a, b, h in S.poziomy(S.wysokosci(pb))]
     if not pozi:
         pozi = [(-1e12, 1e12, 0.0)]
@@ -125,10 +125,11 @@ def main():
     ap.add_argument('sesja'); ap.add_argument('wyjscie')
     ap.add_argument('--kondygnacja', type=int, help='numer odcinka z barometru (od 0); domyslnie wszystkie')
     ap.add_argument('--bez-imu', action='store_true')
+    ap.add_argument('--dziel-baro', action='store_true', help='dziel sesje na kondygnacje wg barometru (domyslnie cala sesja = jedna)')
     ap.add_argument('--min-s', type=float, default=30.0, help='pomijaj odcinki krotsze niz tyle sekund')
     a = ap.parse_args()
     kat = a.sesja.rstrip('/')
-    sk, kurs, pozi, odrz, bez = skany(kat, a.bez_imu)
+    sk, kurs, pozi, odrz, bez = skany(kat, a.bez_imu, a.dziel_baro)
     print(f'skanow: {len(sk)}, odrzucone: {odrz}, kondygnacji (barometr): {len(pozi)}, IMU: {"nie" if bez else "tak"}')
     os.makedirs(a.wyjscie, exist_ok=True)
     opis = []
