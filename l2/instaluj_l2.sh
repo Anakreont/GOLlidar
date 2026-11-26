@@ -19,6 +19,12 @@ if [ ! -x "$CEL/bin/roscore" ]; then
     ros-noetic-ros-base ros-noetic-pcl-ros ros-noetic-tf ros-noetic-rosbag \
     compilers cmake make pkg-config eigen numpy scipy scikit-image matplotlib ezdxf
 fi
+# paczki potrzebne do kompilacji point_lio_unilidar (dopisywane tez do juz istniejacego srodowiska)
+"$MM" install -y -p "$CEL" -c conda-forge -c robostack-noetic \
+  ros-noetic-eigen-conversions ros-noetic-message-generation ros-noetic-message-runtime \
+  ros-noetic-nav-msgs ros-noetic-geometry-msgs ros-noetic-sensor-msgs ros-noetic-rospy ros-noetic-std-msgs \
+  ros-noetic-pcl-ros ros-noetic-tf eigen
+rm -rf "$WS/build" "$WS/devel"      # po nieudanej probie
 mkdir -p "$WS/src"
 if [ ! -d "$WS/src/point_lio_unilidar" ]; then
   git clone --depth 1 https://github.com/unitreerobotics/point_lio_unilidar "$WS/src/point_lio_unilidar"
