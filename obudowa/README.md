@@ -63,3 +63,7 @@ Druk tuleją w dół, skos 42°, bez podpór. Zestaw: `podstawa_tyczka` + `pokry
 ## L2 bez tyczki – na górnej ściance plecaka (jak Hovermap)
 
 `uchwyt_l2_wieko_0/20/35.stl` – płyta 110 × 70 × 6 mm przykręcana 4 × M5 do górnej ścianki skrzyni Yato YT-089090 (od środka duże podkładki), kolumna Ø50 × 120 mm, na górze płytka Ø64 pod L2 (4 × M3 × 8 od spodu) pochylona o 0, 20 albo 35° **do tyłu** (−Y = strona pleców): kopuła patrzy w górę i do tyłu, głowa operatora zasłania mniej. Kabel L2 kolumną w dół i otworem Ø26 w płycie do skrzyni – w ściance wywiercić Ø30. Druk płytą na stole, bez podpór, PETG, 4 obrysy, wypełnienie 40 %. Na start drukuj wersję 20°.
+
+## L2 na płaskiej pionowej ściance plecaka (polecane)
+
+`uchwyt_l2_sciana_0/20/35.stl` – wspornik „L”: płyta 70 × 100 mm przykręcana 4 × M5 do zewnętrznej, płaskiej ścianki skrzyni (tej od strony za operatorem) tuż pod górną krawędzią – od środka duże podkładki, łby śrub od zewnątrz w kieszeniach. Kolumna Ø50 odsunięta 31 mm od ścianki sięga 120 mm ponad górną krawędź skrzyni; płytka Ø64 pod L2 (4 × M3 × 8) pochylona 0/20/35° do tyłu (od pleców). Montować z boku rączki. Kabel kolumną w dół i poziomym kanałem przez płytę do otworu Ø30 w ściance (30 mm nad dolną krawędzią płyty). Druk tak jak w modelu (stoi na dolnej krawędzi), bez podpór, PETG, 4 obrysy, 40 %. Wysokość wydruku 235 mm.

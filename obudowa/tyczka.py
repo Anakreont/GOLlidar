@@ -186,6 +186,39 @@ def uchwyt_l2_wieko(kat=20.0, H=120.0):
     return D(m, *otw)
 
 
+def uchwyt_l2_sciana(kat=20.0, PLYTA_H=100.0, NAD=120.0):
+    """Uchwyt L2 na PLASKA, PIONOWA scianke plecaka (zewnetrzna, od strony za operatorem) przy gornej krawedzi.
+    Uklad: scianka w plaszczyznie Y = 0, na zewnatrz +Y (= do tylu za operatorem), gora skrzyni na Z = PLYTA_H + 10.
+    Plyta 70 x PLYTA_H x 6 mm, 4 x M5 przez scianke (od srodka duze podkladki), z zebrem. Kolumna O50 odsunieta od
+    scianki, siega NAD mm ponad gorna krawedz skrzyni (omija raczke - montuj z boku raczki). Na gorze plytka O64
+    pod L2 (4 x M3 na O51) pochylona o 'kat' do tylu (+Y). Kabel kolumna w dol i poziomym kanalem przez plyte do
+    otworu O30 w sciance. Druk tak jak w modelu (stoi na dolnej krawedzi, kolumna pionowo), bez podpor."""
+    a = np.radians(kat)
+    Yk = 6 + 25.0                                     # os kolumny od scianki
+    Zg = PLYTA_H - 10 + NAD                           # wysokosc gory kolumny (plytka L2)
+    p0 = np.array([0, Yk, Zg])
+    def wzd(r, l0, l1, x=0.0, y=0.0, n=72):
+        m = cylinder(radius=r, height=l1 - l0, sections=n); m.apply_translation((x, y, (l0 + l1) / 2))
+        m.apply_transform(trimesh.transformations.rotation_matrix(-a, (1, 0, 0)))   # os pochylona do +Y
+        m.apply_translation(p0); return m
+    plyta = b(-35, 35, 0, 6, 0, PLYTA_H)
+    kol = c(0, Yk, 25, 0, Zg)
+    lacz = b(-25, 25, 0, Yk, 0, PLYTA_H)              # pelny mostek scianka-kolumna (sztywnosc)
+    kula = trimesh.creation.icosphere(subdivisions=4, radius=25); kula.apply_translation(p0)
+    gora = U(wzd(25, 0, 10), wzd(L2_PLYTA / 2, 10, 15))
+    m = U(plyta, kol, lacz, kula, gora)
+    zk = 30.0                                         # wysokosc kanalu kabla przez plyte (otwor O30 w sciance)
+    otw = [c(0, Yk, 13, zk, Zg), trimesh.creation.icosphere(subdivisions=3, radius=13).apply_translation(p0),
+           wzd(13, -1, 9), cy(0, zk, 13, -1, Yk),
+           trimesh.creation.icosphere(subdivisions=3, radius=13).apply_translation((0, Yk, zk))]
+    for x in (-24, 24):
+        for z in (12, PLYTA_H - 12):
+            otw += [cy(x, z, 2.75, -1, Yk + 30), cy(x, z, 5.5, 6, Yk + 30)]   # M5 + dostep do lba od zewnatrz
+    for ox, oy in L2_OTWORY:
+        otw += [wzd(1.7, 9, 16, ox, oy, 24), wzd(3.2, -20, 11, ox, oy, 24)]  # M3 + leb od spodu
+    return D(m, *otw)
+
+
 def kolano90():
     """Dolne kolano 90 st.: rurka stoi NA ZEWNATRZ skrzyni (miedzy skrzynia a szelkami), wchodzi w kolano od gory,
     kable skrecaja w kolanie i ida otworem przez tylna sciane do srodka - nic nie widac. Kolnierz 4 x M5 przez sciane
@@ -215,7 +248,9 @@ if __name__ == "__main__":
                      ("kolano_0", lambda: kolano(0)), ("kolano_35", lambda: kolano(35)),
                      ("kolano_l2_35", lambda: kolano_l2(35)), ("kolano90", kolano90),
                      ("uchwyt_l2_wieko_0", lambda: uchwyt_l2_wieko(0)), ("uchwyt_l2_wieko_20", lambda: uchwyt_l2_wieko(20)),
-                     ("uchwyt_l2_wieko_35", lambda: uchwyt_l2_wieko(35))):
+                     ("uchwyt_l2_wieko_35", lambda: uchwyt_l2_wieko(35)),
+                     ("uchwyt_l2_sciana_0", lambda: uchwyt_l2_sciana(0)), ("uchwyt_l2_sciana_20", lambda: uchwyt_l2_sciana(20)),
+                     ("uchwyt_l2_sciana_35", lambda: uchwyt_l2_sciana(35))):
         m = f()
         assert m.is_watertight, nazwa
         m.export(f"{nazwa}.stl")
