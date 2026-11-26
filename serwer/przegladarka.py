@@ -217,6 +217,36 @@ def zatrzymaj(n):
             W_CAD.pop(n); ile += 1
     return ile
 
+def zatrzymaj_i_czekaj(n, limit=20.0):
+    """Zatrzymuje liczenie sesji i czeka, az watki skoncza sprzatanie (zapis znacznika zatrzymania), zeby
+    po przeniesieniu katalogu do kosza nic juz do niego nie pisalo. True gdy sesja jest wolna."""
+    koniec = time.time() + limit
+    while time.time() < koniec:
+        zatrzymaj(n)
+        with BLOK:
+            zajeta = (n in W_TOKU or n in W_POR or n in W_CAD or n in W_KAW
+                      or any(kl[1] == n for kl in PROC))
+        if not zajeta:
+            return True
+        time.sleep(0.3)
+    return False
+
+
+def do_kosza(n):
+    """Przenosi sesje do kosza, najpierw zatrzymujac jej liczenie. Zwraca komunikat bledu albo None."""
+    if not zatrzymaj_i_czekaj(n):
+        return 'nie udalo sie zatrzymac liczenia tej sesji - sprobuj za chwile'
+    k = os.path.join(ARGS.katalog, n)
+    if not os.path.isdir(k):
+        return None
+    kosz = os.path.join(ARGS.katalog, '_kosz'); os.makedirs(kosz, exist_ok=True)
+    cel = os.path.join(kosz, n)
+    if os.path.exists(cel):
+        cel += time.strftime('_%Y%m%d%H%M%S')
+    shutil.move(k, cel)
+    return None
+
+
 TEMPO_DOM = 6.0                # s liczenia na 1 MB lidar.bin, zanim zmierzymy na Dellu
 
 
@@ -648,21 +678,18 @@ class H(BaseHTTPRequestHandler):
                     shutil.rmtree(os.path.join(kk, '_wynik'), ignore_errors=True); ile += 1
             return self._json({'ok': True, 'ile': ile})
         if u.path in ('/api/usun_budynek', '/api/usun_puste'):
-            kosz = os.path.join(ARGS.katalog, '_kosz'); os.makedirs(kosz, exist_ok=True)
-            ile = 0
+            # takze sesje w trakcie liczenia: liczenie jest najpierw zatrzymywane
+            ile, nie = 0, 0
             for s_ in sesje():
                 if u.path == '/api/usun_budynek' and s_['budynek'] != q.get('b'):
                     continue
                 if u.path == '/api/usun_puste' and s_['stan'] != 'brak danych':
                     continue
-                with BLOK:
-                    if s_['n'] in W_TOKU:
-                        continue
-                cel = os.path.join(kosz, s_['n'])
-                if os.path.exists(cel):
-                    cel += time.strftime('_%Y%m%d%H%M%S')
-                shutil.move(os.path.join(ARGS.katalog, s_['n']), cel); ile += 1
-            return self._json({'ok': True, 'ile': ile})
+                if do_kosza(s_['n']):
+                    nie += 1
+                else:
+                    ile += 1
+            return self._json({'ok': True, 'ile': ile, 'nie': nie})
         if u.path == '/api/przywroc_kosz':
             # przywrocenie wszystkich sesji z kosza (np. po pomylkowym skasowaniu); nie nadpisuje istniejacych
             kosz = os.path.join(ARGS.katalog, '_kosz'); ile, pom = 0, 0
@@ -773,21 +800,13 @@ class H(BaseHTTPRequestHandler):
             KOLEJKA_CAD.put((q['n'], kl, zr))
             return self._json({'ok': True})
         if u.path == '/api/usun_mape':
-            with BLOK:
-                if W_TOKU.get(q['n']) == 'liczy':
-                    return self._json({'blad': 'mapa wlasnie sie liczy - sprobuj za chwile'}, 409)
+            if not zatrzymaj_i_czekaj(q['n']):
+                return self._json({'blad': 'nie udalo sie zatrzymac liczenia - sprobuj za chwile'}, 409)
             shutil.rmtree(os.path.join(k, '_wynik'), ignore_errors=True)
             return self._json({'ok': True})
         if u.path == '/api/usun_sesje':
-            with BLOK:
-                if q['n'] in W_TOKU:
-                    return self._json({'blad': 'mapa tej sesji wlasnie sie liczy - sprobuj za chwile'}, 409)
-            kosz = os.path.join(ARGS.katalog, '_kosz'); os.makedirs(kosz, exist_ok=True)
-            cel = os.path.join(kosz, q['n'])
-            if os.path.exists(cel):
-                cel += time.strftime('_%Y%m%d%H%M%S')
-            shutil.move(k, cel)
-            return self._json({'ok': True})
+            b_ = do_kosza(q['n'])
+            return self._json({'blad': b_}, 409) if b_ else self._json({'ok': True})
         if u.path == '/api/kontrola':
             dl = int(self.headers.get('Content-Length') or 0)
             try:
