@@ -163,7 +163,7 @@ function czysc(){$('nag').innerHTML='<div class="tyt"><b>Wybierz nagranie z list
 // ---------------------------------------------------------------- sesja
 function otworz(n){fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{S=d;S.n=n;M=null;wyb=null;rysujListe();naglowek();galeria();przekroje();znaczniki();inwent();pliki();porownanie();cad();
  fetch('api/mapa?n='+n).then(r=>r.ok?r.json():null).then(j=>{if(j){M=j.mapa;NZ=j.nazwy||{};KO=j.kontrola||[];seg=0;
- (M.kondygnacje||[]).forEach(k=>k.znaczniki.forEach(z=>{if((z.opis||'').startsWith('POMIAR '))z.rodzaj='pomiar'}));}else{M=null;KO=[]}panel();warstwy();dopasuj();rys();if($('w3d').classList.contains('akt'))tryb3d()})})}
+ (M.kondygnacje||[]).forEach(k=>{k.znaczniki.forEach(z=>{if((z.opis||'').startsWith('POMIAR '))z.rodzaj='pomiar'});grupujPom(k.znaczniki)});}else{M=null;KO=[]}panel();warstwy();dopasuj();rys();if($('w3d').classList.contains('akt'))tryb3d()})})}
 function kawTxt(){const K=S.kawalki||{};if(K.stan=='gotowe')return'<a class="btn" title="Mapa pocięta na przekrojach i przerwach – każdy kawałek jako blok do przesuwania/obracania w CAD" href="'+plik('_wynik/kawalki.dxf')+'">⬇ Kawałki DXF</a><a class="btn" href="'+plik('_wynik/kawalki.png')+'" target="_blank">podgląd</a>';
  if(K.stan=='liczy'||K.stan=='czeka')return'<span class="btn">✂ tnę na kawałki…</span>';
  if(K.stan=='brak')return'<button class="btn" title="Potnij mapę na kawałki w miejscach przekrojów i przerw – do ręcznego sklejania w CAD" onclick="kawLicz()">✂ Kawałki</button>';return''}
@@ -235,7 +235,7 @@ function rys(){const r=c.getBoundingClientRect(),d=devicePixelRatio||1;if(!r.wid
   if(z.linia){const[a1,b1]=P(z.linia[0][0],z.linia[0][1]),[a2,b2]=P(z.linia[1][0],z.linia[1][1]);g.strokeStyle='rgba(147,51,234,.8)';g.lineWidth=2;g.setLineDash([7,4]);g.beginPath();g.moveTo(a1,b1);g.lineTo(a2,b2);g.stroke();g.setLineDash([]);
    const dx=a2-a1,dy=b2-b1,n=Math.hypot(dx,dy)||1,px=-dy/n*6,py=dx/n*6;g.beginPath();g.moveTo(a1-px,b1-py);g.lineTo(a1+px,b1+py);g.moveTo(a2-px,b2-py);g.lineTo(a2+px,b2+py);g.stroke()}});
  k.znaczniki.forEach(z=>{if(z.rodzaj!='sala'||!W.sala)return;const[a,b]=P(z.x,z.y);g.font='bold 13px system-ui';g.textAlign='center';const w=g.measureText(z.opis).width;g.fillStyle='rgba(255,255,255,.85)';g.fillRect(a-w/2-4,b-10,w+8,19);g.fillStyle='#1e3a8a';g.fillText(z.opis,a,b+4);g.textAlign='left'});
- k.znaczniki.forEach(z=>{if(z.rodzaj!='pomiar'||!W.pomiar||!z.wym)return;   // linie wymiarowe pomiaru z postoju
+ k.znaczniki.forEach(z=>{if(z.rodzaj!='pomiar'||!W.pomiar||!z.wym||(z.ukryty&&z!==wyb))return;   // linie wymiarowe pomiaru z postoju
   z.wym.forEach(w=>{const[a1,b1]=P(w[0],w[1]),[a2,b2]=P(w[2],w[3]),L=Math.hypot(a2-a1,b2-b1)||1,ux=(a2-a1)/L,uy=(b2-b1)/L;
    g.strokeStyle=KOL.pomiar;g.lineWidth=1.5;g.beginPath();g.moveTo(a1,b1);g.lineTo(a2,b2);
    [[a1,b1],[a2,b2]].forEach(([x,y])=>{g.moveTo(x-uy*7,y+ux*7);g.lineTo(x+uy*7,y-ux*7)});g.stroke();
@@ -243,14 +243,21 @@ function rys(){const r=c.getBoundingClientRect(),d=devicePixelRatio||1;if(!r.wid
    g.save();g.translate(mx,my);g.rotate(an);g.font='bold 12px system-ui';const tw=g.measureText(t).width;g.fillStyle='rgba(255,255,255,.9)';g.fillRect(-tw/2-3,-16,tw+6,15);
    g.fillStyle=KOL.pomiar;g.textAlign='center';g.fillText(t,0,-4);g.restore();g.textAlign='left'})});
  k.znaczniki.forEach(z=>{if(z.rodzaj=='system'||z.rodzaj=='sala'||!W[z.rodzaj])return;const[a,b]=P(z.x,z.y),rr=z===wyb?11:8;
+  if(z.ukryty&&z!==wyb){g.fillStyle='rgba(13,148,136,.45)';g.beginPath();g.arc(a,b,4,0,7);g.fill();return}
   g.fillStyle='#fff';g.beginPath();g.arc(a,b,rr+2,0,7);g.fill();g.fillStyle=KOL[z.rodzaj]||'#16a34a';g.beginPath();g.arc(a,b,rr,0,7);g.fill();
   g.fillStyle='#fff';g.font='bold '+(rr+1)+'px system-ui';g.textAlign='center';g.textBaseline='middle';g.fillText(z.rodzaj=='przekroj'?'P':z.rodzaj=='foto'?'F':z.rodzaj=='punkt'?'•':z.rodzaj=='pomiar'?'M':'N',a,b+.5);g.textAlign='left';g.textBaseline='alphabetic';
-  if(wid.s>55){g.fillStyle='#374151';g.font='11px system-ui';g.fillText(etykieta(z).slice(0,z.rodzaj=='pomiar'?48:34),a+rr+4,b+4)}});
+  if(wid.s>55){g.fillStyle='#374151';g.font='11px system-ui';g.fillText((etykieta(z)+(z.rodzaj=='pomiar'&&z.ile>1?'  ('+z.ile+' pomiary)':'')).slice(0,z.rodzaj=='pomiar'?60:34),a+rr+4,b+4)}});
  KO.filter(m=>m.seg==k.nr).forEach(m=>{const[a1,b1]=P(m.a[0],m.a[1]),[a2,b2]=P(m.b[0],m.b[1]);g.strokeStyle='#16a34a';g.lineWidth=2.5;g.beginPath();g.moveTo(a1,b1);g.lineTo(a2,b2);g.stroke();
   [[a1,b1],[a2,b2]].forEach(([x,y])=>{g.fillStyle='#16a34a';g.beginPath();g.arc(x,y,4,0,7);g.fill()});const e_=(odl(m)-m.laser_m)*100;g.fillStyle='#14532d';g.font='bold 12px system-ui';g.fillText((m.opis?m.opis+': ':'')+e_.toFixed(1)+' cm',(a1+a2)/2+6,(b1+b2)/2-6)});
  if(pA){const[a,b]=P(pA[0],pA[1]);g.fillStyle='#16a34a';g.beginPath();g.arc(a,b,6,0,7);g.fill()}
  const Lm=wid.s>=120?.5:wid.s>=50?1:wid.s>=20?2:5;g.fillStyle='#111827';g.fillRect(16,r.height-40,Lm*wid.s,4);g.font='12px system-ui';g.fillText(Lm+' m',16,r.height-46);
  g.fillStyle='#111827';g.font='bold 15px system-ui';g.fillText((NZ[k.nr]||{}).nazwa||'Odcinek '+k.nr,r.width-g.measureText((NZ[k.nr]||{}).nazwa||'Odcinek '+k.nr).width-16,26)}
+// kilka pomiarow jednego pomieszczenia (ta sama nazwa albo < 2,5 m od siebie): na rzucie tylko najlepszy -
+// najmniej zasloniety (obrys najblizej prostokata); reszta jako mala kropka bez linii
+function jakoscPom(z){const p=parsPom(z.opis),o=parseFloat(p.obrys),q=parseFloat(p.pole);return(o&&q?Math.min(o/q,1):0.5)+(z.wym&&z.wym.length==2?0.01:0)}
+function grupujPom(Z){const P_=Z.filter(z=>z.rodzaj=='pomiar'),gr=[];
+ P_.forEach(z=>{const n=(parsPom(z.opis).pom||'').toLowerCase();let g=gr.find(g=>g.some(q=>(n&&n==(parsPom(q.opis).pom||'').toLowerCase())||Math.hypot(q.x-z.x,q.y-z.y)<2.5));if(g)g.push(z);else gr.push([z])});
+ gr.forEach(g=>{const b=g.reduce((a,z)=>jakoscPom(z)>jakoscPom(a)?z:a);g.forEach(z=>{z.ukryty=z!==b;z.ile=g.length})})}
 function parsPom(o){const d={};(o||'').split(' ').slice(1).forEach(x=>{const i=x.indexOf('=');if(i>0)d[x.slice(0,i)]=x.slice(i+1)});return d}
 function liczba(x,n){const v=parseFloat(x);return isFinite(v)?v.toFixed(n??2).replace('.',','):'–'}
 function opisPom(o){const p=parsPom(o),pole=parseFloat(p.obrys)||parseFloat(p.pole);
@@ -304,9 +311,10 @@ function tab(Lw,kol,naz){if(!Lw.length)return'<p class="mala">brak wpisów</p>';
 function pomiaryTab(){const Z=(S.znaczniki||[]).filter(z=>(z.opis||'').startsWith('POMIAR '));if(!Z.length)return'';
  const sale=(S.znaczniki||[]).filter(z=>(z.opis||'').startsWith('SALA '));
  const W_=Z.map(z=>{const p=parsPom(z.opis),s_=sale.filter(q=>(q.t??0)<=(z.t??0)).pop();
-  return{nr:p.pom?p.pom.replace(/_/g,' '):(s_?s_.opis.slice(5)+' (z „Jestem tu”)':'—'),godz:z.godz||'',
+  const mz=M&&M.kondygnacje?M.kondygnacje.flatMap(k=>k.znaczniki).find(q=>q.rodzaj=='pomiar'&&q.opis==z.opis):null;
+  return{nr:(p.pom?p.pom.replace(/_/g,' '):(s_?s_.opis.slice(5)+' (z „Jestem tu”)':'—'))+(mz&&!mz.ukryty?' ✓':''),godz:z.godz||'',
    przod:p.przod?liczba(p.przod):liczba(p.a),bok:p.bok?liczba(p.bok):liczba(p.b),obrys:liczba(p.obrys||p.pole,1),prost:liczba(p.pole,1)}});
- return'<h3>Pomieszczenia – pomiar ze skanera</h3><p class="mala">↕ wymiar przed siebie, ↔ w bok (względem kierunku patrzenia przy pomiarze); powierzchnia z obrysu (uskoki, wnęki), prostokąt dla porównania. Kilka pomiarów jednego pomieszczenia – każdy w osobnym wierszu.</p>'+
+ return'<h3>Pomieszczenia – pomiar ze skanera</h3><p class="mala">↕ wymiar przed siebie, ↔ w bok (względem kierunku patrzenia przy pomiarze); powierzchnia z obrysu (uskoki, wnęki), prostokąt dla porównania. Kilka pomiarów jednego pomieszczenia – każdy w osobnym wierszu; ✓ = ten pokazany na rzucie (najmniej zasłonięty). Pozostałe na rzucie jako małe kropki – kliknij, by zobaczyć.</p>'+
   tab(W_,['nr','godz','przod','bok','obrys','prost'],['pomieszczenie','godz.','↕ m','↔ m','pow. m²','prostokąt m²'])}
 function inwent(){$('tinw').innerHTML=pomiaryTab()+'<h3>Oświetlenie</h3>'+tab(S.oprawy,['nr','typ','opraw','punktow','moc','moc_razem','uwagi'],['pomieszczenie','rodzaj','opraw','pkt/oprawę','W/pkt','W razem','uwagi'])+
  '<h3>Grzejniki</h3>'+tab(S.grzejniki,['nr','rodzaj','sztuk','zeberek','szer','dl','uwagi'],['pomieszczenie','rodzaj','szt.','żeberek','szer. cm','dł. cm','uwagi'])+

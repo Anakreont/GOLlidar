@@ -48,6 +48,28 @@ def zapisz_kf(plik, kf, kt):
                         n=np.concatenate([k[2] for k in kf]).astype(np.float32))
 
 
+def najlepsze_pomiary(zn):
+    """Kilka pomiarow jednego pomieszczenia (ta sama nazwa albo < 2,5 m od siebie) -> id najlepszego w grupie:
+    najmniej zaslonietego (obrys najblizej prostokata). Tylko te ida do DXF z liniami wymiarowymi."""
+    def par(r):
+        return dict(x.split('=', 1) for x in r['opis'].split()[1:] if '=' in x)
+    def jakosc(r):
+        d = par(r)
+        try:
+            q = min(float(d['obrys']) / float(d['pole']), 1.0)
+        except (KeyError, ValueError, ZeroDivisionError):
+            q = 0.5
+        return q + (0.01 if len(r.get('wym') or []) == 2 else 0)
+    P_ = [r for r in zn if r['rodzaj'] == 'pomiar']; gr = []
+    for r in P_:
+        n = par(r).get('pom', '').lower()
+        g = next((g for g in gr if any((n and n == par(q).get('pom', '').lower()) or
+                                       np.hypot(q['x'] - r['x'], q['y'] - r['y']) < 2.5 for q in g)), None)
+        if g is None: gr.append([r])
+        else: g.append(r)
+    return {id(max(g, key=jakosc)) for g in gr}
+
+
 def pomiar_z_nagrania(z, t, czas=3.2):
     """Odtwarza pomiar z postoju (przycisk POMIAR) z surowych obrotow sprzed znacznika - dla pomiarow zapisanych
     bez polozenia scian (u1..v2) i jako kontrola. Zwraca wynik pomiar_pokoju.licz albo None."""
@@ -364,6 +386,7 @@ def dxf_i_podglad(kat):
         if k['trasa']:
             msp.add_lwpolyline([(x + dx, y) for x, y in k['trasa']], dxfattribs={'layer': 'TRASA'})
             tr = np.array(k['trasa']); ax.plot(tr[:, 0] + dx, tr[:, 1], 'r-', lw=0.4, alpha=0.5)
+        najl = najlepsze_pomiary(k['znaczniki'])
         for r in k['znaczniki']:
             if r['rodzaj'] == 'system':
                 continue
@@ -371,6 +394,8 @@ def dxf_i_podglad(kat):
                 msp.add_text(r['opis'][:40], height=0.22, dxfattribs={'layer': 'POMIESZCZENIA'}).set_placement((r['x'] + dx, r['y']))
                 ax.text(r['x'] + dx, r['y'], r['opis'][:40], fontsize=8, color='navy', ha='center')
                 continue
+            if r['rodzaj'] == 'pomiar' and id(r) not in najl:
+                continue                              # gorszy pomiar tego samego pomieszczenia
             if r['rodzaj'] == 'pomiar' and r.get('wym'):   # linie wymiarowe pomiaru z postoju
                 for w in r['wym']:
                     (xa, ya), (xb, yb) = (w[0] + dx, w[1]), (w[2] + dx, w[3])
