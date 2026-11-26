@@ -103,8 +103,10 @@ def stan_wyniku(n, k):
         return 'nagrywanie'
     if os.path.exists(os.path.join(k, '_wynik', 'blad.txt')) and not os.path.exists(mj):
         return 'błąd'
-    if os.path.exists(mj) and os.path.getmtime(mj) >= os.path.getmtime(lid) and wersja_mapy(mj) >= WERSJA_MAPY:
-        return 'gotowe'
+    if os.path.exists(mj):
+        if os.path.getmtime(mj) >= os.path.getmtime(lid) and wersja_mapy(mj) >= WERSJA_MAPY:
+            return 'gotowe'
+        return 'nieaktualna'          # starsza wersja programu albo dane doszly po policzeniu - przelicza tylko recznie
     return 'do policzenia'
 
 
@@ -408,7 +410,8 @@ def zlec(n, pilne=False):
 
 
 def automat():
-    """Co minute: zakonczone sesje bez aktualnej mapy trafiaja do kolejki (bledne nie sa ponawiane w kolko)."""
+    """Co minute: zakonczone sesje BEZ mapy trafiaja do kolejki (bledne nie sa ponawiane w kolko).
+    Mapy nieaktualne (stara wersja, dane doszly pozniej) przelicza sie tylko recznie - przyciskiem albo zaznaczajac."""
     while True:
         try:
             for s in sesje():

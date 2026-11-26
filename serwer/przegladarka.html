@@ -31,6 +31,8 @@ aside{overflow:auto;background:#fff;border-right:1px solid var(--linia);padding:
 .ses:hover{background:var(--bg)}.ses.akt{background:var(--akcent2)}
 .ses .t{flex:1}.ses .t small{color:var(--szary)}
 .pill{font-size:11px;padding:2px 8px;border-radius:10px;background:#e5e7eb;color:#374151}
+.pill.nieaktualna{background:#e0e7ff;color:#3730a3}.zazn{display:flex;gap:6px;align-items:center;padding:8px 10px;margin:6px;border-radius:10px;background:#eef2ff;font-size:13px;flex-wrap:wrap}
+.ses input.wyb{margin:0 6px 0 0;width:16px;height:16px;flex:none}.gl .wybb{font-size:11px;color:var(--szary);cursor:pointer;margin-left:6px;text-decoration:underline}
 .pill.gotowe{background:#dcfce7;color:#166534}.pill.liczy,.pill.czeka{background:#fef3c7;color:#92400e}.pill.błąd{background:#fee2e2;color:#991b1b}.pill.nagrywanie{background:#dbeafe;color:#1e40af}
 .puste{color:var(--szary);font-size:13px;padding:6px 4px}
 main{display:flex;flex-direction:column;min-width:0;min-height:0}
@@ -86,6 +88,7 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
   <div class="lista">
    <button onclick="usunPuste()">🧹 Usuń puste nagrania (bez danych)</button>
    <button onclick="usunWszystkieMapy()">🔄 Przelicz wszystkie mapy od nowa</button>
+   <div class="mala" style="padding:6px 10px">Mapy liczą się same tylko dla nowych nagrań. Nieaktualne (stara wersja programu) przeliczasz sam: zaznacz je na liście i „Przelicz zaznaczone”.</div>
    <button onclick="przywrocKosz()">♻️ Przywróć wszystko z kosza</button>
    <button onclick="oproznijKosz()">🗑 Opróżnij kosz (nieodwracalne)</button>
    <div class="mala" style="padding:6px 10px">Usunięte sesje i budynki trafiają do kosza. Usuń je też na skanerze – inaczej kopia z maliny wyśle je ponownie.</div>
@@ -134,13 +137,20 @@ document.querySelectorAll('#zakl button').forEach(b=>b.onclick=()=>pokazWidok(b.
 function pokazWidok(w){document.querySelectorAll('#zakl button').forEach(x=>x.classList.toggle('akt',x.dataset.w==w));document.querySelectorAll('.widok').forEach(x=>x.classList.toggle('akt',x.id==w));if(w=='w2d')rys();if(w=='w3d')tryb3d()}
 // ---------------------------------------------------------------- lista
 function lista(){fetch('api/sesje').then(r=>r.json()).then(d=>{L=d;rysujListe()})}
+const ZAZN=new Set();
+function wybierz(n,on){on?ZAZN.add(n):ZAZN.delete(n);rysujListe()}
+function wybierzBud(b){L.filter(s=>s.budynek==b&&s.stan!='brak danych'&&s.stan!='nagrywanie').forEach(s=>ZAZN.add(s.n));rysujListe()}
+function wybierzNieakt(b){L.filter(s=>s.budynek==b&&(s.stan=='nieaktualna'||s.stan=='błąd')).forEach(s=>ZAZN.add(s.n));rysujListe()}
+async function przeliczZazn(){const l=L.filter(s=>ZAZN.has(s.n)).sort((a,b)=>a.mb-b.mb);if(!l.length)return;
+ if(!confirm('Przeliczyć '+l.length+' map? Liczą się po kolei w tle (najpierw najmniejsze).'))return;
+ for(const s of l)await fetch('api/przelicz?n='+s.n,{method:'POST'});ZAZN.clear();lista()}
 function rysujListe(){const f=$('szukaj').value.toLowerCase(),B={};let puste=0;
  L.forEach(s=>{if(s.stan=='brak danych'){puste++;return}if(f&&!s.budynek.toLowerCase().includes(f))return;((B[s.budynek]??={})[s.kondygnacja]??=[]).push(s)});
  const naz=Object.keys(B).sort((a,b)=>Math.max(...Object.values(B[b]).flat().map(s=>+s.n.slice(0,8)))-Math.max(...Object.values(B[a]).flat().map(s=>+s.n.slice(0,8)))||a.localeCompare(b));
- $('lista').innerHTML=(naz.map(b=>{const ses=Object.values(B[b]).flat(),otw=rozwin[b]??(S?ses.some(s=>s.n==S.n):naz.indexOf(b)<2);
-  return '<div class="bud"><div class="gl" onclick="rozwin[\''+esc(b).replace(/'/g,"\\'")+'\']='+!otw+';rysujListe()"><span>'+(otw?'▾':'▸')+'</span><b>'+esc(b)+'</b><span class="ile">'+ses.length+' nagr.</span><button class="x" title="Usuń cały budynek" onclick="event.stopPropagation();usunBudynek(\''+esc(b).replace(/'/g,"\\'")+'\')">🗑</button></div>'+
+ $('lista').innerHTML=(ZAZN.size?'<div class="zazn">Zaznaczone: <b>'+ZAZN.size+'</b><button class="btn gl" onclick="przeliczZazn()">🔄 Przelicz zaznaczone</button><button class="btn" onclick="ZAZN.clear();rysujListe()">Odznacz</button></div>':'')+(naz.map(b=>{const ses=Object.values(B[b]).flat(),otw=rozwin[b]??(S?ses.some(s=>s.n==S.n):naz.indexOf(b)<2);
+  return '<div class="bud"><div class="gl" onclick="rozwin[\''+esc(b).replace(/'/g,"\\'")+'\']='+!otw+';rysujListe()"><span>'+(otw?'▾':'▸')+'</span><b>'+esc(b)+'</b><span class="ile">'+ses.length+' nagr.</span>'+(otw?'<span class="wybb" onclick="event.stopPropagation();wybierzNieakt(\''+esc(b).replace(/'/g,"\\'")+'\')" title="Zaznacz mapy nieaktualne i z błędem">zaznacz nieaktualne</span>':'')+'<button class="x" title="Usuń cały budynek" onclick="event.stopPropagation();usunBudynek(\''+esc(b).replace(/'/g,"\\'")+'\')">🗑</button></div>'+
   (otw?Object.keys(B[b]).sort().map(k=>'<div class="kond"><h4>'+esc(k)+'</h4>'+B[b][k].map(s=>
-   '<div class="ses'+(S&&S.n==s.n?' akt':'')+'" onclick="otworz(\''+s.n+'\')"><div class="t">'+esc(s.start.slice(5))+'<br><small>'+(s.czas_s?Math.round(s.czas_s/60)+' min':'–')+' · '+s.foto+' zdj. · '+s.mb+' MB</small></div><span class="pill '+esc(s.stan)+'" title="szacunek z tempa liczenia na Dellu">'+stanTxt(s.stan,s.postep)+'</span></div>').join('')+'</div>').join(''):'')+'</div>'}).join('')||'<div class="pusto">Brak nagrań</div>')+
+   '<div class="ses'+(S&&S.n==s.n?' akt':'')+'" onclick="otworz(\''+s.n+'\')"><input type="checkbox" class="wyb" title="Zaznacz do przeliczenia" '+(ZAZN.has(s.n)?'checked ':'')+'onclick="event.stopPropagation();wybierz(\''+s.n+'\',this.checked)"><div class="t">'+esc(s.start.slice(5))+'<br><small>'+(s.czas_s?Math.round(s.czas_s/60)+' min':'–')+' · '+s.foto+' zdj. · '+s.mb+' MB</small></div><span class="pill '+esc(s.stan)+'" title="szacunek z tempa liczenia na Dellu">'+stanTxt(s.stan,s.postep)+'</span></div>').join('')+'</div>').join(''):'')+'</div>'}).join('')||'<div class="pusto">Brak nagrań</div>')+
   (puste?'<div class="puste">+ '+puste+' pustych nagrań bez danych · <a href="#" onclick="usunPuste();return false">usuń</a></div>':'')}
 function usunBudynek(b){if(confirm('Przenieść do kosza CAŁY budynek „'+b+'” – wszystkie jego nagrania, zdjęcia i mapy?'))post('api/usun_budynek?b='+encodeURIComponent(b),j=>{if(S&&S.info.budynek==b){S=null;M=null;czysc()}lista()})}
 function usunPuste(){post('api/usun_puste',j=>{alert('Przeniesiono do kosza '+j.ile+' pustych nagrań');lista()})}
