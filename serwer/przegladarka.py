@@ -21,7 +21,8 @@ import skan_web as SW          # tylko funkcje czytajace CSV inwentaryzacji
 ARGS = None
 SESJA_RE = re.compile(r'^[A-Za-z0-9_+\-]{1,100}$')
 PLIK_RE = re.compile(r'^((_wynik|_porownanie)/)?[A-Za-z0-9_\-]{1,60}\.(jpg|csv|txt|bin|dxf|png|json|obj|log)$')
-KOLEJKA = queue.Queue()
+KOLEJKA = queue.PriorityQueue()   # (0 = recznie z przycisku, 1 = automat, licznik, sesja)
+NR_ZLEC = __import__('itertools').count()
 W_TOKU = {}                    # sesja -> 'czeka' | 'liczy'
 BLOK = threading.Lock()
 
@@ -55,7 +56,9 @@ class Limit:
             self.ile -= 1; self.c.notify_all()
 
 
-LICZ = Limit()                 # rownolegle liczenie z kontrola pamieci
+LICZ = Limit()                 # mapy: rownolegle, z kontrola pamieci
+LICZ_RECZNE = Limit()          # porownanie SLAM i dopasowanie CAD (z przycisku) - osobne miejsce, nie czekaja na mapy
+LICZ_RECZNE.max = 1
 ENV_DZIECI = dict(os.environ, OMP_NUM_THREADS='2', OPENBLAS_NUM_THREADS='2', MKL_NUM_THREADS='2')
 KOLEJKA_POR = queue.Queue()
 W_POR = {}                     # sesja -> 'czeka' | 'liczy' (porownanie z gotowymi SLAM)
@@ -170,11 +173,13 @@ def znaczniki(k):
 
 def pracownik():
     while True:
-        n = KOLEJKA.get()
+        _, _, n = KOLEJKA.get()
         k = katalog(n)
-        if not k:
-            continue
         with BLOK:
+            if W_TOKU.get(n) != 'czeka':     # duplikat (przesuniete recznie na poczatek) albo juz policzone
+                continue
+            if not k:
+                W_TOKU.pop(n, None); continue
             W_TOKU[n] = 'liczy'
         os.makedirs(os.path.join(k, '_wynik'), exist_ok=True)
         log = os.path.join(k, '_wynik', 'log.txt')
@@ -203,7 +208,7 @@ def pracownik_por():
         blad = os.path.join(wy, 'blad.txt')
         if os.path.exists(blad):
             os.remove(blad)
-        with LICZ:
+        with LICZ_RECZNE:
             with BLOK:
                 W_POR[n] = 'liczy'
             with open(os.path.join(wy, 'przebieg.log'), 'w') as f:
@@ -241,7 +246,7 @@ def pracownik_cad():
             if os.path.exists(blad): os.remove(blad)
             cmd = [sys.executable, os.path.join(REPO, 'mapa', 'dopasuj_cad.py'), k, katalog_cad(info(k).get('budynek', '')), '--zrodlo', zrodlo]
             if klaster is not None: cmd += ['--klaster', str(klaster)]
-            with LICZ:
+            with LICZ_RECZNE:
                 with BLOK:
                     W_CAD[n] = 'liczy'
                 r = subprocess.run(cmd, capture_output=True, text=True)
@@ -290,12 +295,12 @@ def stan_por(n, k):
     return {'stan': st, 'pliki': pliki, 'wynik': wyn, 'dostepne': bool(skrypt_por()), 'metody': list(METODY_POR)}
 
 
-def zlec(n):
+def zlec(n, pilne=False):
     with BLOK:
         if n in W_TOKU:
             return
         W_TOKU[n] = 'czeka'
-    KOLEJKA.put(n)
+    KOLEJKA.put((0 if pilne else 1, next(NR_ZLEC), n))
 
 
 def automat():
@@ -538,7 +543,10 @@ class H(BaseHTTPRequestHandler):
             b = os.path.join(k, '_wynik', 'blad.txt')
             if os.path.exists(b):
                 os.remove(b)
-            zlec(q['n'])
+            with BLOK:                       # juz czeka w kolejce automatu -> przesun na poczatek
+                if W_TOKU.get(q['n']) == 'czeka':
+                    W_TOKU.pop(q['n'])
+            zlec(q['n'], pilne=True)
             return self._json({'ok': True})
         if u.path == '/api/porownaj':
             if not skrypt_por():
