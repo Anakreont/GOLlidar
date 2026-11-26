@@ -42,6 +42,7 @@ def _rodzaj(opis):
 def przetworz(kat):
     wy = os.path.join(kat, '_wynik'); os.makedirs(wy, exist_ok=True)
     t_start = time.time()
+    print('POSTEP etap dekodowanie', flush=True)
     z = slam.wczytaj_lub_dekoduj(kat)
     t0 = int(z['t0'])
     w = S.wysokosci(os.path.join(kat, 'baro.bin')) if os.path.exists(os.path.join(kat, 'baro.bin')) else []
@@ -56,6 +57,7 @@ def przetworz(kat):
     import posegraf
     kt = np.array(kt); Xorig = np.array([k[0] for k in kf], float)
     if ZSZYJ:                                 # fragmenty po lukach w sledzeniu dopasowane po wspolnych scianach
+        print('POSTEP etap zszywanie', flush=True)
         Xz = posegraf.zszyj(kf, slam.mapa.frag, slam.mapa.frag_luka)
         kf = [(Xz[i], kf[i][1], kf[i][2]) for i in range(len(kf))]
     X0 = np.array([k[0] for k in kf], float); X = X0.copy()
@@ -153,6 +155,7 @@ def przetworz(kat):
              'pion': [round(float(v), 2) for v in pion], 'kondygnacje': kond}
     prz = []
     try:
+        print('POSTEP etap przekroje', flush=True)
         import przekroje
         prz = przekroje.policz(kat, z)
         przekroje.zapisz(kat, prz)
@@ -193,6 +196,7 @@ def przetworz(kat):
                 r.pop('obraz')
     with open(os.path.join(wy, 'mapa.json'), 'w', encoding='utf-8') as f:
         json.dump(wynik, f, ensure_ascii=False, separators=(',', ':'))
+    print('POSTEP etap eksport', flush=True)
     dxf_i_podglad(kat)
     model3d(kat)
     return wynik

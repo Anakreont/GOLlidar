@@ -38,7 +38,7 @@ def ram_wolny_gb():
 
 
 class Limit:
-    """Ile ciezkich liczen naraz (mapy, porownania, CAD): do LIDAR_ROWNOLEGLE (domyslnie 3), a kolejne rusza
+    """Ile ciezkich liczen naraz (mapy, porownania, CAD): do LIDAR_ROWNOLEGLE (domyslnie 1), a kolejne rusza
     tylko, gdy zostaje >= LIDAR_RAM_ZAPAS_GB wolnej pamieci (domyslnie 4 GB). Pierwsze rusza zawsze."""
     def __init__(self):
         self.ile = 0; self.c = threading.Condition()
@@ -131,6 +131,7 @@ def wersja_mapy(mj):
 
 def sesje():
     out = []
+    pp = postepy()
     for n in sorted(os.listdir(ARGS.katalog), reverse=True):
         k = katalog(n)
         if not k:
@@ -147,7 +148,7 @@ def sesje():
             pass
         out.append({'n': n, 'budynek': i.get('budynek') or '(bez nazwy)', 'kondygnacja': i.get('kondygnacja') or '–',
                     'start': i.get('start', '')[:16].replace('T', ' '), 'czas_s': czas, 'mb': round(rozm / 1e6, 1),
-                    'foto': sum(p.startswith('foto_') for p in pliki), 'stan': stan_wyniku(n, k)})
+                    'foto': sum(p.startswith('foto_') for p in pliki), 'stan': stan_wyniku(n, k), 'postep': pp.get(n)})
     return out
 
 
@@ -171,6 +172,86 @@ def znaczniki(k):
     return out
 
 
+W_START = {}                   # sesja -> czas rozpoczecia liczenia mapy
+TEMPO_DOM = 6.0                # s liczenia na 1 MB lidar.bin, zanim zmierzymy na Dellu
+
+
+def mb_lidar(k):
+    try:
+        return os.path.getsize(os.path.join(k, 'lidar.bin')) / 1e6
+    except OSError:
+        return 0.0
+
+
+def _plik_tempa():
+    return os.path.join(ARGS.katalog, '_tempo.json')
+
+
+def zapisz_tempo(dt, mb):
+    if mb < 1 or dt < 5: return
+    try:
+        T = json.load(open(_plik_tempa()))
+    except (OSError, ValueError):
+        T = []
+    T = (T + [round(dt / mb, 2)])[-20:]
+    try:
+        json.dump(T, open(_plik_tempa(), 'w'))
+    except OSError:
+        pass
+
+
+def tempo():
+    try:
+        T = sorted(json.load(open(_plik_tempa())))
+        return T[len(T) // 2] if T else TEMPO_DOM
+    except (OSError, ValueError):
+        return TEMPO_DOM
+
+
+ETAPY = {'dekodowanie': 0.02, 'zszywanie': 0.72, 'przekroje': 0.85, 'eksport': 0.92}
+
+
+def ulamek(k):
+    """Postep liczenia mapy z ostatniej linii 'POSTEP ...' w _wynik/log.txt (0..1)."""
+    try:
+        with open(os.path.join(k, '_wynik', 'log.txt'), 'rb') as f:
+            f.seek(0, 2); f.seek(max(0, f.tell() - 6000))
+            ost = [l for l in f.read().decode('utf-8', 'replace').splitlines() if l.startswith('POSTEP ')]
+    except OSError:
+        return 0.0
+    if not ost: return 0.0
+    p = ost[-1].split()
+    if p[1] == 'mapa' and '/' in p[2]:
+        i, n = p[2].split('/'); return 0.05 + 0.65 * int(i) / max(1, int(n))
+    return ETAPY.get(p[2], 0.0) if p[1] == 'etap' and len(p) > 2 else 0.0
+
+
+def postepy():
+    """{sesja: {'proc', 'eta_s', 'poz'}} - liczone mapy i kolejka (szacunek z tempa na Dellu)."""
+    teraz = time.time(); tp = tempo(); out = {}
+    with BLOK:
+        bieg = dict(W_START); czek = {n for n, s_ in W_TOKU.items() if s_ == 'czeka'}
+    wolne = 0.0
+    for n, t0 in bieg.items():
+        k = katalog(n)
+        if not k: continue
+        f = ulamek(k); el = teraz - t0; szac = mb_lidar(k) * tp
+        calosc = el / f if f >= 0.1 else max(szac, el * 1.1)
+        eta = max(0.0, calosc - el)
+        out[n] = {'proc': round(100 * f), 'eta_s': round(eta)}
+        wolne = max(wolne, eta)
+    kol = []
+    for pr, nr, n in sorted(list(KOLEJKA.queue)):
+        if n in czek and n not in kol: kol.append(n)
+    acc = wolne
+    for i, n in enumerate(kol):
+        k = katalog(n)
+        d = mb_lidar(k) * tp if k else 0
+        acc += d
+        out[n] = {'poz': i + 1, 'eta_s': round(acc)}
+    return out
+
+
 def pracownik():
     while True:
         _, _, n = KOLEJKA.get()
@@ -180,11 +261,17 @@ def pracownik():
                 continue
             if not k:
                 W_TOKU.pop(n, None); continue
-            W_TOKU[n] = 'liczy'
         os.makedirs(os.path.join(k, '_wynik'), exist_ok=True)
         log = os.path.join(k, '_wynik', 'log.txt')
-        with LICZ, open(log, 'w') as f:
-            r = subprocess.run([sys.executable, os.path.join(REPO, 'mapa', 'przetworz.py'), k], stdout=f, stderr=subprocess.STDOUT, env=ENV_DZIECI)
+        with LICZ:
+            with BLOK:
+                W_TOKU[n] = 'liczy'; W_START[n] = time.time()
+            with open(log, 'w') as f:
+                r = subprocess.run([sys.executable, os.path.join(REPO, 'mapa', 'przetworz.py'), k], stdout=f, stderr=subprocess.STDOUT, env=ENV_DZIECI)
+        with BLOK:
+            dt = time.time() - W_START.pop(n, time.time())
+        if r.returncode == 0:
+            zapisz_tempo(dt, mb_lidar(k))
         blad = os.path.join(k, '_wynik', 'blad.txt')
         if r.returncode != 0:
             with open(log, errors='replace') as f, open(blad, 'w') as g:
@@ -414,7 +501,7 @@ class H(BaseHTTPRequestHandler):
                          or (p.startswith('porownanie_') and p.endswith('.png'))) if os.path.isdir(os.path.join(k, '_wynik')) else []
             pj = os.path.join(k, '_wynik', 'przekroje.json')
             prz = json.load(open(pj, encoding='utf-8')) if os.path.exists(pj) else []
-            return self._json({'info': info(k), 'stan': stan_wyniku(q['n'], k), 'pliki': pliki, 'wyniki': wyn, 'przekroje': prz,
+            return self._json({'info': info(k), 'stan': stan_wyniku(q['n'], k), 'postep': postepy().get(q['n']), 'pliki': pliki, 'wyniki': wyn, 'przekroje': prz,
                                'porownanie': stan_por(q['n'], k), 'cad': stan_cad(q['n'], k),
                                'znaczniki': znaczniki(k), 'oprawy': SW.wiersze_pom(k), 'grzejniki': SW.wiersze_grz(k),
                                'okna': SW.wiersze_okn(k)})

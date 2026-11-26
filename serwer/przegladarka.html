@@ -123,6 +123,9 @@ const NAZ={sala:'Nazwy pomieszczeń',sciany:'Ściany',chmura:'Chmura punktów',t
 const ZNAK={foto:'📷',przekroj:'⊥',punkt:'•',notatka:'✎',oprawy:'💡',grzejnik:'♨',okno:'▭'};
 const W={sala:1,sciany:1,chmura:1,trasa:1,foto:1,przekroj:1,punkt:1,notatka:1,oprawy:1,grzejnik:1,okno:1};
 let JEDN='cm';try{JEDN=localStorage.getItem('lidar_jedn')||'cm'}catch(e){}
+const czasTxt=s=>s<60?'<1 min':s<3600?Math.round(s/60)+' min':Math.floor(s/3600)+' h '+Math.round(s%3600/60)+' min';
+function stanTxt(st,p){if(!p)return esc(st);const godz=new Date(Date.now()+p.eta_s*1000).toTimeString().slice(0,5);
+ return st=='liczy'?'liczy '+p.proc+' % · ~'+czasTxt(p.eta_s)+' (ok. '+godz+')':st=='czeka'?'czeka ('+p.poz+'.) · ~'+godz:esc(st)}
 const plik=f=>'plik?n='+S.n+'&f='+f+(f.endsWith('.dxf')?'&jedn='+JEDN:'');
 function ustawJedn(j){JEDN=j;try{localStorage.setItem('lidar_jedn',j)}catch(e){}if(S){naglowek();pliki();porownanie()}}
 function post(u,ok,body){return fetch(u,{method:'POST',body}).then(r=>r.json()).then(j=>{if(j.blad)alert(j.blad);else ok&&ok(j)})}
@@ -137,7 +140,7 @@ function rysujListe(){const f=$('szukaj').value.toLowerCase(),B={};let puste=0;
  $('lista').innerHTML=(naz.map(b=>{const ses=Object.values(B[b]).flat(),otw=rozwin[b]??(S?ses.some(s=>s.n==S.n):naz.indexOf(b)<2);
   return '<div class="bud"><div class="gl" onclick="rozwin[\''+esc(b).replace(/'/g,"\\'")+'\']='+!otw+';rysujListe()"><span>'+(otw?'▾':'▸')+'</span><b>'+esc(b)+'</b><span class="ile">'+ses.length+' nagr.</span><button class="x" title="Usuń cały budynek" onclick="event.stopPropagation();usunBudynek(\''+esc(b).replace(/'/g,"\\'")+'\')">🗑</button></div>'+
   (otw?Object.keys(B[b]).sort().map(k=>'<div class="kond"><h4>'+esc(k)+'</h4>'+B[b][k].map(s=>
-   '<div class="ses'+(S&&S.n==s.n?' akt':'')+'" onclick="otworz(\''+s.n+'\')"><div class="t">'+esc(s.start.slice(5))+'<br><small>'+(s.czas_s?Math.round(s.czas_s/60)+' min':'–')+' · '+s.foto+' zdj. · '+s.mb+' MB</small></div><span class="pill '+esc(s.stan)+'">'+esc(s.stan)+'</span></div>').join('')+'</div>').join(''):'')+'</div>'}).join('')||'<div class="pusto">Brak nagrań</div>')+
+   '<div class="ses'+(S&&S.n==s.n?' akt':'')+'" onclick="otworz(\''+s.n+'\')"><div class="t">'+esc(s.start.slice(5))+'<br><small>'+(s.czas_s?Math.round(s.czas_s/60)+' min':'–')+' · '+s.foto+' zdj. · '+s.mb+' MB</small></div><span class="pill '+esc(s.stan)+'" title="szacunek z tempa liczenia na Dellu">'+stanTxt(s.stan,s.postep)+'</span></div>').join('')+'</div>').join(''):'')+'</div>'}).join('')||'<div class="pusto">Brak nagrań</div>')+
   (puste?'<div class="puste">+ '+puste+' pustych nagrań bez danych · <a href="#" onclick="usunPuste();return false">usuń</a></div>':'')}
 function usunBudynek(b){if(confirm('Przenieść do kosza CAŁY budynek „'+b+'” – wszystkie jego nagrania, zdjęcia i mapy?'))post('api/usun_budynek?b='+encodeURIComponent(b),j=>{if(S&&S.info.budynek==b){S=null;M=null;czysc()}lista()})}
 function usunPuste(){post('api/usun_puste',j=>{alert('Przeniesiono do kosza '+j.ile+' pustych nagrań');lista()})}
@@ -149,7 +152,7 @@ function czysc(){$('nag').innerHTML='<div class="tyt"><b>Wybierz nagranie z list
 function otworz(n){fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{S=d;S.n=n;M=null;wyb=null;rysujListe();naglowek();galeria();przekroje();znaczniki();inwent();pliki();porownanie();cad();
  fetch('api/mapa?n='+n).then(r=>r.ok?r.json():null).then(j=>{if(j){M=j.mapa;NZ=j.nazwy||{};KO=j.kontrola||[];seg=0;}else{M=null;KO=[]}panel();warstwy();dopasuj();rys();if($('w3d').classList.contains('akt'))tryb3d()})})}
 function naglowek(){const i=S.info,ma=S.wyniki.includes('_wynik/rzut.dxf');
- $('nag').innerHTML='<div class="tyt"><b>'+esc(i.budynek||'?')+' › '+esc(i.kondygnacja||'?')+'</b><div>'+esc((i.start||'').replace('T',' ').slice(0,16))+' · '+esc(S.n)+' · <span class="pill '+esc(S.stan)+'">'+esc(S.stan)+'</span></div></div>'+
+ $('nag').innerHTML='<div class="tyt"><b>'+esc(i.budynek||'?')+' › '+esc(i.kondygnacja||'?')+'</b><div>'+esc((i.start||'').replace('T',' ').slice(0,16))+' · '+esc(S.n)+' · <span class="pill '+esc(S.stan)+'">'+stanTxt(S.stan,S.postep)+'</span></div></div>'+
  (ma?'<a class="btn gl" href="'+plik('_wynik/rzut.dxf')+'">⬇ Rzut DXF</a>':'')+
  (S.wyniki.includes('_wynik/przekroje.dxf')?'<a class="btn" href="'+plik('_wynik/przekroje.dxf')+'">⬇ Przekroje DXF</a>':'')+
  (S.wyniki.includes('_wynik/model3d.dxf')?'<a class="btn" href="'+plik('_wynik/model3d.dxf')+'">⬇ Model 3D DXF</a><a class="btn" href="'+plik('_wynik/model3d.obj')+'">OBJ</a>':'')+
@@ -346,7 +349,8 @@ async function tryb3d(){if(!M){$('info3d').textContent='Model 3D pojawi się po 
   s.position.set(z.x,z.y,z.rodzaj=='przekroj'?h*0.5:1.6);s.userData.z=z;grp.add(s);R3.znaczniki.push(s)});
  const cx=k.szer/2,cy=k.wys/2,dl=Math.max(k.szer,k.wys);R3.cam.up.set(0,0,1);R3.cam.position.set(cx+dl*0.2,cy-dl*1.0,dl*0.9);R3.ctl.target.set(cx,cy,0);R3.ctl.update();
  $('info3d').innerHTML='<b>'+esc((NZ[k.nr]||{}).nazwa||'Odcinek '+k.nr)+'</b> · wysokość '+h.toFixed(2)+' m<br><span class="mala">'+esc(k.wysokosc_zrodlo||'')+'. Obracaj myszą, kółko – zoom, prawy przycisk – przesuwanie, kliknij kulkę – szczegóły.</span>'}
-lista();setInterval(()=>fetch('api/sesje').then(r=>r.json()).then(d=>{const zm=JSON.stringify(d)!=JSON.stringify(L);L=d;if(zm)rysujListe()}),20000);
+lista();setInterval(()=>fetch('api/sesje').then(r=>r.json()).then(d=>{const zm=JSON.stringify(d)!=JSON.stringify(L);L=d;if(zm)rysujListe();
+ if(S){const t=d.find(x=>x.n==S.n);if(t&&(t.stan!=S.stan||JSON.stringify(t.postep)!=JSON.stringify(S.postep))){const by=S.stan;S.stan=t.stan;S.postep=t.postep;naglowek();if(by!='gotowe'&&t.stan=='gotowe')otworz(S.n)}}}),15000);
 </script>
 </body>
 </html>

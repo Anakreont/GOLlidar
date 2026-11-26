@@ -158,7 +158,10 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segme
     seg_ost = None; kfw = []   # kluczowe w ukladzie swiata (punkty, normalne, pozycja, segment)
     pauzy = przerwy(kat, int(z['t0'])); po_pauzie = False
     frag = []; frag_luka = {}; fr_id = 0; t_ok = None; zaburz = None   # fragmenty: nowy po luce w sledzeniu (nie po PAUZIE)
-    for (tt, ang, D) in sk:
+    n_sk = max(1, len(sk)); krok_p = max(200, n_sk // 50)
+    for i_sk, (tt, ang, D) in enumerate(sk):
+        if i_sk % krok_p == 0:
+            print(f'POSTEP mapa {i_sk}/{n_sk}', flush=True)    # przegladarka liczy z tego czas do konca
         tm = tt.mean()
         if tm < t_od or tm > t_do: continue
         if any(pa <= tm <= pb for pa, pb in pauzy):     # PAUZA: zdjety plecak, przekroj z reki - nie do rzutu
