@@ -24,7 +24,39 @@ PLIK_RE = re.compile(r'^((_wynik|_porownanie)/)?[A-Za-z0-9_\-]{1,60}\.(jpg|csv|t
 KOLEJKA = queue.Queue()
 W_TOKU = {}                    # sesja -> 'czeka' | 'liczy'
 BLOK = threading.Lock()
-LICZ = threading.Lock()        # jedno ciezkie liczenie naraz (mapa albo porownanie) - oszczednosc RAM
+
+
+def ram_wolny_gb():
+    try:
+        for l in open('/proc/meminfo'):
+            if l.startswith('MemAvailable:'):
+                return int(l.split()[1]) / 1024 / 1024
+    except OSError:
+        pass
+    return 99.0
+
+
+class Limit:
+    """Ile ciezkich liczen naraz (mapy, porownania, CAD): do LIDAR_ROWNOLEGLE (domyslnie 3), a kolejne rusza
+    tylko, gdy zostaje >= LIDAR_RAM_ZAPAS_GB wolnej pamieci (domyslnie 4 GB). Pierwsze rusza zawsze."""
+    def __init__(self):
+        self.ile = 0; self.c = threading.Condition()
+        self.max = max(1, int(os.environ.get('LIDAR_ROWNOLEGLE', '3')))
+        self.zapas = float(os.environ.get('LIDAR_RAM_ZAPAS_GB', '4'))
+
+    def __enter__(self):
+        with self.c:
+            while not (self.ile == 0 or (self.ile < self.max and ram_wolny_gb() >= self.zapas)):
+                self.c.wait(10)
+            self.ile += 1
+
+    def __exit__(self, *a):
+        with self.c:
+            self.ile -= 1; self.c.notify_all()
+
+
+LICZ = Limit()                 # rownolegle liczenie z kontrola pamieci
+ENV_DZIECI = dict(os.environ, OMP_NUM_THREADS='2', OPENBLAS_NUM_THREADS='2', MKL_NUM_THREADS='2')
 KOLEJKA_POR = queue.Queue()
 W_POR = {}                     # sesja -> 'czeka' | 'liczy' (porownanie z gotowymi SLAM)
 METODY_POR = ('carto_imu', 'carto', 'slam_toolbox')
@@ -147,7 +179,7 @@ def pracownik():
         os.makedirs(os.path.join(k, '_wynik'), exist_ok=True)
         log = os.path.join(k, '_wynik', 'log.txt')
         with LICZ, open(log, 'w') as f:
-            r = subprocess.run([sys.executable, os.path.join(REPO, 'mapa', 'przetworz.py'), k], stdout=f, stderr=subprocess.STDOUT)
+            r = subprocess.run([sys.executable, os.path.join(REPO, 'mapa', 'przetworz.py'), k], stdout=f, stderr=subprocess.STDOUT, env=ENV_DZIECI)
         blad = os.path.join(k, '_wynik', 'blad.txt')
         if r.returncode != 0:
             with open(log) as f, open(blad, 'w') as g:
@@ -589,7 +621,8 @@ def main():
     ap.add_argument('--port', type=int, default=8150)
     ap.add_argument('--katalog', default=os.environ.get('LIDAR_DIR', os.path.expanduser('~/skany-lidar')))
     ARGS = ap.parse_args()
-    threading.Thread(target=pracownik, daemon=True).start()
+    for _ in range(LICZ.max):          # kilka map naraz (Limit pilnuje pamieci)
+        threading.Thread(target=pracownik, daemon=True).start()
     threading.Thread(target=automat, daemon=True).start()
     threading.Thread(target=pracownik_por, daemon=True).start()
     threading.Thread(target=pracownik_cad, daemon=True).start()
