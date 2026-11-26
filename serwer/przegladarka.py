@@ -325,6 +325,15 @@ def ustawienia_cad(b):
         return None
 
 
+def numer_pietra(nazwa):
+    """'-2 segment' -> -2, 'Parter 1' -> 0, '1 pietro segment 2' -> 1, '2 piętro' -> 2; inaczej None."""
+    t = (nazwa or '').strip().lower()
+    if t.startswith('parter'):
+        return 0
+    m = re.match(r'^\s*([+-]?\d+)', t)
+    return int(m.group(1)) if m else None
+
+
 def pracownik_cad():
     while True:
         n, klaster, zrodlo = KOLEJKA_CAD.get()
@@ -333,8 +342,14 @@ def pracownik_cad():
             wy = os.path.join(k, '_wynik'); os.makedirs(wy, exist_ok=True)
             blad = os.path.join(wy, 'cad_blad.txt')
             if os.path.exists(blad): os.remove(blad)
-            cmd = [sys.executable, os.path.join(REPO, 'mapa', 'dopasuj_cad.py'), k, katalog_cad(info(k).get('budynek', '')), '--zrodlo', zrodlo]
+            b_ = info(k).get('budynek', '')
+            cmd = [sys.executable, os.path.join(REPO, 'mapa', 'dopasuj_cad.py'), k, katalog_cad(b_), '--zrodlo', zrodlo]
             if klaster is not None: cmd += ['--klaster', str(klaster)]
+            else:                                     # podpowiedz kondygnacji z nazw sesji budynku ("-2 segment", "Parter", "1 pietro")
+                f = numer_pietra(info(k).get('kondygnacja', ''))
+                wsz = sorted({x for x in (numer_pietra(s_['kondygnacja']) for s_ in sesje() if s_['budynek'] == b_) if x is not None}, reverse=True)
+                if f is not None and wsz:
+                    cmd += ['--pietro', str(f), '--pietra', ','.join(map(str, range(wsz[0], wsz[-1] - 1, -1)))]
             with LICZ_RECZNE:
                 with BLOK:
                     W_CAD[n] = 'liczy'

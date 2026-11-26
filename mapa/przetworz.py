@@ -12,7 +12,7 @@ sys.path.insert(0, TU); sys.path.insert(0, os.path.join(TU, '..'))
 import slam, sprawdz as S
 from eksport_dxf import kierunek, kondygnacja, szkielet, lica, KOM, MIN_KF
 
-WERSJA = 5
+WERSJA = 6
 DZIEL_BARO = False   # True: dawny podzial sesji na kondygnacje wg barometru
 PETLE = False          # zamykanie petli (posegraf.graf) - do dopracowania wag, na razie gorzej niz bez
 RZUTUJ = False
@@ -37,6 +37,15 @@ def _rodzaj(opis):
         if opis.startswith(pref):
             return r
     return 'notatka'
+
+
+def zapisz_kf(plik, kf, kt):
+    """Kluczowe skany (pozycja w ukladzie swiata, punkty i normalne lokalne, czas) - do dociagania do rzutu CAD."""
+    X = np.array([k[0] for k in kf], float)
+    dl = np.array([len(k[1]) for k in kf])
+    np.savez_compressed(plik, X=X, kt=np.asarray(kt, float), dl=dl,
+                        p=np.concatenate([k[1] for k in kf]).astype(np.float32),
+                        n=np.concatenate([k[2] for k in kf]).astype(np.float32))
 
 
 def przetworz(kat):
@@ -78,6 +87,7 @@ def przetworz(kat):
             X[idx] = posegraf.prostuj(sub)
     P = posegraf.przenies(P, kt, Xorig, X)
     kf = [(X[i], kf[i][1], kf[i][2]) for i in range(len(kf))]
+    zapisz_kf(os.path.join(wy, 'kf.npz'), kf, kt)
     zn = _znaczniki(kat, t0)
     kond = []
     for nr, (a, b, h) in enumerate(pozi):
