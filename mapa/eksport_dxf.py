@@ -105,10 +105,19 @@ def scisnij(Q, os_n, wzdluz=0.35, wpoprz=0.12, rund=2):
     from scipy.spatial import cKDTree
     Q = Q.copy()
     sk = np.ones(2); sk[1 - os_n] = wpoprz / wzdluz
+    rng = np.random.default_rng(0)
     for _ in range(rund):
+        # porcjami i z co najwyzej 400 sasiadami na punkt: przy gestej smudze (wiele przejsc) listy sasiadow
+        # calego zbioru naraz zjadaly kilka GB RAM (SP 162, 26.11). Wynik praktycznie ten sam (mediana z proby).
         T = cKDTree(Q * sk)
-        nb = T.query_ball_point(Q * sk, wpoprz)
-        Q[:, os_n] = [np.median(Q[i, os_n]) for i in nb]
+        nowe = np.empty(len(Q)); kol = Q[:, os_n]
+        for i0 in range(0, len(Q), 2000):
+            nb = T.query_ball_point(Q[i0:i0 + 2000] * sk, wpoprz, return_sorted=False)
+            for j, l in enumerate(nb):
+                if len(l) > 400:
+                    l = rng.choice(l, 400, replace=False)
+                nowe[i0 + j] = np.median(kol[l])
+        Q[:, os_n] = nowe
     return Q
 
 
