@@ -48,6 +48,25 @@ def zapisz_kf(plik, kf, kt):
                         n=np.concatenate([k[2] for k in kf]).astype(np.float32))
 
 
+def pomiar_z_nagrania(z, t, czas=3.2):
+    """Odtwarza pomiar z postoju (przycisk POMIAR) z surowych obrotow sprzed znacznika - dla pomiarow zapisanych
+    bez polozenia scian (u1..v2) i jako kontrola. Zwraca wynik pomiar_pokoju.licz albo None."""
+    import pomiar_pokoju
+    tl = z['tl']; m = (tl >= t - czas - 0.1) & (tl <= t - 0.05)
+    if m.sum() < 500:
+        return None
+    a0, a1, d = z['a0'][m], z['a1'][m], z['d'][m]
+    krok = ((a1 - a0) % 360) / 11
+    A = ((a0[:, None] + krok[:, None] * np.arange(12)) % 360).ravel(); D = (d * 1000).ravel()
+    nowy = np.where(np.diff(A) < -180)[0] + 1
+    obr = [list(zip(a_.tolist(), d_.tolist())) for a_, d_ in zip(np.split(A, nowy), np.split(D, nowy))][1:-1]
+    try:
+        w = pomiar_pokoju.licz(obr)
+    except Exception:
+        return None
+    return None if w.get('blad') else w
+
+
 def przetworz(kat):
     wy = os.path.join(kat, '_wynik'); os.makedirs(wy, exist_ok=True)
     t_start = time.time()
@@ -138,6 +157,13 @@ def przetworz(kat):
             elif r['rodzaj'] == 'pomiar':
                 # linie wymiarowe: od sciany do sciany przez miejsce operatora, wzdluz osi pokoju
                 d_ = dict(x.split('=', 1) for x in opis.split()[1:] if '=' in x)
+                if d_.get('u1') in (None, '', 'None'):        # pomiar sprzed zapisu polozenia scian: odtworz z nagrania
+                    w_ = pomiar_z_nagrania(z, t)
+                    if w_:
+                        d_.update({k_: str(w_[k_]) for k_ in ('kat', 'u1', 'u2', 'v1', 'v2')})
+                        for k_ in ('przod', 'bok'):
+                            if w_.get(k_) and not d_.get(k_):
+                                r['opis'] += f' {k_}={w_[k_]}'
                 try:
                     th = np.radians(float(d_['kat'])); c_, s_ = np.cos(th), np.sin(th)
                     cT, sT = np.cos(T_[2]), np.sin(T_[2])
