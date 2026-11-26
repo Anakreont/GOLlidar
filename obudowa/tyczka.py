@@ -159,6 +159,33 @@ def kolano_l2(kat=35.0):
 
 
 
+def uchwyt_l2_wieko(kat=20.0, H=120.0):
+    """Uchwyt L2 przykrecany do GORNEJ scianki twardego plecaka (Yato YT-089090: zewn. 465 x 355 x 205 mm),
+    bez tyczki - jak Hovermap. Plyta 110 x 70 x 6 mm, 4 x M5 przez scianke (od srodka duze podkladki), kolumna
+    O50 wysokosci H, na niej plytka O64 pod L2 (4 x M3 na O51) pochylona o 'kat' stopni DO TYLU (-Y, nad plecami):
+    kopula patrzy w gore i do tylu, glowa operatora zaslania mniej. Kabel L2 w dol kolumna i otworem O26 w plycie
+    do skrzyni (w sciance wywiercic O30). Druk plyta na stole, bez podpor (sufit kanalu pod plytka ~O30 - most)."""
+    a = np.radians(kat)
+    p0 = np.array([0, 0, H])
+    def wzd(r, l0, l1, x=0.0, y=0.0, n=72):          # walec wzdluz osi pochylonej plytki
+        m = cylinder(radius=r, height=l1 - l0, sections=n); m.apply_translation((x, y, (l0 + l1) / 2))
+        m.apply_transform(trimesh.transformations.rotation_matrix(a, (1, 0, 0)))   # +kat wokol X -> os do -Y
+        m.apply_translation(p0); return m
+    plyta = b(-55, 55, -35, 35, 0, 6)
+    kol = c(0, 0, 25, 0, H)
+    kula = trimesh.creation.icosphere(subdivisions=4, radius=25); kula.apply_translation(p0)
+    gora = U(wzd(25, 0, 10), wzd(L2_PLYTA / 2, 10, 15))
+    m = U(plyta, kol, kula, gora)
+    otw = [c(0, 0, 13, -1, H), trimesh.creation.icosphere(subdivisions=3, radius=13).apply_translation(p0),
+           wzd(13, -1, 9)]                                                  # kanal kabla
+    for x in (-45, 45):
+        for y in (-25, 25):
+            otw.append(c(x, y, 2.75, -1, 7))                                 # M5
+    for ox, oy in L2_OTWORY:
+        otw += [wzd(1.7, 9, 16, ox, oy, 24), wzd(3.2, -20, 11, ox, oy, 24)]  # M3 + leb od spodu (plytka 4 mm)
+    return D(m, *otw)
+
+
 def kolano90():
     """Dolne kolano 90 st.: rurka stoi NA ZEWNATRZ skrzyni (miedzy skrzynia a szelkami), wchodzi w kolano od gory,
     kable skrecaja w kolanie i ida otworem przez tylna sciane do srodka - nic nie widac. Kolnierz 4 x M5 przez sciane
@@ -186,7 +213,9 @@ def kolano90():
 if __name__ == "__main__":
     for nazwa, f in (("korek", korek), ("obejma", obejma), ("gniazdo", gniazdo),
                      ("kolano_0", lambda: kolano(0)), ("kolano_35", lambda: kolano(35)),
-                     ("kolano_l2_35", lambda: kolano_l2(35)), ("kolano90", kolano90)):
+                     ("kolano_l2_35", lambda: kolano_l2(35)), ("kolano90", kolano90),
+                     ("uchwyt_l2_wieko_0", lambda: uchwyt_l2_wieko(0)), ("uchwyt_l2_wieko_20", lambda: uchwyt_l2_wieko(20)),
+                     ("uchwyt_l2_wieko_35", lambda: uchwyt_l2_wieko(35))):
         m = f()
         assert m.is_watertight, nazwa
         m.export(f"{nazwa}.stl")

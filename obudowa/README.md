@@ -53,9 +53,13 @@ Kable z rurki wychodzą oknem z tyłu (Ø18). Druk tuleją w dół; sufit kanał
 
 - `kolano90.stl` – dolne kolano 90°: rurka stoi między skrzynią a szelkami, kable skręcają w kolanie i wchodzą do skrzyni otworem ~Ø30 w tylnej ścianie (nic nie widać). Kołnierz 4 × M5, kołek M4 × 60 przez tuleję i rurkę. Zamiast `gniazdo.stl`.
 - `obejma.stl` (1 szt., od zewnątrz u góry skrzyni) trzyma rurkę pionowo.
-- `kolano_l2_35.stl` – górne kolano z płytą prosto pod Unitree L2 (4 × M3 × 8 od spodu), kopuła 35° do przodu. **Rozstaw otworów 45 × 45 mm odczytany z rysunku L1 – sprawdź suwmiarką na L2 przed drukiem** (`L2_POL` w `tyczka.py`).
+- `kolano_l2_35.stl` – górne kolano z płytą prosto pod Unitree L2 (4 × M3 × 8 od spodu), kopuła 35° do przodu. Otwory wg instrukcji L2: 4 × M3 na okręgu Ø51, co 90°, obrócone o 22,5° względem wyjścia kabla (`L2_OTWORY` w `tyczka.py`).
 
 ## Głowica na tyczkę w jednym wydruku
 
 `podstawa_tyczka.stl` – podstawa głowicy (LiDAR D500 + BNO085 + adaptery USB) zrośnięta z tuleją na rurkę Ø40. Kable idą otworem Ø26 w dnie prosto do rurki (bez bocznych wyjść). Pokrywa ta sama (`pokrywa.stl`). Kołek M4 × 60 przez tuleję i rurkę.
 Druk tuleją w dół, skos 42°, bez podpór. Zestaw: `podstawa_tyczka` + `pokrywa` + `obejma` + `kolano90`.
+
+## L2 bez tyczki – na górnej ściance plecaka (jak Hovermap)
+
+`uchwyt_l2_wieko_0/20/35.stl` – płyta 110 × 70 × 6 mm przykręcana 4 × M5 do górnej ścianki skrzyni Yato YT-089090 (od środka duże podkładki), kolumna Ø50 × 120 mm, na górze płytka Ø64 pod L2 (4 × M3 × 8 od spodu) pochylona o 0, 20 albo 35° **do tyłu** (−Y = strona pleców): kopuła patrzy w górę i do tyłu, głowa operatora zasłania mniej. Kabel L2 kolumną w dół i otworem Ø26 w płycie do skrzyni – w ściance wywiercić Ø30. Druk płytą na stole, bez podpór, PETG, 4 obrysy, wypełnienie 40 %. Na start drukuj wersję 20°.
