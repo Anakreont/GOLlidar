@@ -128,8 +128,11 @@ def kolano(kat=35.0):
     return D(m, *otw)
 
 
-L2_POL = 22.5      # polowa rozstawu otworow M3 L2 (kwadrat 45 x 45) - odczyt z rysunku L1, SPRAWDZ suwmiarka na L2
-L2_PLYTA = 60.0    # srednica plyty pod L2 (podstawa L2 ma 75 x 75 - plyta mniejsza, zeby nie zaslaniac wyjscia kabla)
+# L2 (instrukcja L2, rys. „Installation Dimensions”): 4 x M3 gl. 6 mm na okregu O51, co 90 st., obrocone o 22,5 st.
+# wzgledem osi wyjscia kabla (kabel do tylu, -Y). Kwadrat ok. 36,1 x 36,1 mm (L1 mial 45 x 45 - to byl blad).
+L2_R_OTW = 25.5
+L2_OTWORY = [(L2_R_OTW * np.sin(np.radians(f)), -L2_R_OTW * np.cos(np.radians(f))) for f in (22.5, 112.5, 202.5, 292.5)]
+L2_PLYTA = 64.0    # srednica plyty pod L2 (podstawa L2 ma 75 x 75; otwory na O51 + leb M3)
 
 
 def kolano_l2(kat=35.0):
@@ -149,10 +152,9 @@ def kolano_l2(kat=35.0):
            wzd(RURA_DW / 2 - 2, -2, L - 1),                              # kanal (sufit 6 mm pod plyta)
            cy(0, 46, 9.0, -Rz - 5, 0),                                   # okno kabli z tylu
            cx(0, 14, SRUBA_ZACISK / 2, -Rz - 1, Rz + 1)]                 # kolek M4
-    for sx in (-1, 1):
-        for sy in (-1, 1):
-            otw += [wzd(1.7, L - 1, L + 6, sx * L2_POL, sy * L2_POL, 24),     # M3
-                    wzd(3.2, L - 30, L + 1.0, sx * L2_POL, sy * L2_POL, 24)]  # leb M3 od spodu (plyta 4 mm)
+    for ox, oy in L2_OTWORY:
+        otw += [wzd(1.7, L - 1, L + 6, ox, oy, 24),          # M3
+                wzd(3.2, L - 30, L + 1.0, ox, oy, 24)]        # leb M3 od spodu (plyta 4 mm)
     return D(m, *otw)
 
 
