@@ -56,6 +56,10 @@ STAN = {
     "prz_nr": 0,               # liczba przekrojow w sesji
     "prz_wynik": "",           # wymiary ostatniego przekroju (szacunek na zywo)
     "prz_skany": [],           # obroty zebrane podczas trzymania
+    "pmr_faza": 0,             # pomiar pomieszczenia z postoju: 0 brak, 1 zbieranie (3 s), 2 wynik
+    "pmr_skany": [],
+    "pmr_wynik": "",
+    "pmr_t": 0.0,
     "pion0": (0.0, 0.0),       # pitch, roll zmierzone przy tyczce w pionie (montaz BNO wzgledem LiDAR-u)
     "ip": "",
 }
@@ -167,6 +171,8 @@ def watek_lidar(port, baud, nazwa="lidar"):
                                     if STAN["podglad"] == nazwa:
                                         if STAN["prz_faza"] == 1 and len(STAN["prz_skany"]) < 40:
                                             STAN["prz_skany"].append(obrot)
+                                        if STAN["pmr_faza"] == 1 and len(STAN["pmr_skany"]) < 40:
+                                            STAN["pmr_skany"].append(obrot)
                                         STAN["obrot"] = obrot
                                         STAN["pkt_obrot"] = len(obrot)
                                         STAN["hz"] = 1.0 / max(teraz - t_obr, 1e-3)
@@ -248,6 +254,39 @@ class Przekroj:
 
     def zostalo(self, t):
         return max(0.0, PRZ_CZAS - (t - self.t0)) if self.faza == 1 else 0.0
+
+
+def pomiar_pomieszczenia(nazwa):
+    """Przycisk „Pomiar”: 3 s postoju, potem wymiary i powierzchnia z pomiar_pokoju.licz; wynik na ekran
+    i jako znacznik POMIAR (gdy trwa nagrywanie)."""
+    import pomiar_pokoju
+    with LOCK:
+        if STAN["pmr_faza"] == 1:
+            return "Pomiar już trwa"
+        if STAN["pitch"] is not None and STAN["przechyl"] > 6:
+            return f"Przechył {STAN['przechyl']:.0f}° – postaw tyczkę pionowo"
+        STAN.update(pmr_faza=1, pmr_skany=[], pmr_wynik="", pmr_t=time.time())
+
+    def licz():
+        time.sleep(3.2)
+        with LOCK:
+            skany = STAN["pmr_skany"]; STAN["pmr_skany"] = []
+            p0, r0 = STAN["pion0"]
+            pt = (STAN["pitch"] or 0) - p0 if STAN["pitch"] is not None else 0.0
+            rt = (STAN["roll"] or 0) - r0 if STAN["roll"] is not None else 0.0
+        try:
+            w = pomiar_pokoju.licz(skany, pt, rt)
+            tekst = pomiar_pokoju.opis(w)
+        except Exception as e:          # pomiar nie moze zatrzymac rejestratora
+            w, tekst = {"blad": str(e)}, f"błąd pomiaru: {e}"
+        with LOCK:
+            STAN.update(pmr_faza=2, pmr_wynik=tekst, pmr_t=time.time())
+        if not w.get("blad"):
+            znacznik(f"POMIAR a={w['a'] or ''} b={w['b'] or ''} pole={w['pole'] or ''} obrys={w['pole_obrys'] or ''} "
+                     f"kat={w['kat']} pom={nazwa.replace(' ', '_')}", licz=True)
+
+    threading.Thread(target=licz, daemon=True).start()
+    return None
 
 
 def policz_przekroj(nr, skany):
@@ -1012,6 +1051,7 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 <div class="w"><input id="snr" placeholder="pomieszczenie, w którym stoisz, np. sala 12" autocomplete="off" enterkeyhint="done" oninput="$('pnr').value=$('gnr').value=$('onr').value=this.value" onkeydown="if(event.key=='Enter'){zapSala();this.blur()}">
  <button class="nb rec" style="flex:0 0 110px" onclick="zapSala()">Jestem tu</button></div>
 <div class="w"><small id="sost" style="color:#9ab;padding:0 6px"></small></div>
+<div class="w"><button class="nb" onclick="cmd('pomiar?nazwa='+encodeURIComponent($('snr').value.trim()),wibr)">📐 POMIAR – stań na środku, 3 s bez ruchu</button></div>
 <div class="w rec"><button id="bpa" onclick="cmd('pauza')">PAUZA</button>
  <button id="bp" style="flex:0 0 34%" onclick="if(confirm('Zakończyć nagranie?'))cmd('stop')">STOP</button></div>
 </section>
@@ -1109,7 +1149,12 @@ let ac=null,pf=0;
 function dzw(f,ms,kiedy){if(!ac)return;const o=ac.createOscillator(),w=ac.createGain();o.frequency.value=f;o.connect(w);w.connect(ac.destination);
  const t=ac.currentTime+(kiedy||0);w.gain.setValueAtTime(.5,t);o.start(t);o.stop(t+ms/1000)}
 addEventListener('pointerdown',()=>{try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();ac.resume()}catch(e){}});
+let pmf=0;
 function przekroj(s){const e=$('prk'),f=s.nagrywa?s.prz_faza:0;
+ const g=s.pmr_faza==2&&s.pmr_od>15?0:s.pmr_faza;
+ if(g!=pmf){if(g==1)dzw(660,90);else if(g==2){dzw(880,150);dzw(1320,250,.18);if(navigator.vibrate)navigator.vibrate(150)}pmf=g}
+ if(g==1&&!f){e.style.display='block';e.style.background='#2b62c9e6';e.innerHTML='POMIAR – stój nieruchomo';return}
+ if(g==2&&!f){e.style.display='block';e.style.background='#1f9d68e6';e.innerHTML=esc(s.pmr_wynik)+'<small>'+(s.nagrywa?'zapisane w nagraniu':'bez nagrywania – nie zapisano')+' · dotknij, by ukryć</small>';e.onclick=()=>{e.style.display='none'};return}
  if(f==1){e.style.display='block';e.style.background='#b70d';e.innerHTML='PRZEKRÓJ – trzymaj nieruchomo '+Math.ceil(s.prz_zostalo)+' s'}
  else if(f==2){e.style.display='block';e.style.background='#1f9d68e6';e.innerHTML='PRZEKRÓJ nr '+s.prz_nr+' ZAPISANY<small>'+(s.prz_wynik||'liczę…')+' · postaw do pionu</small>'}
  else e.style.display='none';
@@ -1289,10 +1334,11 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 s = {k: STAN[k] for k in ("nagrywa", "nazwa", "hz", "pkt_obrot", "yaw", "pitch", "roll",
                                           "max_przechyl", "wys", "temp", "znaczniki", "komunikat", "pauza", "auto_pauza",
-                                          "przechyl", "prz_faza", "prz_zostalo", "prz_nr", "prz_wynik",
+                                          "przechyl", "prz_faza", "prz_zostalo", "prz_nr", "prz_wynik", "pmr_faza", "pmr_wynik",
                                           "budynek", "kondygnacja", "ip")}
                 s["pion0"] = [round(v, 1) for v in STAN["pion0"]]
                 s["imu_tryb"] = STAN.get("imu_tryb", "")
+                s["pmr_od"] = round(teraz - STAN["pmr_t"], 1)
                 s["obrot"] = STAN["obrot"]
                 s["pom"] = STAN["pom"][-5:]
                 s["grz"] = STAN["grz"][-5:]
@@ -1427,6 +1473,9 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 STAN["p0"] = None
             self._json({"ok": True})
+        elif u.path == "/pomiar":
+            blad = pomiar_pomieszczenia(q.get("nazwa", [""])[0])
+            self._json({"blad": blad} if blad else {"ok": True})
         elif u.path == "/zeruj_pion":
             w, blad = zeruj_pion()
             self._json({"blad": blad} if blad else {"ok": True, "pitch0": round(w[0], 1), "roll0": round(w[1], 1)})
