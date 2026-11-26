@@ -39,13 +39,14 @@ def _rodzaj(opis):
     return 'notatka'
 
 
-def zapisz_kf(plik, kf, kt):
+def zapisz_kf(plik, kf, kt, fr=None):
     """Kluczowe skany (pozycja w ukladzie swiata, punkty i normalne lokalne, czas) - do dociagania do rzutu CAD."""
     X = np.array([k[0] for k in kf], float)
     dl = np.array([len(k[1]) for k in kf])
     np.savez_compressed(plik, X=X, kt=np.asarray(kt, float), dl=dl,
                         p=np.concatenate([k[1] for k in kf]).astype(np.float32),
-                        n=np.concatenate([k[2] for k in kf]).astype(np.float32))
+                        n=np.concatenate([k[2] for k in kf]).astype(np.float32),
+                        **({'fr': np.asarray(fr, int)} if fr is not None else {}))
 
 
 def najlepsze_pomiary(zn):
@@ -134,7 +135,8 @@ def przetworz(kat):
             X[idx] = posegraf.prostuj(sub)
     P = posegraf.przenies(P, kt, Xorig, X)
     kf = [(X[i], kf[i][1], kf[i][2]) for i in range(len(kf))]
-    zapisz_kf(os.path.join(wy, 'kf.npz'), kf, kt)
+    fr_ = slam.mapa.frag[:, 1] if len(slam.mapa.frag) == len(kf) else None
+    zapisz_kf(os.path.join(wy, 'kf.npz'), kf, kt, fr_)
     zn = _znaczniki(kat, t0)
     kond = []
     for nr, (a, b, h) in enumerate(pozi):

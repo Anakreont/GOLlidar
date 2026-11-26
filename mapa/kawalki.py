@@ -61,7 +61,12 @@ def kawalki(kat):
         ciecia, t0 = przekroje_czasy(kat)
     except (OSError, KeyError):
         ciecia, t0 = np.array([]), 0
-    nr = podziel(kt, ciecia)
+    if 'fr' in z.files and len(z['fr']) == len(kt):
+        # ciecie tylko tam, gdzie sledzenie sie urwalo i fragment nie zostal doklejony pewnie (nowy fragment
+        # w slam.mapa); przekroje i przechyly, przez ktore sledzenie przeszlo, zostaja w jednym kawalku
+        fr = z['fr']; nr = np.concatenate([[0], np.cumsum(np.diff(fr) != 0)])
+    else:
+        nr = podziel(kt, ciecia)
     wyn = []
     for c in range(nr.max() + 1):
         idx = np.where(nr == c)[0]
@@ -84,8 +89,18 @@ def kawalki(kat):
             sciany = [pl + o for pl in lica(P - o, N)[0]]
         except Exception:
             sciany = []
-        wyn.append({'nr': len(wyn) + 1, 'kf': idx, 'P': P, 'sciany': sciany, 'trasa': X[idx, :2],
+        wyn.append({'nr': len(wyn) + 1, 'N': N, 'kf': idx, 'P': P, 'sciany': sciany, 'trasa': X[idx, :2],
                     'od_s': float(kt[idx[0]]), 'do_s': float(kt[idx[-1]])})
+    # obrot calosci do kierunku scian (jak rzut w przegladarce), zeby kawalki lezaly prosto
+    if wyn:
+        from eksport_dxf import kierunek
+        try:
+            th = kierunek(np.vstack([k['P'] for k in wyn]), np.vstack([k['N'] for k in wyn]))
+            c, s_ = np.cos(-th), np.sin(-th); R = np.array([[c, s_], [-s_, c]])
+            for k in wyn:
+                k['P'] = k['P'] @ R; k['trasa'] = k['trasa'] @ R; k['sciany'] = [pl @ R for pl in k['sciany']]
+        except Exception:
+            pass
     return wyn, t0
 
 
@@ -127,7 +142,7 @@ def zapisz(kat, K, t0):
                      height=0.3, dxfattribs={'layer': 'OPIS'}).set_placement((float(m0[0]), float(P[:, 1].max()) + 1.0))
     doc.saveas(os.path.join(wy, 'kawalki.dxf'))
     ax.set_aspect('equal'); ax.grid(alpha=.3)
-    ax.set_title(f'{os.path.basename(kat)}: {len(K)} kawałków (cięcie na przekrojach i przerwach)')
+    ax.set_title(f'{os.path.basename(kat)}: {len(K)} kawałków (cięcie tam, gdzie mapa się urwała)')
     fig.tight_layout(); fig.savefig(os.path.join(wy, 'kawalki.png'), dpi=90); plt.close(fig)
     json.dump(opis, open(os.path.join(wy, 'kawalki.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     return opis
