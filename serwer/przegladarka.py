@@ -183,6 +183,64 @@ def pracownik_por():
             W_POR.pop(n, None)
 
 
+KOLEJKA_CAD = queue.Queue()
+W_CAD = {}                     # sesja -> 'czeka' | 'liczy' (dopasowanie do rzutu CAD)
+
+
+def katalog_cad(b):
+    return os.path.join(ARGS.katalog, '_cad', re.sub(r'[^A-Za-z0-9_+\-]', '_', b or '') or '_')
+
+
+def ustawienia_cad(b):
+    p = os.path.join(katalog_cad(b), 'cad.json')
+    try:
+        return json.load(open(p, encoding='utf-8'))
+    except (OSError, ValueError):
+        return None
+
+
+def pracownik_cad():
+    while True:
+        n, klaster, zrodlo = KOLEJKA_CAD.get()
+        k = katalog(n)
+        if k:
+            wy = os.path.join(k, '_wynik'); os.makedirs(wy, exist_ok=True)
+            blad = os.path.join(wy, 'cad_blad.txt')
+            if os.path.exists(blad): os.remove(blad)
+            cmd = [sys.executable, os.path.join(REPO, 'mapa', 'dopasuj_cad.py'), k, katalog_cad(info(k).get('budynek', '')), '--zrodlo', zrodlo]
+            if klaster is not None: cmd += ['--klaster', str(klaster)]
+            with LICZ:
+                with BLOK:
+                    W_CAD[n] = 'liczy'
+                r = subprocess.run(cmd, capture_output=True, text=True)
+            with open(os.path.join(wy, 'cad_log.txt'), 'w') as f:
+                f.write(r.stdout + r.stderr)
+            if r.returncode != 0:
+                with open(blad, 'w') as f:
+                    f.write((r.stdout + r.stderr)[-3000:])
+        with BLOK:
+            W_CAD.pop(n, None)
+
+
+def stan_cad(n, k):
+    b = info(k).get('budynek', '')
+    wy = os.path.join(k, '_wynik')
+    with BLOK:
+        st = W_CAD.get(n)
+    wyn = None
+    if os.path.exists(os.path.join(wy, 'cad.json')):
+        try:
+            wyn = json.load(open(os.path.join(wy, 'cad.json'), encoding='utf-8'))
+        except ValueError:
+            pass
+    if not st:
+        st = 'błąd' if os.path.exists(os.path.join(wy, 'cad_blad.txt')) else ('gotowe' if wyn else 'brak')
+    zrodla = ['nasz'] + [m for m in METODY_POR if os.path.exists(os.path.join(k, '_porownanie', f'k0_{m}.pgm'))]
+    return {'stan': st, 'wynik': wyn, 'budynek': b, 'rzut': ustawienia_cad(b), 'zrodla': zrodla,
+            'png': os.path.exists(os.path.join(wy, 'cad_porownanie.png')), 'dxf': os.path.exists(os.path.join(wy, 'rzut_cad.dxf')),
+            'blad': os.path.exists(os.path.join(wy, 'cad_blad.txt'))}
+
+
 def stan_por(n, k):
     wy = os.path.join(k, '_porownanie')
     with BLOK:
@@ -318,7 +376,7 @@ class H(BaseHTTPRequestHandler):
             pj = os.path.join(k, '_wynik', 'przekroje.json')
             prz = json.load(open(pj, encoding='utf-8')) if os.path.exists(pj) else []
             return self._json({'info': info(k), 'stan': stan_wyniku(q['n'], k), 'pliki': pliki, 'wyniki': wyn, 'przekroje': prz,
-                               'porownanie': stan_por(q['n'], k),
+                               'porownanie': stan_por(q['n'], k), 'cad': stan_cad(q['n'], k),
                                'znaczniki': znaczniki(k), 'oprawy': SW.wiersze_pom(k), 'grzejniki': SW.wiersze_grz(k),
                                'okna': SW.wiersze_okn(k)})
         if u.path == '/api/mapa':
@@ -343,7 +401,7 @@ class H(BaseHTTPRequestHandler):
                    'csv': 'text/csv; charset=utf-8', 'log': 'text/plain; charset=utf-8'}.get(f.rsplit('.', 1)[1], 'application/octet-stream')
             jedn = q.get('jedn', 'm')
             nazwa = os.path.basename(f)
-            if f.endswith('.dxf') and jedn in ('cm', 'mm'):
+            if f.endswith('.dxf') and jedn in ('cm', 'mm') and not nazwa.startswith('rzut_cad'):
                 # rysunek zapisany w metrach -> przeliczenie na cm/mm (skala 1:1 w CAD), warstwy bez zmian
                 sys.path.insert(0, os.path.join(REPO, 'mapa'))
                 from dxf_wspolne import w_jednostkach
@@ -399,6 +457,45 @@ class H(BaseHTTPRequestHandler):
                     pom += 1; continue
                 shutil.move(os.path.join(kosz, n), cel); ile += 1
             return self._json({'ok': True, 'ile': ile, 'pominieto': pom})
+        if u.path == '/api/cad_wgraj':
+            b = q.get('b', '')
+            if not b:
+                return self._json({'blad': 'brak nazwy budynku'}, 400)
+            dl = int(self.headers.get('Content-Length') or 0)
+            if dl <= 0 or dl > 200 * 1024 * 1024:
+                return self._json({'blad': 'plik pusty albo za duzy (max 200 MB)'}, 400)
+            dane = self.rfile.read(dl)
+            kc = katalog_cad(b); os.makedirs(kc, exist_ok=True)
+            tmp = os.path.join(kc, 'nowy.dxf')
+            with open(tmp, 'wb') as f:
+                f.write(dane)
+            try:
+                sys.path.insert(0, os.path.join(REPO, 'mapa'))
+                from dopasuj_cad import warstwy_dxf, domyslna_warstwa
+                lista, jedn_plik = warstwy_dxf(tmp)
+            except Exception as e:
+                os.remove(tmp)
+                return self._json({'blad': f'nie umiem odczytac DXF: {e}'}, 400)
+            if not lista:
+                os.remove(tmp)
+                return self._json({'blad': 'w pliku nie ma linii ani polilinii'}, 400)
+            os.replace(tmp, os.path.join(kc, 'rzut.dxf'))
+            ust = {'nazwa_pliku': q.get('nazwa', 'rzut.dxf')[:120], 'warstwy': lista[:200], 'warstwa': domyslna_warstwa(lista),
+                   'jedn': 'auto', 'jedn_plik': jedn_plik, 'wgrano': time.strftime('%Y-%m-%d %H:%M')}
+            with open(os.path.join(kc, 'cad.json'), 'w', encoding='utf-8') as f:
+                json.dump(ust, f, ensure_ascii=False)
+            return self._json({'ok': True, 'rzut': ust})
+        if u.path == '/api/cad_ustaw':
+            b = q.get('b', ''); ust = ustawienia_cad(b)
+            if not ust:
+                return self._json({'blad': 'najpierw wgraj rzut DXF'}, 404)
+            if q.get('warstwa') in [w for w, _ in ust['warstwy']]:
+                ust['warstwa'] = q['warstwa']
+            if q.get('jedn') in ('auto', 'm', 'cm', 'mm'):
+                ust['jedn'] = q['jedn']
+            with open(os.path.join(katalog_cad(b), 'cad.json'), 'w', encoding='utf-8') as f:
+                json.dump(ust, f, ensure_ascii=False)
+            return self._json({'ok': True, 'rzut': ust})
         if u.path == '/api/oproznij_kosz':
             shutil.rmtree(os.path.join(ARGS.katalog, '_kosz'), ignore_errors=True)
             return self._json({'ok': True})
@@ -422,6 +519,22 @@ class H(BaseHTTPRequestHandler):
                     return self._json({'blad': 'porownanie tej sesji juz jest w kolejce'}, 409)
                 W_POR[q['n']] = 'czeka'
             KOLEJKA_POR.put((q['n'], metody))
+            return self._json({'ok': True})
+        if u.path == '/api/dopasuj':
+            if not ustawienia_cad(info(k).get('budynek', '')):
+                return self._json({'blad': 'najpierw wgraj rzut DXF tego budynku'}, 409)
+            zr = q.get('zrodlo', 'nasz')
+            if zr != 'nasz' and zr not in METODY_POR:
+                return self._json({'blad': 'nieznane zrodlo'}, 400)
+            if zr == 'nasz' and not os.path.exists(os.path.join(k, '_wynik', 'mapa.json')):
+                return self._json({'blad': 'mapa tej sesji nie jest jeszcze policzona'}, 409)
+            kl = q.get('klaster')
+            kl = int(kl) if kl not in (None, '') and kl.isdigit() else None
+            with BLOK:
+                if q['n'] in W_CAD:
+                    return self._json({'blad': 'dopasowanie juz jest w kolejce'}, 409)
+                W_CAD[q['n']] = 'czeka'
+            KOLEJKA_CAD.put((q['n'], kl, zr))
             return self._json({'ok': True})
         if u.path == '/api/usun_mape':
             with BLOK:
@@ -479,6 +592,7 @@ def main():
     threading.Thread(target=pracownik, daemon=True).start()
     threading.Thread(target=automat, daemon=True).start()
     threading.Thread(target=pracownik_por, daemon=True).start()
+    threading.Thread(target=pracownik_cad, daemon=True).start()
     print(f'Przegladarka: http://<adres-serwera>:{ARGS.port}  katalog: {ARGS.katalog}')
     ThreadingHTTPServer(('0.0.0.0', ARGS.port), H).serve_forever()
 

@@ -96,7 +96,7 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
  <div class="nag" id="nag"><div class="tyt"><b>Wybierz nagranie z listy</b><div>budynek → kondygnacja → sesja</div></div></div>
  <div class="zakl" id="zakl">
   <button data-w="w2d" class="akt">Rzut</button><button data-w="w3d">Model 3D</button><button data-w="wfoto">Zdjęcia</button>
-  <button data-w="wprz">Przekroje</button><button data-w="wzn">Znaczniki i notatki</button><button data-w="winw">Inwentaryzacja</button><button data-w="wpl">Pliki</button><button data-w="wpor">Porównanie SLAM</button>
+  <button data-w="wprz">Przekroje</button><button data-w="wzn">Znaczniki i notatki</button><button data-w="winw">Inwentaryzacja</button><button data-w="wpl">Pliki</button><button data-w="wpor">Porównanie SLAM</button><button data-w="wcad">Rzut CAD</button>
  </div>
  <div class="tresc">
   <section class="widok akt" id="w2d">
@@ -111,6 +111,7 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
   <section class="widok" id="winw"><div class="tabela" id="tinw"></div></section>
   <section class="widok" id="wpl"><div class="tabela" id="tpl"></div></section>
   <section class="widok" id="wpor"><div class="tabela" id="tpor"></div></section>
+  <section class="widok" id="wcad"><div class="tabela" id="tcad"></div></section>
  </div>
 </main>
 <div id="modal" onclick="if(event.target===this)zamknij()"><div class="okno" id="mokno"></div></div>
@@ -145,7 +146,7 @@ function przywrocKosz(){post('api/przywroc_kosz',j=>{alert('Przywrócono '+j.ile
 function oproznijKosz(){if(confirm('Opróżnić kosz? Tego nie da się cofnąć.'))post('api/oproznij_kosz',()=>alert('Kosz opróżniony'))}
 function czysc(){$('nag').innerHTML='<div class="tyt"><b>Wybierz nagranie z listy</b></div>';$('panel').innerHTML='';rys()}
 // ---------------------------------------------------------------- sesja
-function otworz(n){fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{S=d;S.n=n;M=null;wyb=null;rysujListe();naglowek();galeria();przekroje();znaczniki();inwent();pliki();porownanie();
+function otworz(n){fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{S=d;S.n=n;M=null;wyb=null;rysujListe();naglowek();galeria();przekroje();znaczniki();inwent();pliki();porownanie();cad();
  fetch('api/mapa?n='+n).then(r=>r.ok?r.json():null).then(j=>{if(j){M=j.mapa;NZ=j.nazwy||{};KO=j.kontrola||[];seg=0;}else{M=null;KO=[]}panel();warstwy();dopasuj();rys();if($('w3d').classList.contains('akt'))tryb3d()})})}
 function naglowek(){const i=S.info,ma=S.wyniki.includes('_wynik/rzut.dxf');
  $('nag').innerHTML='<div class="tyt"><b>'+esc(i.budynek||'?')+' › '+esc(i.kondygnacja||'?')+'</b><div>'+esc((i.start||'').replace('T',' ').slice(0,16))+' · '+esc(S.n)+' · <span class="pill '+esc(S.stan)+'">'+esc(S.stan)+'</span></div></div>'+
@@ -292,6 +293,37 @@ function porownanie(){const P=S.porownanie||{stan:'brak',pliki:[],wynik:{}};clea
  if(P.pliki.some(f=>f.endsWith('przebieg.log')))h+='<p class="mala"><a href="'+plik('_porownanie/przebieg.log')+'" target="_blank">dziennik liczenia</a>'+(P.pliki.some(f=>f.endsWith('blad.txt'))?' · <a href="'+plik('_porownanie/blad.txt')+'" target="_blank">błąd</a>':'')+'</p>';
  $('tpor').innerHTML=h;
  if(zaj){const n=S.n;porT=setTimeout(()=>{if(S&&S.n==n)fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(S&&S.n==n){S.porownanie=d.porownanie;porownanie()}})},15000)}}
+// ---------------------------------------------------------------- dopasowanie do rzutu CAD (mapa/dopasuj_cad.py)
+const ZR_NAZ={nasz:'nasza mapa',carto_imu:'Cartographer + IMU',carto:'Cartographer (sam LiDAR)',slam_toolbox:'slam_toolbox'};
+let cadT=null;
+function cad(){const C=S.cad||{stan:'brak',zrodla:['nasz']},R=C.rzut,W_=C.wynik,b=C.budynek||'';clearTimeout(cadT);
+ const zaj=C.stan=='czeka'||C.stan=='liczy';
+ let h='<h3>Rzut CAD budynku „'+esc(b)+'”</h3>';
+ if(R){h+='<p class="mala">Plik: <b>'+esc(R.nazwa_pliku)+'</b> (wgrano '+esc(R.wgrano)+'). Jeden rzut na budynek – może zawierać kilka kondygnacji, program sam je rozdzieli.</p>'+
+  '<p>Warstwa ścian: <select id="cadW" class="btn">'+R.warstwy.map(([w,c])=>'<option'+(w==R.warstwa?' selected':'')+' value="'+esc(w)+'">'+esc(w)+' ('+c+')</option>').join('')+'</select> '+
+  'Jednostka rysunku: <select id="cadJ" class="btn">'+['auto','m','cm','mm'].map(j=>'<option'+(j==R.jedn?' selected':'')+'>'+j+'</option>').join('')+'</select>'+
+  (R.jedn_plik?' <span class="mala">(w pliku: '+esc(R.jedn_plik)+')</span>':'')+' <button class="btn" onclick="cadUstaw()">Zapisz</button></p>'}
+ h+='<p><input type="file" id="cadPlik" accept=".dxf"> <button class="btn'+(R?'':' gl')+'" onclick="cadWgraj()">'+(R?'Wgraj inny rzut':'⬆ Wgraj rzut DXF')+'</button> <span class="mala" id="cadInfo"></span></p>';
+ if(R){h+='<h3>Dopasuj tę sesję do rzutu</h3><p>'+C.zrodla.map(z=>'<button class="btn'+(z=='nasz'?' gl':'')+'" '+(zaj?'disabled ':'')+'onclick="cadLicz(\''+z+'\')">▶ '+esc(ZR_NAZ[z]||z)+'</button> ').join('')+'</p>'+
+  '<p>Stan: <span class="pill '+esc(C.stan)+'">'+esc(C.stan)+'</span>'+(zaj?' <span class="mala">(odświeża się samo)</span>':'')+
+  (C.blad?' · <a href="'+plik('_wynik/cad_blad.txt')+'" target="_blank">błąd</a>':'')+'</p>'}
+ if(W_){const st=W_.statystyki;
+  h+=(W_.niepewne?'<p style="color:var(--czerw)"><b>Niepewne:</b> skan pasuje podobnie do kilku miejsc rysunku – sprawdź obraz i w razie potrzeby wybierz inny rzut poniżej.</p>':'')+
+  '<table><tr><th>źródło</th><td>'+esc(ZR_NAZ[W_.zrodlo]||W_.zrodlo)+'</td></tr><tr><th>rzut (część rysunku)</th><td>'+W_.klaster+'</td></tr>'+
+  '<tr><th>zgodnych punktów (&lt; 20 cm od ściany)</th><td>'+st.zgodnych_20cm_proc+' %</td></tr><tr><th>mediana / p90 / RMS</th><td>'+st.mediana_mm+' / '+st.p90_mm+' / '+st.rms_mm+' mm</td></tr>'+
+  '<tr><th>pokrycie ścian CAD skanem</th><td>'+st.pokrycie_cad_proc+' %</td></tr><tr><th>punkty dalej niż 10 cm (możliwe przeróbki, meble)</th><td>'+W_.odchylki_pkt_10cm_proc+' %</td></tr>'+
+  '<tr><th>obrót skanu</th><td>'+W_.obrot_st+'°</td></tr></table>';
+  if(W_.klastry&&W_.klastry.length>1)h+='<p>Inny rzut: '+W_.klastry.map(x=>'<button class="btn" '+(zaj?'disabled ':'')+'onclick="cadLicz(\''+esc(W_.zrodlo)+'\','+x.nr+')">rzut '+x.nr+' ('+x.zgodnych_proc+' %)</button>').join(' ')+'</p>';
+  if(C.dxf)h+='<p><a class="btn gl" href="plik?n='+S.n+'&f=_wynik/rzut_cad.dxf">⬇ Skan w układzie rysunku (DXF)</a> <span class="mala">jednostki jak w rzucie CAD – wstaw w punkt 0,0 (warstwy SKAN_SCIANY, SKAN_PUNKTY, SKAN_ODCHYLKI)</span></p>';
+  if(C.png)h+='<a href="'+plik('_wynik/cad_porownanie.png')+'" target="_blank"><img src="'+plik('_wynik/cad_porownanie.png')+'&v='+Date.now()+'" style="max-width:100%;border:1px solid var(--linia);border-radius:8px;background:#fff"></a>'}
+ $('tcad').innerHTML=h;
+ if(zaj){const n=S.n;cadT=setTimeout(()=>{if(S&&S.n==n)fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(S&&S.n==n){S.cad=d.cad;cad()}})},5000)}}
+function cadOdswiez(){return fetch('api/sesja?n='+S.n).then(r=>r.json()).then(d=>{S.cad=d.cad;cad()})}
+function cadWgraj(){const f=$('cadPlik').files[0];if(!f){alert('Wybierz plik DXF');return}
+ $('cadInfo').textContent='wysyłam '+(f.size/1e6).toFixed(1)+' MB…';
+ post('api/cad_wgraj?b='+encodeURIComponent(S.cad.budynek)+'&nazwa='+encodeURIComponent(f.name),()=>cadOdswiez(),f).finally(()=>{const e=$('cadInfo');if(e)e.textContent=''})}
+function cadUstaw(){post('api/cad_ustaw?b='+encodeURIComponent(S.cad.budynek)+'&warstwa='+encodeURIComponent($('cadW').value)+'&jedn='+$('cadJ').value,()=>cadOdswiez())}
+function cadLicz(z,kl){post('api/dopasuj?n='+S.n+'&zrodlo='+z+(kl!==undefined?'&klaster='+kl:''),()=>cadOdswiez())}
 function porLicz(m){post('api/porownaj?n='+S.n+'&metody='+m,()=>fetch('api/sesja?n='+S.n).then(r=>r.json()).then(d=>{S.porownanie=d.porownanie;porownanie()}))}
 // ---------------------------------------------------------------- model 3D
 const R3={};
