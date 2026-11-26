@@ -282,7 +282,7 @@ def pomiar_pomieszczenia(nazwa):
         with LOCK:
             STAN.update(pmr_faza=2, pmr_wynik=tekst, pmr_t=time.time())
         if not w.get("blad"):
-            znacznik(f"POMIAR a={w['a'] or ''} b={w['b'] or ''} pole={w['pole'] or ''} obrys={w['pole_obrys'] or ''} "
+            znacznik(f"POMIAR a={w['a'] or ''} b={w['b'] or ''} przod={w.get('przod') or ''} bok={w.get('bok') or ''} pole={w['pole'] or ''} obrys={w['pole_obrys'] or ''} "
                      f"kat={w['kat']} pom={nazwa.replace(' ', '_')}", licz=True)
 
     threading.Thread(target=licz, daemon=True).start()
@@ -1154,7 +1154,7 @@ function przekroj(s){const e=$('prk'),f=s.nagrywa?s.prz_faza:0;
  const g=s.pmr_faza==2&&s.pmr_od>15?0:s.pmr_faza;
  if(g!=pmf){if(g==1)dzw(660,90);else if(g==2){dzw(880,150);dzw(1320,250,.18);if(navigator.vibrate)navigator.vibrate(150)}pmf=g}
  if(g==1&&!f){e.style.display='block';e.style.background='#2b62c9e6';e.innerHTML='POMIAR – stój nieruchomo';return}
- if(g==2&&!f){e.style.display='block';e.style.background='#1f9d68e6';e.innerHTML=esc(s.pmr_wynik)+'<small>'+(s.nagrywa?'zapisane w nagraniu':'bez nagrywania – nie zapisano')+' · dotknij, by ukryć</small>';e.onclick=()=>{e.style.display='none'};return}
+ if(g==2&&!f){e.style.display='block';e.style.background='#1f9d68e6';e.innerHTML=esc(s.pmr_wynik)+'<small>↕ przed siebie · ↔ w bok · '+(s.nagrywa?'zapisane w nagraniu':'bez nagrywania – nie zapisano')+' · dotknij, by ukryć</small>';e.onclick=()=>{e.style.display='none'};return}
  if(f==1){e.style.display='block';e.style.background='#b70d';e.innerHTML='PRZEKRÓJ – trzymaj nieruchomo '+Math.ceil(s.prz_zostalo)+' s'}
  else if(f==2){e.style.display='block';e.style.background='#1f9d68e6';e.innerHTML='PRZEKRÓJ nr '+s.prz_nr+' ZAPISANY<small>'+(s.prz_wynik||'liczę…')+' · postaw do pionu</small>'}
  else e.style.display='none';

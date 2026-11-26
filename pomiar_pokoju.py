@@ -112,7 +112,12 @@ def licz(obroty, pitch=0.0, roll=0.0):
             uwagi.append("obrys niepełny – część kątów zasłonięta")
         elif pole_obr < 0.8 * a * b:
             uwagi.append("nieprostokątne lub coś zasłania – zmierz też z drugiego miejsca")
-    wyn = {"a": None, "b": None, "pole": None, "pole_obrys": round(pole_obr, 2) if pole_obr else None,
+    # kierunek wzgledem operatora: przod = kat 0 st. LiDAR-u (os y). Os v pokoju ma w ukladzie (x, y) kierunek
+    # (-s, c), wiec gdy |c| >= |s|, wymiar v (sciany przod/tyl) biegnie wzdluz patrzenia.
+    v_przod = abs(c) >= abs(s)
+    przod, bok = (b, a) if v_przod else (a, b)
+    wyn = {"przod": round(przod, 3) if przod else None, "bok": round(bok, 3) if bok else None,
+           "a": None, "b": None, "pole": None, "pole_obrys": round(pole_obr, 2) if pole_obr else None,
            "kat": round(th, 1), "pokrycie": round(pokrycie, 2), "uwagi": uwagi}
     if a and b:
         a, b = max(a, b), min(a, b)
@@ -128,12 +133,18 @@ def opis(w):
         return w["blad"]
     f = lambda x: f"{x:.2f}".replace(".", ",")
     if w["a"] and w["b"]:
-        t = f"{f(w['a'])} × {f(w['b'])} m"
+        # strzalki wzgledem kierunku patrzenia operatora: ↕ przed siebie, ↔ w bok
+        t = f"↕ {f(w['przod'])} m  ↔ {f(w['bok'])} m"
         if w["pole_obrys"] and abs(w["pole_obrys"] - w["pole"]) > 0.03 * w["pole"]:
             # uskoki, wneki, filary: powierzchnia z obrysu, prostokat tylko dla porownania
             t += f" · {f(w['pole_obrys'])} m² (prostokąt {f(w['pole'])} m²)"
         else:
             t += f" · {f(w['pole'])} m²"
     else:
-        t = "widać tylko " + (f(w["a"] or w["b"]) + " m" if (w["a"] or w["b"]) else "fragmenty ścian")
+        if w.get("przod"):
+            t = f"widać tylko ↕ {f(w['przod'])} m"
+        elif w.get("bok"):
+            t = f"widać tylko ↔ {f(w['bok'])} m"
+        else:
+            t = "widać tylko fragmenty ścian"
     return t + ("" if not w["uwagi"] else " – " + w["uwagi"][0])
