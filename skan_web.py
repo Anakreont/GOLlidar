@@ -283,7 +283,7 @@ def pomiar_pomieszczenia(nazwa):
             STAN.update(pmr_faza=2, pmr_wynik=tekst, pmr_t=time.time())
         if not w.get("blad"):
             znacznik(f"POMIAR a={w['a'] or ''} b={w['b'] or ''} przod={w.get('przod') or ''} bok={w.get('bok') or ''} pole={w['pole'] or ''} obrys={w['pole_obrys'] or ''} "
-                     f"kat={w['kat']} pom={nazwa.replace(' ', '_')}", licz=True)
+                     f"kat={w['kat']} u1={w['u1']} u2={w['u2']} v1={w['v1']} v2={w['v2']} pom={nazwa.replace(' ', '_')}", licz=True)
 
     threading.Thread(target=licz, daemon=True).start()
     return None

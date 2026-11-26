@@ -117,6 +117,9 @@ def licz(obroty, pitch=0.0, roll=0.0):
     v_przod = abs(c) >= abs(s)
     przod, bok = (b, a) if v_przod else (a, b)
     wyn = {"przod": round(przod, 3) if przod else None, "bok": round(bok, 3) if bok else None,
+           # polozenie scian w ukladzie pokoju (os u = kierunek kat od osi x LiDAR-u) - do linii wymiarowych
+           "u1": round(uL, 3) if uL is not None else None, "u2": round(uP, 3) if uP is not None else None,
+           "v1": round(vD, 3) if vD is not None else None, "v2": round(vG, 3) if vG is not None else None,
            "a": None, "b": None, "pole": None, "pole_obrys": round(pole_obr, 2) if pole_obr else None,
            "kat": round(th, 1), "pokrycie": round(pokrycie, 2), "uwagi": uwagi}
     if a and b:

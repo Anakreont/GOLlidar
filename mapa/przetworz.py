@@ -31,7 +31,7 @@ def _znaczniki(kat, t0):
 
 
 def _rodzaj(opis):
-    for pref, r in (('SALA ', 'sala'), ('FOTO ', 'foto'), ('PRZEKROJ_WYNIK', 'przekroj'), ('PUNKT ', 'punkt'), ('POM ', 'oprawy'),
+    for pref, r in (('POMIAR ', 'pomiar'), ('SALA ', 'sala'), ('FOTO ', 'foto'), ('PRZEKROJ_WYNIK', 'przekroj'), ('PUNKT ', 'punkt'), ('POM ', 'oprawy'),
                     ('GRZ ', 'grzejnik'), ('OKN', 'okno'), ('NOTATKA', 'notatka'), ('IMU_PION0', 'system'),
                     ('PAUZA', 'system'), ('AUTO_', 'system'), ('PRZEKROJ_', 'system')):
         if opis.startswith(pref):
@@ -135,6 +135,25 @@ def przetworz(kat):
                 r['opis'] = opis[5:]
             if r['rodzaj'] == 'foto':
                 r['plik'] = opis.split()[1]
+            elif r['rodzaj'] == 'pomiar':
+                # linie wymiarowe: od sciany do sciany przez miejsce operatora, wzdluz osi pokoju
+                d_ = dict(x.split('=', 1) for x in opis.split()[1:] if '=' in x)
+                try:
+                    th = np.radians(float(d_['kat'])); c_, s_ = np.cos(th), np.sin(th)
+                    cT, sT = np.cos(T_[2]), np.sin(T_[2])
+                    def swiat(px, py):            # pomiar: x w prawo, y przod -> uklad lokalny skanu (przod, lewo)
+                        lx, ly = py, -px
+                        w_ = np.array([cT * lx - sT * ly + T_[0], sT * lx + cT * ly + T_[1]]) @ R - [x0, y0]
+                        return [round(float(w_[0]), 3), round(float(w_[1]), 3)]
+                    wym = []
+                    for o1, o2, kier_ in (('u1', 'u2', (c_, s_)), ('v1', 'v2', (-s_, c_))):
+                        if d_.get(o1) not in (None, '', 'None') and d_.get(o2) not in (None, '', 'None'):
+                            p1, p2 = float(d_[o1]), float(d_[o2])
+                            wym.append(swiat(p1 * kier_[0], p1 * kier_[1]) + swiat(p2 * kier_[0], p2 * kier_[1]) + [round(p2 - p1, 3)])
+                    r['wym'] = wym
+                    r['pom'] = d_.get('pom', '').replace('_', ' ')
+                except (KeyError, ValueError):
+                    pass
             elif r['rodzaj'] == 'punkt':
                 d_ = dict(x.split('=') for x in opis.split()[1:3] if '=' in x)
                 try:
@@ -272,6 +291,8 @@ def obrocona(k, st):
             r2['kier'] = r['kier'] + st
         if r.get('linia'):
             r2['linia'] = f(r['linia']).tolist()
+        if r.get('wym'):
+            r2['wym'] = [f([w[:2], w[2:4]]).ravel().tolist() + [w[4]] for w in r['wym']]
         zn.append(r2)
     wsz = np.vstack([ch] + sc) if sc else ch
     m0 = wsz.min(0)
@@ -280,7 +301,9 @@ def obrocona(k, st):
     k2['sciany'] = [(pl - m0).tolist() for pl in sc]
     k2['trasa'] = (tr - m0).tolist()
     k2['znaczniki'] = [dict(r, x=float(r['x'] - m0[0]), y=float(r['y'] - m0[1]),
-                            **({'linia': (np.array(r['linia']) - m0).tolist()} if r.get('linia') else {})) for r in zn]
+                            **({'linia': (np.array(r['linia']) - m0).tolist()} if r.get('linia') else {}),
+                            **({'wym': [[w[0] - m0[0], w[1] - m0[1], w[2] - m0[0], w[3] - m0[1], w[4]] for w in r['wym']]}
+                               if r.get('wym') else {})) for r in zn]
     mx = wsz.max(0) - m0; k2['szer'], k2['wys'] = float(mx[0]), float(mx[1])
     return k2
 
@@ -294,7 +317,7 @@ def dxf_i_podglad(kat):
         M = json.load(f)
     nz = nazwy(kat)
     doc = ezdxf.new('R2010', setup=True); doc.units = ezdxf.units.M
-    for n, kol in (('SCIANY', 7), ('PUNKTY', 8), ('TRASA', 1), ('OPIS', 3), ('ZDJECIA', 5), ('PRZEKROJE', 6), ('ZNACZNIKI', 2), ('POMIESZCZENIA', 4),
+    for n, kol in (('SCIANY', 7), ('PUNKTY', 8), ('TRASA', 1), ('OPIS', 3), ('ZDJECIA', 5), ('PRZEKROJE', 6), ('ZNACZNIKI', 2), ('POMIESZCZENIA', 4), ('WYMIARY', 1),
                    ('SKALA', 7)):
         doc.layers.add(n, color=kol)
     from dxf_wspolne import podzialka
@@ -322,7 +345,19 @@ def dxf_i_podglad(kat):
                 msp.add_text(r['opis'][:40], height=0.22, dxfattribs={'layer': 'POMIESZCZENIA'}).set_placement((r['x'] + dx, r['y']))
                 ax.text(r['x'] + dx, r['y'], r['opis'][:40], fontsize=8, color='navy', ha='center')
                 continue
-            war = {'foto': 'ZDJECIA', 'przekroj': 'PRZEKROJE'}.get(r['rodzaj'], 'ZNACZNIKI')
+            if r['rodzaj'] == 'pomiar' and r.get('wym'):   # linie wymiarowe pomiaru z postoju
+                for w in r['wym']:
+                    (xa, ya), (xb, yb) = (w[0] + dx, w[1]), (w[2] + dx, w[3])
+                    msp.add_line((xa, ya), (xb, yb), dxfattribs={'layer': 'WYMIARY'})
+                    ux, uy = (xb - xa) / max(w[4], 1e-6), (yb - ya) / max(w[4], 1e-6)
+                    for xe, ye in ((xa, ya), (xb, yb)):                       # kreski na koncach
+                        msp.add_line((xe - uy * 0.12, ye + ux * 0.12), (xe + uy * 0.12, ye - ux * 0.12), dxfattribs={'layer': 'WYMIARY'})
+                    kt = np.degrees(np.arctan2(uy, ux)); kt = kt - 180 if kt > 90 else kt + 180 if kt < -90 else kt
+                    msp.add_text(f"{w[4]:.2f}".replace('.', ','), height=0.18, rotation=kt, dxfattribs={'layer': 'WYMIARY'}).set_placement(
+                        ((xa + xb) / 2 - uy * 0.08, (ya + yb) / 2 + ux * 0.08))
+                    ax.plot([xa, xb], [ya, yb], color='teal', lw=0.8)
+                    ax.text((xa + xb) / 2, (ya + yb) / 2, f"{w[4]:.2f}", fontsize=7, color='teal', ha='center')
+            war = {'foto': 'ZDJECIA', 'przekroj': 'PRZEKROJE', 'pomiar': 'WYMIARY'}.get(r['rodzaj'], 'ZNACZNIKI')
             msp.add_circle((r['x'] + dx, r['y']), 0.1, dxfattribs={'layer': war})
             if r['rodzaj'] == 'foto' and r.get('kier') is not None:          # kierunek zdjecia (przod operatora)
                 a_ = np.radians(r['kier'])
