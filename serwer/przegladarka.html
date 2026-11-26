@@ -96,7 +96,7 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
  <div class="nag" id="nag"><div class="tyt"><b>Wybierz nagranie z listy</b><div>budynek → kondygnacja → sesja</div></div></div>
  <div class="zakl" id="zakl">
   <button data-w="w2d" class="akt">Rzut</button><button data-w="w3d">Model 3D</button><button data-w="wfoto">Zdjęcia</button>
-  <button data-w="wprz">Przekroje</button><button data-w="wzn">Znaczniki i notatki</button><button data-w="winw">Inwentaryzacja</button><button data-w="wpl">Pliki</button>
+  <button data-w="wprz">Przekroje</button><button data-w="wzn">Znaczniki i notatki</button><button data-w="winw">Inwentaryzacja</button><button data-w="wpl">Pliki</button><button data-w="wpor">Porównanie SLAM</button>
  </div>
  <div class="tresc">
   <section class="widok akt" id="w2d">
@@ -110,6 +110,7 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
   <section class="widok" id="wzn"><div class="tabela" id="tzn"></div></section>
   <section class="widok" id="winw"><div class="tabela" id="tinw"></div></section>
   <section class="widok" id="wpl"><div class="tabela" id="tpl"></div></section>
+  <section class="widok" id="wpor"><div class="tabela" id="tpor"></div></section>
  </div>
 </main>
 <div id="modal" onclick="if(event.target===this)zamknij()"><div class="okno" id="mokno"></div></div>
@@ -142,7 +143,7 @@ function przywrocKosz(){post('api/przywroc_kosz',j=>{alert('Przywrócono '+j.ile
 function oproznijKosz(){if(confirm('Opróżnić kosz? Tego nie da się cofnąć.'))post('api/oproznij_kosz',()=>alert('Kosz opróżniony'))}
 function czysc(){$('nag').innerHTML='<div class="tyt"><b>Wybierz nagranie z listy</b></div>';$('panel').innerHTML='';rys()}
 // ---------------------------------------------------------------- sesja
-function otworz(n){fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{S=d;S.n=n;M=null;wyb=null;rysujListe();naglowek();galeria();przekroje();znaczniki();inwent();pliki();
+function otworz(n){fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{S=d;S.n=n;M=null;wyb=null;rysujListe();naglowek();galeria();przekroje();znaczniki();inwent();pliki();porownanie();
  fetch('api/mapa?n='+n).then(r=>r.ok?r.json():null).then(j=>{if(j){M=j.mapa;NZ=j.nazwy||{};KO=j.kontrola||[];seg=0;}else{M=null;KO=[]}panel();warstwy();dopasuj();rys();if($('w3d').classList.contains('akt'))tryb3d()})})}
 function naglowek(){const i=S.info,ma=S.wyniki.includes('_wynik/rzut.dxf');
  $('nag').innerHTML='<div class="tyt"><b>'+esc(i.budynek||'?')+' › '+esc(i.kondygnacja||'?')+'</b><div>'+esc((i.start||'').replace('T',' ').slice(0,16))+' · '+esc(S.n)+' · <span class="pill '+esc(S.stan)+'">'+esc(S.stan)+'</span></div></div>'+
@@ -269,6 +270,26 @@ function pliki(){const opis={'rzut.dxf':'Rzut kondygnacji (DXF, metry)','przekro
  $('tpl').innerHTML='<h3>Wyniki</h3><table>'+(S.wyniki.filter(f=>!f.includes('przekroj_')).map(f=>{const n=f.replace('_wynik/','');return'<tr><td><a href="'+plik(f)+'" target="_blank">'+esc(n)+'</a></td><td class="mala">'+(opis[n]||'')+'</td></tr>'}).join('')||'<tr><td class="mala">brak – mapa: '+esc(S.stan)+'</td></tr>')+'</table>'+
  '<h3>Dane z nagrania</h3><table>'+S.pliki.filter(f=>!f.startsWith('foto_')).map(f=>'<tr><td><a href="'+plik(f)+'">'+esc(f)+'</a></td></tr>').join('')+'</table>'+
  '<h3>Informacje</h3><table>'+Object.entries(S.info).map(([a,b])=>'<tr><td>'+esc(a)+'</td><td>'+esc(b)+'</td></tr>').join('')+'</table>'}
+// ---------------------------------------------------------------- porownanie z gotowymi SLAM (porownanie/uruchom.py)
+const POR_NAZ={carto_imu:'Cartographer + IMU',carto:'Cartographer (sam LiDAR)',slam_toolbox:'slam_toolbox (eksperymentalnie)'};
+let porT=null;
+function porownanie(){const P=S.porownanie||{stan:'brak',pliki:[],wynik:{}};clearTimeout(porT);
+ const zaj=P.stan=='czeka'||P.stan=='liczy';
+ let h='<h3>Porównanie z gotowymi programami SLAM</h3><p class="mala">To samo nagranie liczone Cartographerem (Google) i slam_toolbox. Liczy się w tle na Dellu, mniej więcej tyle, ile trwało nagranie (Cartographer + IMU najszybciej). Gdy liczy się mapa innej sesji, porównanie czeka w kolejce.</p>';
+ if(!P.dostepne)h+='<p class="mala" style="color:var(--czerw)">Brak programu na Dellu – uruchom: <code>bash ~/GOLlidar/porownanie/instaluj.sh</code></p>';
+ h+='<p>'+[['carto_imu','▶ Cartographer + IMU'],['carto','▶ Cartographer (sam LiDAR)'],['carto_imu,carto','▶ Oba Cartographery'],['slam_toolbox','▶ slam_toolbox']].map(([m,t])=>'<button class="btn'+(m=='carto_imu'?' gl':'')+'" '+(zaj||!P.dostepne?'disabled ':'')+'onclick="porLicz(\''+m+'\')">'+t+'</button> ').join('')+'</p>';
+ h+='<p>Stan: <span class="pill '+esc(P.stan)+'">'+esc(P.stan)+'</span>'+(zaj?' <span class="mala">(odświeża się samo)</span>':'')+'</p>';
+ const kond=(P.wynik&&P.wynik.kondygnacje)||[];
+ if(kond.length){h+='<table><tr><th>kondygnacja</th><th>czas nagrania</th><th>skanów</th><th>metoda</th><th>wynik</th></tr>';
+  kond.forEach(k=>Object.entries(k.metody||{}).forEach(([m,r])=>{h+='<tr><td>'+k.nr+'</td><td>'+Math.round(k.czas_s)+' s</td><td>'+k.skanow+'</td><td>'+esc(POR_NAZ[m]||m)+'</td><td class="mala">'+(r.blad?'<span style="color:var(--czerw)">błąd: '+esc(r.blad)+'</span>':'liczono '+Math.round(r.czas_s)+' s')+'</td></tr>'}));h+='</table>'}
+ const png=P.pliki.filter(f=>f.endsWith('.png')),dxf=P.pliki.filter(f=>f.endsWith('.dxf'));
+ const zest=png.filter(f=>f.includes('_zestawienie')),inne=png.filter(f=>!f.includes('_zestawienie'));
+ h+=zest.concat(inne).map(f=>{const n=f.replace('_porownanie/','');return'<h3>'+esc(n)+'</h3><a href="'+plik(f)+'" target="_blank"><img src="'+plik(f)+'&v='+Date.now()+'" style="max-width:100%;border:1px solid var(--linia);border-radius:8px;background:#fff"></a>'}).join('');
+ if(dxf.length)h+='<h3>DXF (punkty ścian)</h3><p>'+dxf.map(f=>'<a class="btn" href="'+plik(f)+'">⬇ '+esc(f.replace('_porownanie/',''))+'</a>').join(' ')+'</p>';
+ if(P.pliki.some(f=>f.endsWith('przebieg.log')))h+='<p class="mala"><a href="'+plik('_porownanie/przebieg.log')+'" target="_blank">dziennik liczenia</a>'+(P.pliki.some(f=>f.endsWith('blad.txt'))?' · <a href="'+plik('_porownanie/blad.txt')+'" target="_blank">błąd</a>':'')+'</p>';
+ $('tpor').innerHTML=h;
+ if(zaj){const n=S.n;porT=setTimeout(()=>{if(S&&S.n==n)fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(S&&S.n==n){S.porownanie=d.porownanie;porownanie()}})},15000)}}
+function porLicz(m){post('api/porownaj?n='+S.n+'&metody='+m,()=>fetch('api/sesja?n='+S.n).then(r=>r.json()).then(d=>{S.porownanie=d.porownanie;porownanie()}))}
 // ---------------------------------------------------------------- model 3D
 const R3={};
 async function tryb3d(){if(!M){$('info3d').textContent='Model 3D pojawi się po policzeniu mapy.';return}
