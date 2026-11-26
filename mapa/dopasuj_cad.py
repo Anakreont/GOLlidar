@@ -61,13 +61,17 @@ def odcinki(plik, warstwa):
     return np.array(S, float), jedn
 
 
-def zgadnij_jednostke(S):
-    """Bez $INSUNITS: najwieksza zwarta czesc rysunku (klaster w metrach) ma miec 5-300 m."""
-    for j in ('cm', 'mm', 'm'):
+def zgadnij_jednostke(S, Q=None, kolejnosc=('cm', 'm', 'mm')):
+    """Jednostka rysunku: najwiekszy rzut (klaster) ma miec 5-400 m i miescic skan (skan to czesc kondygnacji).
+    $INSUNITS bywa bledny (np. SP 162: naglowek mm, rysunek w cm), wiec tez jest tylko pierwsza propozycja."""
+    roz = float(np.ptp(Q, 0).max()) if Q is not None and len(Q) else 0.0
+    for j in kolejnosc:
         K = klastry(S * SKALA[j])
-        if K and 5 <= max(np.ptp(k.reshape(-1, 2), 0).max() for k in K) <= 300:
+        if not K: continue
+        m = max(np.ptp(k.reshape(-1, 2), 0).max() for k in K)
+        if 5 <= m <= 400 and m >= 0.7 * roz:
             return j
-    return 'cm'
+    return kolejnosc[0]
 
 
 def klastry(S, przerwa=4.0, min_dl=40.0):
@@ -131,14 +135,16 @@ def main():
     S0, jedn_plik = odcinki(os.path.join(a.cad, 'rzut.dxf'), ust['warstwa'])
     if not len(S0):
         raise SystemExit(f"brak linii na warstwie {ust['warstwa']}")
+    Q, sciany = skan_sesji(kat, a.zrodlo)
     jedn = ust.get('jedn') or 'auto'
     if jedn == 'auto':
-        jedn = jedn_plik or zgadnij_jednostke(S0)
+        kol = tuple(dict.fromkeys(([jedn_plik] if jedn_plik else []) + ['cm', 'm', 'mm']))
+        jedn = zgadnij_jednostke(S0, Q, kol)
     s = SKALA[jedn]; S = S0 * s
     S = S[np.linalg.norm(S[:, 1] - S[:, 0], axis=1) > 0.05]
     K = klastry(S)
-    print(f'CAD: {len(S)} odcinkow, jednostka {jedn}, rzutow (klastrow): {len(K)}', flush=True)
-    Q, sciany = skan_sesji(kat, a.zrodlo)
+    print(f'CAD: {len(S)} odcinkow, jednostka {jedn} (naglowek: {jedn_plik or "brak"}), rzutow (klastrow): {len(K)}, '
+          f'skan {np.ptp(Q, 0).round(1).tolist()} m', flush=True)
     if len(Q) > 60000:
         Q = Q[np.random.default_rng(0).choice(len(Q), 60000, replace=False)]
     # wyprostowanie skanu do kierunku scian (dalej dopasuj probuje 0/90/180/270 +-6 st.)
