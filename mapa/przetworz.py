@@ -132,8 +132,12 @@ def przetworz(kat):
                 r['nr'] = d_.get('nr', '')
                 if d_.get('nr', '').isdigit():
                     r['obraz'] = f"przekroj_{int(d_['nr']):02d}.jpg"
+                def _m(v):
+                    try: return f"{float(v):.2f}"
+                    except (TypeError, ValueError): return '?'
+                wym = [x for x in (d_.get('a'), d_.get('b')) if x not in (None, '')]
                 r['opis'] = f"przekrój {d_.get('nr', '')}: " + (
-                    f"{float(d_['a']):.2f} × {float(d_['b']):.2f} m" if d_.get('a') else 'brak wymiarów')
+                    ' × '.join(_m(x) for x in wym) + ' m' if wym else 'brak wymiarów')
             zm.append(r)
         chm = np.round(Qd[::3] * 100).astype(int)
         kond.append({'nr': nr, 'od': round(a, 1), 'do': round(b, 1), 'poziom': round(float(h), 2),

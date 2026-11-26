@@ -228,7 +228,7 @@ def main():
                 msp.add_text(opis_z[5:].replace('.jpg', ''), height=0.12, dxfattribs={'layer': 'ZDJECIA'}).set_placement((q[0] + 0.15, q[1]))
             elif opis_z.startswith('PRZEKROJ_WYNIK'):
                 q = doswiata(T_[:2]); d_ = dict(x.split('=') for x in opis_z.split()[1:])
-                tx = f"przekroj {d_['nr']}: " + (f"{float(d_['a']):.2f} x {float(d_['b']):.2f} m" if d_['a'] else 'brak wymiarow')
+                tx = f"przekroj {d_['nr']}: " + (f"{d_.get('a', '')} x {d_.get('b', '')} m" if d_.get('a') else 'brak wymiarow')
                 msp.add_text(tx, height=0.15, dxfattribs={'layer': 'PRZEKROJE'}).set_placement((q[0] + 0.15, q[1] - 0.25))
             elif opis_z.startswith('PUNKT '):
                 d_ = dict(x.split('=') for x in opis_z.split()[1:3]); al = -np.radians(float(d_['kat'])); r_ = float(d_['odl']) / 1000
