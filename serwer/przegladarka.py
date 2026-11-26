@@ -341,9 +341,18 @@ class H(BaseHTTPRequestHandler):
                 return self.send_error(404)
             typ = {'jpg': 'image/jpeg', 'png': 'image/png', 'json': 'application/json', 'txt': 'text/plain; charset=utf-8',
                    'csv': 'text/csv; charset=utf-8', 'log': 'text/plain; charset=utf-8'}.get(f.rsplit('.', 1)[1], 'application/octet-stream')
-            with open(p, 'rb') as fh:
-                dane = fh.read()
-            nag = [('Content-Disposition', f'attachment; filename="{q["n"]}_{os.path.basename(f)}"')] \
+            jedn = q.get('jedn', 'm')
+            nazwa = os.path.basename(f)
+            if f.endswith('.dxf') and jedn in ('cm', 'mm'):
+                # rysunek zapisany w metrach -> przeliczenie na cm/mm (skala 1:1 w CAD), warstwy bez zmian
+                sys.path.insert(0, os.path.join(REPO, 'mapa'))
+                from dxf_wspolne import w_jednostkach
+                dane = w_jednostkach(p, jedn)
+                nazwa = nazwa[:-4] + '_' + jedn + '.dxf'
+            else:
+                with open(p, 'rb') as fh:
+                    dane = fh.read()
+            nag = [('Content-Disposition', f'attachment; filename="{q["n"]}_{nazwa}"')] \
                 if f.endswith(('.dxf', '.bin', '.csv')) else []
             return self._wyslij(200, typ, dane, nag)
         self.send_error(404)

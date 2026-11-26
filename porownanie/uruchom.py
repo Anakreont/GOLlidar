@@ -69,13 +69,26 @@ def punkty_scian(img, rozdz, origin):
     return np.stack([x, y], 1)
 
 
-def zapisz_dxf(P, plik):
+def zapisz_dxf(P, plik, opis=''):
+    """DXF w metrach (1:1), poczatek w lewym dolnym rogu: SCIANY (polilinie po srodku smugi), PUNKTY, OPIS, SKALA."""
     import ezdxf
-    d = ezdxf.new('R2010'); d.units = ezdxf.units.M
-    d.layers.add('SCIANY_PUNKTY', color=7)
+    sys.path.insert(0, os.path.join(TU, '..', 'mapa'))
+    from dxf_wspolne import podzialka, warstwy
+    P = P - P.min(0)
+    d = ezdxf.new('R2010', setup=True); d.units = ezdxf.units.M
+    warstwy(d, (('SCIANY', 7), ('PUNKTY', 8), ('OPIS', 3), ('SKALA', 7)))
     msp = d.modelspace()
-    for x, y in P:
-        msp.add_point((float(x), float(y)), dxfattribs={'layer': 'SCIANY_PUNKTY'})
+    try:
+        from eksport_dxf import szkielet
+        for pl in szkielet(P):
+            msp.add_lwpolyline([(float(x), float(y)) for x, y in pl], dxfattribs={'layer': 'SCIANY'})
+    except Exception as e:                      # bez scian - zostaja punkty
+        print('  sciany DXF: pominiete -', e, flush=True)
+    for x, y in P[::2]:
+        msp.add_point((float(x), float(y)), dxfattribs={'layer': 'PUNKTY'})
+    if opis:
+        msp.add_text(opis, height=0.25, dxfattribs={'layer': 'OPIS'}).set_placement((0.0, float(P[:, 1].max()) + 0.6))
+    podzialka(msp, 0.0, -1.2)
     d.saveas(plik)
 
 
@@ -244,7 +257,7 @@ def main():
                         raise RuntimeError('nieznana metoda')
                     img, rz, org = wczytaj_mape(stem)
                     P = punkty_scian(img, rz, org)
-                    zapisz_dxf(P, stem + '.dxf')
+                    zapisz_dxf(P, stem + '.dxf', f"{os.path.basename(kat)} - {METODY.get(m, m)}")
                     png(img, rz, stem + '.png', f'{METODY.get(m, m)} - kondygnacja {nr}')
                     panele.append((METODY.get(m, m), kadr(img)))
                     wk['metody'][m] = {'czas_s': round(time.time() - t, 1), 'punktow_scian': int(len(P))}

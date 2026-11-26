@@ -270,8 +270,10 @@ def dxf_i_podglad(kat):
         M = json.load(f)
     nz = nazwy(kat)
     doc = ezdxf.new('R2010', setup=True); doc.units = ezdxf.units.M
-    for n, kol in (('SCIANY', 7), ('PUNKTY', 8), ('TRASA', 1), ('OPIS', 3), ('ZDJECIA', 5), ('PRZEKROJE', 6), ('ZNACZNIKI', 2), ('POMIESZCZENIA', 4)):
+    for n, kol in (('SCIANY', 7), ('PUNKTY', 8), ('TRASA', 1), ('OPIS', 3), ('ZDJECIA', 5), ('PRZEKROJE', 6), ('ZNACZNIKI', 2), ('POMIESZCZENIA', 4),
+                   ('SKALA', 7)):
         doc.layers.add(n, color=kol)
+    from dxf_wspolne import podzialka
     msp = doc.modelspace(); dx = 0.0
     kol = {'foto': 'b', 'przekroj': 'm', 'punkt': 'orange', 'notatka': 'g', 'oprawy': 'c', 'grzejnik': 'r', 'okno': 'y'}
     widoczne = [k for k in M['kondygnacje'] if not nz.get(str(k['nr']), {}).get('ukryj')]
@@ -310,8 +312,9 @@ def dxf_i_podglad(kat):
             tx = r.get('plik', r['opis']).replace('.jpg', '')
             msp.add_text(tx[:60], height=0.12, dxfattribs={'layer': war}).set_placement((r['x'] + dx + 0.13, r['y']))
             ax.plot(r['x'] + dx, r['y'], 'o', mfc='none', color=kol.get(r['rodzaj'], 'g'), ms=6)
-        opis = f"{nazwa} (poziom baro {k['poziom']:+.1f} m)"
+        opis = nazwa if not DZIEL_BARO else f"{nazwa} (poziom baro {k['poziom']:+.1f} m)"
         msp.add_text(opis, height=0.25, dxfattribs={'layer': 'OPIS'}).set_placement((dx, k['wys'] + 0.6))
+        podzialka(msp, dx, -1.2)
         ax.text(dx, k['wys'] + 0.4, opis, fontsize=10, color='g')
         dx += k['szer'] + 5.0
     doc.saveas(os.path.join(wy, 'rzut.dxf'))

@@ -121,7 +121,9 @@ const KOL={sala:'#1e3a8a',foto:'#2563eb',przekroj:'#9333ea',punkt:'#ea580c',nota
 const NAZ={sala:'Nazwy pomieszczeń',sciany:'Ściany',chmura:'Chmura punktów',trasa:'Trasa',foto:'Zdjęcia',przekroj:'Przekroje',punkt:'Punkty',notatka:'Notatki',oprawy:'Oprawy',grzejnik:'Grzejniki',okno:'Okna'};
 const ZNAK={foto:'📷',przekroj:'⊥',punkt:'•',notatka:'✎',oprawy:'💡',grzejnik:'♨',okno:'▭'};
 const W={sala:1,sciany:1,chmura:1,trasa:1,foto:1,przekroj:1,punkt:1,notatka:1,oprawy:1,grzejnik:1,okno:1};
-const plik=f=>'plik?n='+S.n+'&f='+f;
+let JEDN='cm';try{JEDN=localStorage.getItem('lidar_jedn')||'cm'}catch(e){}
+const plik=f=>'plik?n='+S.n+'&f='+f+(f.endsWith('.dxf')?'&jedn='+JEDN:'');
+function ustawJedn(j){JEDN=j;try{localStorage.setItem('lidar_jedn',j)}catch(e){}if(S){naglowek();pliki();porownanie()}}
 function post(u,ok,body){return fetch(u,{method:'POST',body}).then(r=>r.json()).then(j=>{if(j.blad)alert(j.blad);else ok&&ok(j)})}
 document.addEventListener('click',e=>{if(!e.target.closest('.menu'))document.querySelectorAll('.menu').forEach(m=>m.classList.remove('otw'))});
 document.querySelectorAll('#zakl button').forEach(b=>b.onclick=()=>pokazWidok(b.dataset.w));
@@ -150,6 +152,7 @@ function naglowek(){const i=S.info,ma=S.wyniki.includes('_wynik/rzut.dxf');
  (ma?'<a class="btn gl" href="'+plik('_wynik/rzut.dxf')+'">⬇ Rzut DXF</a>':'')+
  (S.wyniki.includes('_wynik/przekroje.dxf')?'<a class="btn" href="'+plik('_wynik/przekroje.dxf')+'">⬇ Przekroje DXF</a>':'')+
  (S.wyniki.includes('_wynik/model3d.dxf')?'<a class="btn" href="'+plik('_wynik/model3d.dxf')+'">⬇ Model 3D DXF</a><a class="btn" href="'+plik('_wynik/model3d.obj')+'">OBJ</a>':'')+
+ '<select class="btn" title="Jednostka plików DXF (rysunek 1:1)" onchange="ustawJedn(this.value)">'+['m','cm','mm'].map(j=>'<option value="'+j+'"'+(j==JEDN?' selected':'')+'>DXF w '+j+'</option>').join('')+'</select>'+
  '<button class="btn" onclick="przelicz()">🔄 Przelicz</button><div class="menu"><button class="btn" onclick="this.parentNode.classList.toggle(\'otw\')">⋯</button><div class="lista">'+
  '<button onclick="usunMape()">Usuń mapę tej sesji (policzy się od nowa)</button><button style="color:var(--czerw)" onclick="usunSesje()">Przenieś całą sesję do kosza</button></div></div>'}
 function przelicz(){post('api/przelicz?n='+S.n,()=>{alert('Zlecone – mapa liczy się ok. 1 min na każde 8 min nagrania.');lista()})}
