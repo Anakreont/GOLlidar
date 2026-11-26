@@ -26,7 +26,7 @@ def _znaczniki(kat, t0):
         for l in open(p, encoding='utf-8'):
             k = l.rstrip('\n').split('\t')
             if len(k) >= 2 and k[0].isdigit():
-                zn.append(((int(k[0]) - t0) / 1e9, k[1], k[2] if len(k) > 2 else ''))
+                zn.append(((S.popraw_czas(kat, int(k[0])) - t0) / 1e9, k[1], k[2] if len(k) > 2 else ''))
     return zn
 
 

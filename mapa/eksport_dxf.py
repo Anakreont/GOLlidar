@@ -201,7 +201,7 @@ def main():
     if os.path.exists(kat + '/znaczniki.txt'):
         for l in open(kat + '/znaczniki.txt', encoding='utf-8'):
             k = l.rstrip('\n').split('\t')
-            zn.append(((int(k[0]) - t0) / 1e9, k[1]))
+            zn.append(((S.popraw_czas(kat, int(k[0])) - t0) / 1e9, k[1]))
     nazwy = sys.argv[4:] if False else None
     msp = doc.modelspace(); dx = 0.0
     for nr, (a, b, h) in enumerate(pozi):

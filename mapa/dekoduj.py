@@ -20,6 +20,28 @@ def dekoduj(kat, wy=None):
             T.append(t); TS.append(ts); A0.append(st / 100); A1.append(kon / 100)
             D.append([o[0] for o in odl]); I.append([o[1] for o in odl])
     T = np.array(T, np.int64); TS = np.array(TS, np.int64)
+    # skoki zegara maliny (synchronizacja czasu z internetem w trakcie nagrania, np. w hotspocie): przerwa
+    # w czasie maliny, a licznik LiDAR-u przeskakuje tylko o kilka ms - dane byly ciagle, skoczyl zegar
+    import os, json
+    # Opoznienie odczytu (paczka przychodzi pozniej, potem nadrabia) jest chwilowe; skok zegara zmienia na stale
+    # dolna obwiednie roznicy czas maliny - czas LiDAR-u. Porownujemy minima w oknach 1 s przed i po.
+    dpi_ = np.diff(T) / 1e6; dld = np.diff(TS) % 30000
+    ldu = np.concatenate([[0.0], np.cumsum(dld)]); off = (T - T[0]) / 1e6 - ldu
+    kroki = []
+    for j in np.where((np.abs(dpi_ - dld) > 250) & (dld < 50))[0]:
+        przed = off[(ldu >= ldu[j] - 1000) & (ldu <= ldu[j])]; po = off[(ldu > ldu[j]) & (ldu <= ldu[j] + 1000)]
+        if len(przed) < 50 or len(po) < 50: continue
+        sk = po.min() - przed.min()
+        dalej = off[(ldu > ldu[j] + 1000) & (ldu <= ldu[j] + 3000)]
+        if abs(sk) > 250 and (len(dalej) < 50 or abs(dalej.min() - przed.min() - sk) < 150):
+            kroki.append((int(T[j + 1]), int(round(sk * 1e6))))
+    os.makedirs(os.path.join(kat, '_wynik'), exist_ok=True)
+    with open(os.path.join(kat, '_wynik', 'kroki_zegara.json'), 'w') as f:
+        json.dump(kroki, f)
+    S._KROKI.pop(kat, None)
+    if kroki:
+        print(f'Zegar maliny: {len(kroki)} skokow w trakcie nagrania (s): {[round(k[1] / 1e9, 2) for k in kroki][:10]} - usuniete')
+        T = S.popraw_czas(kat, T)
     # rozwiniecie licznika LD19 z pomoca czasu maliny: krotnosc 30000 ms dobrana tak, by przyrost zgadzal sie
     # z czasem odczytu. Restart LiDAR-a (zanik zasilania - np. luzny kabel przy przechyle) zeruje licznik:
     # wtedy przyrost nie pasuje do czasu maliny -> nowy odcinek z wlasnym przesunieciem.
@@ -52,7 +74,7 @@ def dekoduj(kat, wy=None):
         ti = np.arange(tl[0], tl[-1], 0.01)
         z = dict(tl=tl, a0=np.array(A0), a1=np.array(A1), d=np.array(D, float) / 1000, i=np.array(I),
                  ti=ti, yaw=np.zeros_like(ti), pitch=np.zeros_like(ti), roll=np.zeros_like(ti), acc=np.zeros((len(ti), 3)),
-                 t0=T[0], bez_imu=True, wersja_dek=3)
+                 t0=T[0], bez_imu=True, wersja_dek=4)
         if wy:
             np.savez_compressed(wy, **z)
         return z
@@ -73,7 +95,7 @@ def dekoduj(kat, wy=None):
             if sum(p[2:18]) & 0xFF != p[18]: del buf[0]; continue
             del buf[:19]
             Ti.append(t); R.append((p[2],) + struct.unpack_from('<hhhhhh', p, 3))
-    Ti = np.array(Ti, np.int64); R = np.array(R, float)
+    Ti = S.popraw_czas(kat, np.array(Ti, np.int64)); R = np.array(R, float)
     dc = np.diff(R[:, 0]) % 256; cnt = np.concatenate([[0], np.cumsum(dc)])
     tpi = (Ti - T[0]) / 1e9
     ai, bi = np.polyfit(cnt, tpi, 1)
@@ -84,7 +106,7 @@ def dekoduj(kat, wy=None):
     ti = ai * cnt + bi
     yaw = np.degrees(np.unwrap(np.radians(R[:, 1] / 100)))
     z = dict(tl=tl, a0=np.array(A0), a1=np.array(A1), d=np.array(D, float) / 1000, i=np.array(I),
-             ti=ti, yaw=yaw, pitch=R[:, 2] / 100, roll=R[:, 3] / 100, acc=R[:, 4:7], t0=T[0], wersja_dek=3)
+             ti=ti, yaw=yaw, pitch=R[:, 2] / 100, roll=R[:, 3] / 100, acc=R[:, 4:7], t0=T[0], wersja_dek=4)
     if wy:
         np.savez_compressed(wy, **z)
     return z
@@ -118,7 +140,7 @@ def dekoduj_shtp(kat, t0, tl, A0, A1, D, I):
             if kan != 3: continue
             pk += 1
             for rid, seq, dt, w in H.raporty(tr):
-                rek = ((tt - t0) / 1e9 + dt, seq, w, pk, dt)
+                rek = ((S.popraw_czas(kat, tt) - t0) / 1e9 + dt, seq, w, pk, dt)
                 {H.GRV: G, H.ZYRO: W, H.ACC: Acc, H.RV: RVm, H.MAG: Mg}.get(rid, []).append(rek)
     if len(G) < 100:
         raise RuntimeError('IMU SHTP: za malo kwaternionow w imu.bin - czy czujnik dostal konfiguracje?')
@@ -169,7 +191,7 @@ def dekoduj_shtp(kat, t0, tl, A0, A1, D, I):
         print(f'IMU SHTP: pole magnetyczne mediana {np.nanmedian(pole):.0f} uT, 5-95% {np.nanpercentile(pole,5):.0f}-{np.nanpercentile(pole,95):.0f} uT')
     return dict(tl=tl, a0=np.array(A0), a1=np.array(A1), d=np.array(D, float) / 1000, i=np.array(I),
                 ti=tg, yaw=yaw, yaw_mag=yaw_mag, pole_uT=pole, yaw_zyro=yaw_z, pitch=pitch, roll=roll, acc=acc, omega=om, t0=t0,
-                imu_tryb='shtp', wersja_dek=3)
+                imu_tryb='shtp', wersja_dek=4)
 
 
 if __name__ == '__main__':

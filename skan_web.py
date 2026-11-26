@@ -24,6 +24,15 @@ try:
 except ImportError:
     sys.exit("Brak pyserial. Zainstaluj: sudo apt install python3-serial")
 
+
+# Zegar bez skokow: malina nie ma zegara RTC i w hotspocie synchronizuje czas z internetem w trakcie nagrania
+# (skoki o kilka sekund wygladaly w danych jak dziury). Czas = monotoniczny + przesuniecie z chwili startu programu.
+_ZEGAR0 = time.time_ns() - time.monotonic_ns()
+
+
+def czas_ns():
+    return time.monotonic_ns() + _ZEGAR0
+
 # ----------------------------------------------------------------------------- stan wspolny
 LOCK = threading.Lock()
 STAN = {
@@ -113,7 +122,7 @@ def zapisz(strumien, dane, t=None):
     with LOCK:
         f = PLIKI.get(strumien)
         if f is not None:
-            f.write(struct.pack("<QH", t or time.time_ns(), len(dane)))
+            f.write(struct.pack("<QH", t or czas_ns(), len(dane)))
             f.write(dane)
             STAN["bajty"][strumien] += len(dane)
         STAN["ost"][strumien] = time.time()
@@ -314,10 +323,10 @@ def _imu_rvc(port, baud, prz):
     buf = bytearray()
     try:
         with serial.Serial(port, baud, timeout=0.05) as s:
-            ost = time.time()
+            ost = time.monotonic()
             while not KONIEC.is_set():
                 d = s.read(1024)
-                if time.time() - ost > 3.0:
+                if time.monotonic() - ost > 3.0:
                     return False
                 if not d:
                     continue
@@ -332,7 +341,7 @@ def _imu_rvc(port, baud, prz):
                         continue
                     yaw, pitch, roll = struct.unpack_from("<hhh", buf, 3)
                     del buf[:19]
-                    ost = time.time(); STAN["imu_tryb"] = "rvc"
+                    ost = time.monotonic(); STAN["imu_tryb"] = "rvc"
                     imu_probka(yaw / 100, pitch / 100, roll / 100, prz)
     except (serial.SerialException, OSError):
         time.sleep(1)
@@ -346,10 +355,10 @@ def _imu_shtp(port, prz, probny=False):
     try:
         with serial.Serial(port, H.BAUD, timeout=0.05) as s:
             H.wyslij_konfiguracje(s)
-            ost = time.time(); seq = 3; n = 0
+            ost = time.monotonic(); seq = 3; n = 0
             while not KONIEC.is_set():
                 d = s.read(4096)
-                teraz = time.time()
+                teraz = time.monotonic()
                 if d and byly:
                     zapisz("imu", d)
                 for _, kan, tr in st.feed(d or b""):
@@ -475,7 +484,7 @@ def start(budynek, kondygnacja):
             STAN["bajty"][s] = 0
         kal = STAN.get("_baro_kal")
         if kal:
-            PLIKI["baro"].write(struct.pack("<QH", time.time_ns(), len(kal)) + kal)
+            PLIKI["baro"].write(struct.pack("<QH", czas_ns(), len(kal)) + kal)
         STAN.update(nagrywa=True, nazwa=nazwa, katalog=kat, t_start=time.time(), znaczniki=0, max_przechyl=0.0, pom=[], grz=[], okn=[], foto=0, prz_nr=0, prz_wynik="", prz_faza=0,
                     budynek=budynek, kondygnacja=kondygnacja)
     return True
@@ -501,7 +510,7 @@ def znacznik(opis, licz=True):
         if not STAN["nagrywa"]:
             return False
         with open(os.path.join(STAN["katalog"], "znaczniki.txt"), "a") as f:
-            f.write(f"{time.time_ns()}\t{opis}\t{STAN['wys'] if STAN['wys'] is not None else ''}\n")
+            f.write(f"{czas_ns()}\t{opis}\t{STAN['wys'] if STAN['wys'] is not None else ''}\n")
         if licz:
             STAN["znaczniki"] += 1
     return True
@@ -592,7 +601,7 @@ def grzejnik(nr, rodzaj, sztuk, zeberek, szer, dl, uwagi, n=None, idg=None, usun
         else:
             if not STAN["nagrywa"]:
                 return "Zapis grzejników działa tylko podczas nagrywania"
-            kat, czas, godz, wpis = STAN["katalog"], str(time.time_ns()), datetime.now().strftime("%H:%M:%S"), ""
+            kat, czas, godz, wpis = STAN["katalog"], str(czas_ns()), datetime.now().strftime("%H:%M:%S"), ""
             if not czysc(nr):
                 nr = f"bez nazwy {len(wiersze_grz(kat)) + 1}"
             wys = "" if STAN["wys"] is None else f"{STAN['wys']:.1f}".replace(".", ",")
@@ -687,7 +696,7 @@ def okno(nr, rodzaj, szer, wys_cm, rama, szyby, sztuk, uwagi, n=None, ido=None, 
             if usun:
                 nr, uwagi = stary["nr"], stary["uwagi"]
         else:
-            czas, godz, wpis = str(time.time_ns()), datetime.now().strftime("%H:%M:%S"), ""
+            czas, godz, wpis = str(czas_ns()), datetime.now().strftime("%H:%M:%S"), ""
             if not czysc(nr):
                 nr = f"bez nazwy {len(wiersze_okn(kat)) + 1}"
             wys = "" if STAN["wys"] is None else f"{STAN['wys']:.1f}".replace(".", ",")
@@ -733,7 +742,7 @@ def znaczniki_stan(kat):
 
 def _dopisz_znacznik(kat, opis):
     with open(os.path.join(kat, "znaczniki.txt"), "a", encoding="utf-8") as f:
-        f.write(f"{time.time_ns()}\t{opis}\t\n")
+        f.write(f"{czas_ns()}\t{opis}\t\n")
 
 
 def znacznik_zmien(n, idz, opis=None):
@@ -778,7 +787,7 @@ def pomieszczenie(nr, typ, punktow, opraw, uwagi, moc="", n=None, idp=None, usun
         else:
             if not STAN["nagrywa"]:
                 return "Zapis pomieszczeń działa tylko podczas nagrywania"
-            kat, czas, godz, wpis = STAN["katalog"], str(time.time_ns()), datetime.now().strftime("%H:%M:%S"), ""
+            kat, czas, godz, wpis = STAN["katalog"], str(czas_ns()), datetime.now().strftime("%H:%M:%S"), ""
             if not czysc(nr):                     # bez nazwy: miejsce i tak wyznacza znacznik czasu w nagraniu
                 nr = f"bez nazwy {len(wiersze_pom(kat)) + 1}"
             wys = "" if STAN["wys"] is None else f"{STAN['wys']:.1f}".replace(".", ",")

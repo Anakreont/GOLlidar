@@ -6,6 +6,8 @@ obracamy do glownych kierunkow plaszczyzn, a os pionowa wybieramy jako te, na kt
 podloga ok. 0,6-1,35 m od glowicy (polozona tyczka obraca sie wokol dolu plecaka; sprawdzone na skosach poddasza)."""
 import json, os, sys
 import numpy as np
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+import sprawdz as S
 
 TU = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, TU)
@@ -66,7 +68,7 @@ def policz(kat, z=None, log=print):
             k = l.rstrip('\n').split('\t')
             if len(k) >= 2 and k[0].isdigit() and k[1].startswith('PRZEKROJ_OK'):
                 nr = dict(x.split('=') for x in k[1].split()[1:] if '=' in x).get('nr', '?')
-                zn.append(((int(k[0]) - t0) / 1e9, nr))
+                zn.append(((S.popraw_czas(kat, int(k[0])) - t0) / 1e9, nr))
     out = []
     for t, nr in zn:
         P = _punkty(z, t - 2.6, t - 0.1)

@@ -22,6 +22,37 @@ def rekordy(sciezka):
             yield t, f.read(n)
 
 
+_KROKI = {}
+
+
+def kroki_zegara(kat):
+    """Skoki zegara maliny w nagraniu [(czas_ns od ktorego, skok_ns)] z _wynik/kroki_zegara.json (liczy dekoder)."""
+    import json
+    if kat not in _KROKI:
+        try:
+            _KROKI[kat] = [tuple(x) for x in json.load(open(os.path.join(kat, "_wynik", "kroki_zegara.json")))]
+        except (OSError, ValueError):
+            _KROKI[kat] = []
+    return _KROKI[kat]
+
+
+def popraw_czas(kat, t):
+    """Usuwa skoki zegara (synchronizacja czasu w trakcie nagrania) z czasu w ns - liczba lub tablica numpy."""
+    k = kroki_zegara(kat)
+    if not k:
+        return t
+    try:
+        import numpy as np
+        if isinstance(t, np.ndarray):
+            out = t.astype(np.int64).copy()
+            for od, skok in k:
+                out[t >= od] -= skok
+            return out
+    except ImportError:
+        pass
+    return t - sum(skok for od, skok in k if t >= od)
+
+
 def crc8_ld(dane):
     # CRC-8 uzywane w protokole LD19/STL27L (wielomian 0x4D)
     crc = 0

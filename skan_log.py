@@ -25,6 +25,15 @@ try:
 except ImportError:
     sys.exit("Brak pyserial. Zainstaluj: sudo apt install python3-serial")
 
+
+# Zegar bez skokow: malina nie ma zegara RTC i w hotspocie synchronizuje czas z internetem w trakcie nagrania
+# (skoki o kilka sekund wygladaly w danych jak dziury). Czas = monotoniczny + przesuniecie z chwili startu programu.
+_ZEGAR0 = time.time_ns() - time.monotonic_ns()
+
+
+def czas_ns():
+    return time.monotonic_ns() + _ZEGAR0
+
 STOP = threading.Event()
 LICZNIK = {}
 
@@ -38,13 +47,13 @@ def loguj_port(nazwa, port, baud, sciezka, shtp=False):
             with serial.Serial(port, baud, timeout=0.05) as s, open(sciezka, "ab") as f:
                 ost = 0.0
                 while not STOP.is_set():
-                    if shtp and time.time() - ost > 3.0:
+                    if shtp and time.monotonic() - ost > 3.0:
                         import imu_shtp
-                        imu_shtp.wyslij_konfiguracje(s); ost = time.time()
+                        imu_shtp.wyslij_konfiguracje(s); ost = time.monotonic()
                     dane = s.read(4096)
                     if dane:
-                        ost = time.time()
-                        f.write(struct.pack("<QH", time.time_ns(), len(dane)))
+                        ost = time.monotonic()
+                        f.write(struct.pack("<QH", czas_ns(), len(dane)))
                         f.write(dane)
                         LICZNIK[nazwa] += len(dane)
         except (serial.SerialException, OSError) as e:
@@ -72,10 +81,10 @@ def loguj_baro(adres, sciezka, bus_nr=1):
                 bus.write_byte_data(adres, 0xF5, 0x10)   # filtr IIR x16
                 bus.write_byte_data(adres, 0xF4, 0x57)   # temp x2, cisnienie x16, tryb ciagly
                 rek = b"CAL" + bytes([chip]) + kal
-                f.write(struct.pack("<QH", time.time_ns(), len(rek)) + rek)
+                f.write(struct.pack("<QH", czas_ns(), len(rek)) + rek)
                 while not STOP.is_set():
                     d = bytes(bus.read_i2c_block_data(adres, 0xF7, 6))
-                    f.write(struct.pack("<QH", time.time_ns(), 6) + d)
+                    f.write(struct.pack("<QH", czas_ns(), 6) + d)
                     LICZNIK["baro"] += 6 * 20      # skala tylko dla wskaznika "OK"
                     time.sleep(0.1)
         except OSError as e:
@@ -127,7 +136,7 @@ def main():
                     opis = input()
                 except EOFError:
                     return
-                f.write(f"{time.time_ns()}\t{opis}\n")
+                f.write(f"{czas_ns()}\t{opis}\n")
                 f.flush()
                 print(f"  znacznik: {opis or '(bez opisu)'}")
 

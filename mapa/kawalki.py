@@ -12,6 +12,8 @@ Jednostki: metry (przegladarka przelicza na cm/mm przy pobieraniu).
 """
 import json, os, sys
 import numpy as np
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+import sprawdz as S
 
 TU = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, TU); sys.path.insert(0, os.path.join(TU, '..'))
@@ -35,7 +37,7 @@ def przekroje_czasy(kat):
         for l in open(p, encoding='utf-8'):
             k = l.split('\t')
             if len(k) >= 2 and k[0].isdigit() and k[1].startswith(('PRZEKROJ_START', 'PAUZA_START', 'AUTO_PRZECHYL_START')):
-                out.append((int(k[0]) - t0) / 1e9)
+                out.append((S.popraw_czas(kat, int(k[0])) - t0) / 1e9)
     return np.array(sorted(out)), t0
 
 

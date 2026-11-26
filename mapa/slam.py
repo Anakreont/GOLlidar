@@ -2,6 +2,7 @@
 import sys, numpy as np
 from scipy.spatial import cKDTree
 sys.path.insert(0, __import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)), '..'))
+import sprawdz as S_
 
 # parametry dopasowania (strojone na rzucie CAD domu Piotra, sesja 25.11 18:57)
 PAR = dict(imu_w=200.0, promien=8.0, kf_dl=0.25, kf_kat=8.0, co_ktory=2, przechyl_max=12.0, huber=0.03, max_d=0.3,
@@ -25,7 +26,7 @@ def wczytaj(kat):
     z = np.load(kat + '_dek.npz')
     return {k: z[k] for k in z.files}
 
-WERSJA_DEK = 3   # zmiana dekodowania -> stara pamiec podreczna dek.npz liczona od nowa
+WERSJA_DEK = 4   # zmiana dekodowania -> stara pamiec podreczna dek.npz liczona od nowa
 
 def wczytaj_lub_dekoduj(kat):
     """Zdekodowane dane z pamieci podrecznej <sesja>/_wynik/dek.npz (odswiezanej, gdy lidar.bin jest nowszy)."""
@@ -58,7 +59,7 @@ def przerwy(kat, t0):
     for l in open(p, encoding='utf-8'):
         k = l.split('\t')
         if len(k) < 2 or not k[0].isdigit(): continue
-        t = (int(k[0]) - t0) / 1e9
+        t = (S_.popraw_czas(kat, int(k[0])) - t0) / 1e9
         if k[1].startswith('PAUZA_START'): a = t
         elif k[1].startswith('PAUZA_KONIEC') and a is not None: out.append((a - 0.5, t + 1.0)); a = None
     if a is not None: out.append((a - 0.5, 1e12))
