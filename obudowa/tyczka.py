@@ -186,36 +186,108 @@ def uchwyt_l2_wieko(kat=20.0, H=120.0):
     return D(m, *otw)
 
 
-def uchwyt_l2_sciana(kat=20.0, PLYTA_H=100.0, NAD=120.0):
+def napis(tekst, wys_lit, z0, x_srodek, y_tyl, y_przod):
+    """Wypukly napis na pionowej scianie zwroconej do +Y, czytany od dolu do gory (litery 'gora' w strone +X).
+    Zwraca (siatka, dlugosc_mm)."""
+    from matplotlib.textpath import TextPath
+    from matplotlib.font_manager import FontProperties
+    from shapely.geometry import Polygon
+    from functools import reduce
+    tp = TextPath((0, 0), tekst, size=wys_lit, prop=FontProperties(family="DejaVu Sans", weight="bold"))
+    pol = [Polygon(r) for r in tp.to_polygons() if len(r) > 2]
+    ksz = reduce(lambda q, w: q.symmetric_difference(w), [x.buffer(0) for x in pol])   # parzysto-nieparzyscie: dziury w literach
+    (u0, v0, u1, v1) = ksz.bounds
+    geom = list(ksz.geoms) if hasattr(ksz, "geoms") else [ksz]
+    m = trimesh.util.concatenate([trimesh.creation.extrude_polygon(g, y_przod - y_tyl) for g in geom])   # (u, v, w)
+    M = np.array([[0, 1, 0, 0], [0, 0, 1, 0], [1, 0, 0, 0], [0, 0, 0, 1]], float)   # x=v, y=w, z=u (bez odbicia)
+    m.apply_translation((-u0, -(v0 + v1) / 2, 0)); m.apply_transform(M)
+    m.apply_translation((x_srodek, y_tyl, z0))
+    return m, u1 - u0
+
+
+R_KOL = 20.0       # promien kolumny uchwytu L2 (O40; wczesniej O50)
+R_KAN = 12.0       # promien kanalu kabla (O24)
+
+
+GPS_POLKA = 56.0  # polka pod modul GPS (np. NEO-M8N / BN-880 do 38 x 38 mm) - modul na ZEWNETRZNYM koncu, poza obrysem L2 (x > 37,5)
+CZUJ_KLATKA = (24.0, 18.0, 34.0)   # wnetrze klatki czujnika temp./wilg. (np. SHT31, BME280): X, Y, Z
+
+
+def uchwyt_l2_sciana(kat=20.0, PLYTA_H=100.0, NAD=120.0, tekst="GOLlidar", gps=True, czujnik=True):
     """Uchwyt L2 na PLASKA, PIONOWA scianke plecaka (zewnetrzna, od strony za operatorem) przy gornej krawedzi.
     Uklad: scianka w plaszczyznie Y = 0, na zewnatrz +Y (= do tylu za operatorem), gora skrzyni na Z = PLYTA_H + 10.
-    Plyta 70 x PLYTA_H x 6 mm, 4 x M5 przez scianke (od srodka duze podkladki), z zebrem. Kolumna O50 odsunieta od
-    scianki, siega NAD mm ponad gorna krawedz skrzyni (omija raczke - montuj z boku raczki). Na gorze plytka O64
-    pod L2 (4 x M3 na O51) pochylona o 'kat' do tylu (+Y). Kabel kolumna w dol i poziomym kanalem przez plyte do
-    otworu O30 w sciance. Druk tak jak w modelu (stoi na dolnej krawedzi, kolumna pionowo), bez podpor."""
+    Plyta 70 x PLYTA_H x 6 mm, 4 x M5 przez scianke (od srodka duze podkladki), z mostkiem do kolumny. Kolumna O40
+    (kanal O24) odsunieta od scianki; plytka O64 pod L2 (4 x M3 na O51) ok. NAD mm nad krawedzia skrzyni, pochylona
+    o 'kat' do tylu (+Y), pod nia stozek 30 st. (druk bez podpor).
+    Kabel L2 wychodzi z boku podstawy L2 (strona -Y, do scianki): opada i wchodzi OKNEM 20 x 30 mm tuz pod stozkiem,
+    dalej kolumna w dol i poziomym kanalem przez plyte do otworu O30 w sciance. Dodatkowo otwor O24 przez srodek
+    plytki (gdyby kabel wychodzil od spodu L2). Na kolumnie od strony +Y wypukly napis 'tekst'.
+    GPS: polka 56 x 42 mm z boku (+X; modul na zewnetrznym koncu, poza cieniem L2), z rantem i szczelinami na opaske, pod nia wspornik 45 st.; przewod otworem O8
+    do kanalu. Czujnik temp./wilg.: klatka z boku (-X), otwarta od dolu, szczeliny wentylacyjne, przewod otworem O8
+    do kanalu - z dala od plecow operatora i od elektroniki w skrzyni.
+    Druk tak jak w modelu (stoi na dolnej krawedzi, kolumna pionowo), bez podpor."""
     a = np.radians(kat)
-    Yk = 6 + 25.0                                     # os kolumny od scianki
-    Zg = PLYTA_H - 10 + NAD                           # wysokosc gory kolumny (plytka L2)
+    Yk = 6 + R_KOL                                     # os kolumny od scianki
+    RP = L2_PLYTA / 2
+    Lc = (RP - R_KOL) / np.tan(np.radians(30))         # dlugosc stozka (30 st. od osi)
+    Zg = PLYTA_H - 10 + NAD - Lc + 10                  # gora kolumny (punkt obrotu)
     p0 = np.array([0, Yk, Zg])
+    R = trimesh.transformations.rotation_matrix(-a, (1, 0, 0))          # os pochylona do +Y
     def wzd(r, l0, l1, x=0.0, y=0.0, n=72):
         m = cylinder(radius=r, height=l1 - l0, sections=n); m.apply_translation((x, y, (l0 + l1) / 2))
-        m.apply_transform(trimesh.transformations.rotation_matrix(-a, (1, 0, 0)))   # os pochylona do +Y
-        m.apply_translation(p0); return m
+        m.apply_transform(R); m.apply_translation(p0); return m
+    def stozek(r0, r1, l0, l1, n=96):
+        f = np.linspace(0, 2 * np.pi, n, endpoint=False)
+        pk = np.vstack([np.c_[r0 * np.cos(f), r0 * np.sin(f), np.full(n, l0)], np.c_[r1 * np.cos(f), r1 * np.sin(f), np.full(n, l1)]])
+        m = trimesh.convex.convex_hull(pk); m.apply_transform(R); m.apply_translation(p0); return m
+    def kula(r, pkt, sub=4):
+        k = trimesh.creation.icosphere(subdivisions=sub, radius=r); k.apply_translation(pkt); return k
     plyta = b(-35, 35, 0, 6, 0, PLYTA_H)
-    kol = c(0, Yk, 25, 0, Zg)
-    lacz = b(-25, 25, 0, Yk, 0, PLYTA_H)              # pelny mostek scianka-kolumna (sztywnosc)
-    kula = trimesh.creation.icosphere(subdivisions=4, radius=25); kula.apply_translation(p0)
-    gora = U(wzd(25, 0, 10), wzd(L2_PLYTA / 2, 10, 15))
-    m = U(plyta, kol, lacz, kula, gora)
-    zk = 30.0                                         # wysokosc kanalu kabla przez plyte (otwor O30 w sciance)
-    otw = [c(0, Yk, 13, zk, Zg), trimesh.creation.icosphere(subdivisions=3, radius=13).apply_translation(p0),
-           wzd(13, -1, 9), cy(0, zk, 13, -1, Yk),
-           trimesh.creation.icosphere(subdivisions=3, radius=13).apply_translation((0, Yk, zk))]
+    kol = c(0, Yk, R_KOL, 0, Zg)
+    lacz = b(-R_KOL, R_KOL, 0, Yk, 0, PLYTA_H)        # pelny mostek scianka-kolumna (sztywnosc)
+    gora = U(kula(R_KOL, p0), stozek(R_KOL, RP, 0, Lc), wzd(RP, Lc, Lc + 5))
+    czesci = [plyta, kol, lacz, gora]
+    if tekst:
+        h = 11.0
+        nap, dl = napis(tekst, h, 0, 0, Yk + R_KOL - 2.0, Yk + R_KOL + 1.0)
+        z0 = PLYTA_H + 10 + 8 + max(0.0, (Zg - 14 - (PLYTA_H + 18) - dl) / 2)   # nad krawedzia skrzyni, pod oknem
+        nap.apply_translation((0, 0, z0))
+        czesci.append(nap)
+    zs = Zg - 32.0                                     # gora polki GPS
+    if gps:
+        x0, x1, h2 = R_KOL - 3, R_KOL - 3 + GPS_POLKA, 21.0
+        czesci.append(b(x0, x1, Yk - h2, Yk + h2, zs - 4, zs))                       # polka 4 mm
+        czesci.append(b(x1 - 2, x1, Yk - h2, Yk + h2, zs, zs + 3))                   # rant zewnetrzny
+        wsp = trimesh.convex.convex_hull(np.array([[x0, y, z] for y in (Yk - 4, Yk + 4) for z in (zs - 4, zs - 4 - (x1 - x0))] +
+                                                  [[x1, y, zs - 4] for y in (Yk - 4, Yk + 4)]))      # wspornik 45 st.
+        czesci.append(wsp)
+    zt = PLYTA_H + 22.0                                # dol klatki czujnika
+    if czujnik:
+        kx, ky, kz = CZUJ_KLATKA
+        czesci.append(b(-R_KOL - kx - 2, -R_KOL + 4, Yk - ky / 2 - 2, Yk + ky / 2 + 2, zt, zt + kz + 2))
+    m = U(*czesci)
+    zk = 30.0                                          # wysokosc kanalu kabla przez plyte (otwor O30 w sciance)
+    otw = [c(0, Yk, R_KAN, zk, Zg), kula(R_KAN, p0, 3),
+           wzd(R_KAN, -1, Lc + 6),                     # kanal przez stozek i plytke (otwor O24 w srodku plytki)
+           cy(0, zk, R_KAN, -1, Yk), kula(R_KAN, (0, Yk, zk), 3),
+           b(-10, 10, Yk - R_KOL - 2, Yk, Zg - 36, Zg - 6)]   # okno na kabel L2 od strony scianki (-Y)
+    if gps:
+        otw += [cx(Yk, zs + 6, 4.0, 0, R_KOL + 6)]                                    # przewod GPS do kanalu
+        for y in (Yk - 12, Yk + 12):
+            otw += [b(R_KOL + 14, R_KOL + GPS_POLKA - 10, y - 1.5, y + 1.5, zs - 5, zs + 1)]   # szczeliny na opaske
+    if czujnik:
+        kx, ky, kz = CZUJ_KLATKA
+        otw += [b(-R_KOL - kx, -R_KOL - 1, Yk - ky / 2, Yk + ky / 2, zt - 1, zt + kz),     # wnetrze, otwarte od dolu
+                cx(Yk, zt + kz - 6, 4.0, -R_KOL - 2, 0)]                                    # przewod do kanalu
+        for i in range(4):                                                                 # szczeliny wentylacyjne
+            z = zt + 6 + i * 6.5
+            otw += [b(-R_KOL - kx - 3, -R_KOL - kx + 1, Yk - ky / 2 + 3, Yk + ky / 2 - 3, z, z + 2.5),
+                    b(-R_KOL - kx + 3, -R_KOL - 4, Yk - ky / 2 - 3, Yk + ky / 2 + 3, z, z + 2.5)]
     for x in (-24, 24):
         for z in (12, PLYTA_H - 12):
             otw += [cy(x, z, 2.75, -1, Yk + 30), cy(x, z, 5.5, 6, Yk + 30)]   # M5 + dostep do lba od zewnatrz
     for ox, oy in L2_OTWORY:
-        otw += [wzd(1.7, 9, 16, ox, oy, 24), wzd(3.2, -20, 11, ox, oy, 24)]  # M3 + leb od spodu
+        otw += [wzd(1.7, Lc + 1, Lc + 6, ox, oy, 24), wzd(3.2, -30, Lc + 1.0, ox, oy, 24)]  # M3 (plytka 4 mm) + leb od spodu
     return D(m, *otw)
 
 
