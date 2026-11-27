@@ -227,7 +227,7 @@ def uchwyt_l2_sciana(kat=20.0, PLYTA_H=100.0, NAD=120.0, tekst="GOLlidar"):
     Przez plytke pionowy otwor (kanal + prowadnice) - przez niego, ZANIM przykrecisz L2, wsuwa sie od gory do
     ogranicznikow: kamere (prowadnice po bokach plytki, obiektyw do tylu przez otwor w plaszczu), antene GPS (wneka
     w plaszczu, 1,2 mm pod powierzchnia), plytke GPS i czujnik temp./wilg. (szczeliny przy sciance kanalu). Przewody
-    i tasma kamery w dol kanalem; kabel L2 oknem 20 x 30 mm od strony scianki i tym samym kanalem do otworu
+    i tasma kamery w dol kanalem; kabel L2 rowkiem w plytce (pod L2, od strony scianki) do srodka i tym samym kanalem do otworu
     w sciance skrzyni (kanal O32 -> otwor O33). Napis 'tekst' na boku -X. Druk tak jak w modelu (stoi na dolnej krawedzi), bez podpor."""
     a = np.radians(kat)
     Yk = 6 + R_KOL                                     # os kolumny od scianki
@@ -274,8 +274,10 @@ def uchwyt_l2_sciana(kat=20.0, PLYTA_H=100.0, NAD=120.0, tekst="GOLlidar"):
     z_gps = z_kam_d - 4.0 - GPS_PL[1]                  # ogranicznik GPS
     z_cz = PLYTA_H + 14.0                              # ogranicznik czujnika (nad krawedzia skrzyni)
     yb = R_KOL - SKORA - KAM_WYS                       # tyl plytki kamery (od osi kolumny, w strone +Y)
-    otw = [c(0, Yk, R_KAN, zk, GORA), cy(0, zk, R_KAN, -1, Yk), trimesh.creation.icosphere(subdivisions=3, radius=R_KAN).apply_translation((0, Yk, zk)),
-           b(-10, 10, Yk - R_KOL - 2, Yk, Zt - 30, Zt - 2)]                                 # okno kabla L2 (-Y)
+    otw = [c(0, Yk, R_KAN, zk, GORA), cy(0, zk, R_KAN, -1, Yk), trimesh.creation.icosphere(subdivisions=3, radius=R_KAN).apply_translation((0, Yk, zk))]
+    nacinek = b(-5, 5, -RP - 2, -12, -6, 6)                           # kabel L2: rowek w plytce od krawedzi do otworu,
+    nacinek.apply_transform(R); nacinek.apply_translation(pp)         # schowany pod L2 (wyjscie kabla w strone -Y)
+    otw += [nacinek]
     # kamera: rowki na krawedzie plytki + kanal obiektywu do plaszcza + okno obiektywu z fazka (120 st.)
     otw += [b(-KAM_PL[0] / 2 - 0.4, KAM_PL[0] / 2 + 0.4, Yk + yb - 0.3, Yk + yb + KAM_PL[2] + 0.4, z_kam_d, GORA),
             b(-KAM_OBIEKTYW / 2, KAM_OBIEKTYW / 2, Yk + yb, Yk + R_KOL - SKORA, z_kam_d, GORA)]
@@ -302,10 +304,12 @@ def uchwyt_l2_sciana(kat=20.0, PLYTA_H=100.0, NAD=120.0, tekst="GOLlidar"):
               b(-KAM_OBIEKTYW / 2 - 1.5, KAM_OBIEKTYW / 2 + 1.5, Yk + yb - 2, Yk + R_KOL - SKORA + 1.5, z_kam_d - 1.5, GORA),
               b(-KAM_PL[0] / 2 - 1.9, KAM_PL[0] / 2 + 1.9, Yk + yb - 2, Yk + yb + KAM_PL[2] + 2, z_kam_d - 1.5, GORA))
     for ox, oy in L2_OTWORY:
-        tun = pl(3.2, -35, 1.0, ox, oy, 24)
-        kier_r = (R[:3, :3] @ np.array([ox, oy, 0.0])) / np.hypot(ox, oy)      # promieniowo na zewnatrz (w ukladzie plytki)
+        # krotkie wyciecie pod rantem plytki (12 mm), otwarte promieniowo na zewnatrz: wkret M3 x 8 wkladany bokiem,
+        # dokrecany kluczem imbusowym z kulka. Dluzsze tunele wzdluz osi wychodzily rowkami po rurze.
+        tun = pl(3.2, -11, 1.0, ox, oy, 24)
+        kier_r = (R[:3, :3] @ np.array([ox, oy, 0.0])) / np.hypot(ox, oy)
         tun2 = tun.copy(); tun2.apply_translation(kier_r * 12)
-        tun = trimesh.convex.convex_hull(np.vstack([tun.vertices, tun2.vertices]))   # rowek otwarty na zewnatrz: wkret i klucz z boku
+        tun = trimesh.convex.convex_hull(np.vstack([tun.vertices, tun2.vertices]))
         otw += [pl(1.7, 1, 6, ox, oy, 24),                                  # M3 (plytka 4 mm)
                 D(tun, chron)]
     return D(m, *otw)

@@ -590,7 +590,7 @@ def stan_l2(n, k):
         st = W_L2.get(n); t0 = W_START_L2.get(n)
     jest = (lambda p: os.path.exists(os.path.join(wy, p)))
     pliki = sorted('_wynik/l2/' + p for p in os.listdir(wy)
-                   if p in ('rzut.png', 'rzut.dxf', 'wysokosci.txt', 'chmura.pcd', 'przebieg.log', 'blad.txt', 'pointlio.log')) if os.path.isdir(wy) else []
+                   if p in ('rzut.png', 'rzut.dxf', 'wysokosci.txt', 'chmura.pcd', 'przebieg.log', 'blad.txt', 'pointlio.log', 'otwory.csv')) if os.path.isdir(wy) else []
     if not st:
         st = 'błąd' if jest('blad.txt') else 'gotowe' if (jest('rzut.png') or jest('rzut.dxf')) else 'zatrzymane' if jest('zatrzymane.txt') else 'brak'
     wys = {}
@@ -605,7 +605,13 @@ def stan_l2(n, k):
         czas = (datetime.fromisoformat(i['koniec']) - datetime.fromisoformat(i['start'])).total_seconds()
     except (KeyError, ValueError):
         pass
-    return {'stan': st, 'pliki': pliki, 'wysokosci': wys, 'dostepne': bool(skrypt_l2()),
+    otw = []
+    if jest('otwory.json'):
+        try:
+            otw = json.load(open(os.path.join(wy, 'otwory.json'), encoding='utf-8'))
+        except ValueError:
+            pass
+    return {'stan': st, 'pliki': pliki, 'wysokosci': wys, 'otwory': otw, 'dostepne': bool(skrypt_l2()),
             'liczy_s': round(time.time() - t0) if t0 else None, 'nagranie_s': czas, 'mb': round(rozmiar(os.path.join(k, 'l2.bin')) / 1e6, 1)}
 
 

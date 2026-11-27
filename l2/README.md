@@ -15,7 +15,9 @@
    - **CIECIE_1M**: pas 1,0–1,2 m nad podłogą,
    - wysokość w świetle.
 
-   Pliki wynikowe: `rzut.png`, `rzut.dxf` (w metrach) i `wysokosci.txt`.
+   - **OKNA / DRZWI** (od 27.11.2026): dla każdego odcinka ściany siatka 8 × 8 cm w płaszczyźnie ściany na całej wysokości; otwór = brak punktów w ścianie i brak przeszkody tuż przed nią (meble zasłaniające ścianę nie są otworem), punkty za ścianą potwierdzają otwór. Drzwi = od podłogi, wys. ≥ 1,7 m; okno = parapet ≥ 0,3 m. Krawędzie doprecyzowane z punktów ściany. W DXF warstwy OKNA, DRZWI (z łukiem skrzydła), OTWORY_OPIS; lista w `otwory.json` i `otwory.csv` (szerokość, wysokość, parapet, nadproże). `--bez-otworow` wyłącza. Sprawdzone na sztucznym pokoju (okno 1,50 × 1,50 p. 0,90 → 1,52 × 1,49 p. 0,89; drzwi 0,90 × 2,05 → 0,92 × 2,05; szafa przy ścianie nie wykryta jako otwór).
+
+   Pliki wynikowe: `rzut.png`, `rzut.dxf` (w metrach), `wysokosci.txt`, `otwory.json`, `otwory.csv`.
 
 Stan na 26.11.2026: `l2_rzut.py` sprawdzony na sztucznej chmurze. Instalator i Point-LIO nie były uruchamiane, pierwsza próba odbywa się na Dellu.
 
