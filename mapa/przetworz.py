@@ -364,7 +364,9 @@ def obrocona(k, st):
         P = k['_pom']
         k2['_pom'] = dict(P, pomieszczenia=[dict(p, obrys=(f(p['obrys']) - m0).tolist(), srodek=(f(p['srodek'])[0] - m0).tolist())
                                             for p in P['pomieszczenia']],
-                          drzwi=[dict(d, xy=(f(d['xy'])[0] - m0).tolist()) for d in P['drzwi']])
+                          drzwi=[dict(d, xy=(f(d['xy'])[0] - m0).tolist(),
+                                      **({'naroza': (f(d['naroza']) - m0).tolist()} if d.get('naroza') else {})) for d in P['drzwi']],
+                          sciany_arch=[(f(pl) - m0).tolist() for pl in P.get('sciany_arch', [])])
     mx = wsz.max(0) - m0; k2['szer'], k2['wys'] = float(mx[0]), float(mx[1])
     return k2
 
@@ -407,6 +409,12 @@ def dxf_i_podglad(kat):
         if k['trasa']:
             msp.add_lwpolyline([(x + dx, y) for x, y in k['trasa']], dxfattribs={'layer': 'TRASA'})
             tr = np.array(k['trasa']); ax.plot(tr[:, 0] + dx, tr[:, 1], 'r-', lw=0.4, alpha=0.5)
+        if k.get('_pom'):                         # rysunek jak inwentaryzacja: sciany z gruboscia, drzwi, opisy (warstwy ARCH_*)
+            import pomieszczenia as PM_
+            PM_.warstwy_arch(doc)
+            PM_.rysuj_arch(msp, k['_pom'], dx=dx, wys=k.get('wysokosc_m'))
+            for pl in k['_pom'].get('sciany_arch', []):
+                pp = np.array(pl + pl[:1]); ax.plot(pp[:, 0] + dx, pp[:, 1], 'k-', lw=0.9)
         for p in (k.get('_pom') or {}).get('pomieszczenia', []):
             o = [(x + dx, y) for x, y in p['obrys']]
             msp.add_lwpolyline(o, close=True, dxfattribs={'layer': 'POM_OBRYS' if p['ocena'] == 'pewne' else 'POM_NIEPEWNE'})

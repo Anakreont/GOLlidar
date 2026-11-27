@@ -21,6 +21,7 @@ from scipy import ndimage
 from skimage.segmentation import watershed
 from skimage.feature import peak_local_max
 from skimage.measure import find_contours, approximate_polygon
+from skimage.morphology import remove_small_objects
 
 WERSJA = 1
 KOM = 0.04            # komorka siatki [m]
@@ -33,6 +34,9 @@ OTWOR_MAX = 2.2       # najszerszy otwor z oscieznicami po obu stronach, ktory d
 MEBEL_MAX = 1.5       # najwieksze wolnostojace skupisko traktowane jako mebel [m]
 LICO = 0.08          # o ile obrys wolnej przestrzeni jest przed licem sciany (szum punktow + poszerzenie) [m]
 BEZ_ZNACZNIKA_MAX = 3.0   # obszar bez znacznika 'sala' (gdy sa znaczniki) mniejszy niz to - dolaczany do sasiada [m2]
+SCIANA_ZEWN = 0.38    # grubosc scian zewnetrznych na rysunku (lica zewnetrznego nie widac ze srodka) [m]
+TOL_RYS = 0.06        # dokladnosc upraszczania linii rysunku [m]
+SCIANA_WEWN_MAX = 0.6 # najgrubsza sciana miedzy pomieszczeniami wypelniana na rysunku [m]
 MIN_POW = 0.8         # mniejsze obszary dolaczane do sasiada (nie przez drzwi) [m2]
 WYS_DOMYSLNA = 2.70
 
@@ -85,6 +89,25 @@ def widocznosc(prz, punkty, zasieg_k, n_kat=720):
         m = ir < pierwszy[:, None]
         wolne[Xc[m], Yc[m]] = True
     return wolne
+
+
+def _prostuj(p, tol=0.2):
+    """Krawedzie prawie rownolegle do osi siatki (uklad scian) -> dokladnie rownolegle."""
+    p = np.array(p, float)
+    for i in range(len(p) - 1):
+        d = p[i + 1] - p[i]
+        if abs(d[0]) < tol * abs(d[1]):
+            p[i + 1, 0] = p[i, 0]
+        elif abs(d[1]) < tol * abs(d[0]):
+            p[i + 1, 1] = p[i, 1]
+    p[-1] = p[0]
+    q = [p[0]]
+    for i in range(1, len(p) - 1):                         # usun wierzcholki w srodku prostego odcinka
+        a, b, c = q[-1], p[i], p[i + 1]
+        if abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) > 1e-6 and np.hypot(*(b - a)) > 0:
+            q.append(b)
+    q.append(p[-1])
+    return np.array(q)
 
 
 def granice(L):
@@ -329,6 +352,11 @@ def podziel(k, log=print):
             w_ = np.zeros(shape, bool); w_[tuple(sl)] = True; w_ &= (L > 0)
             WNEKI |= w_
             dr['gl_sciany_m'] = round((p['c1'] - p['c0'] + 1) * KOM, 2)
+            a_ = np.zeros(2); b_ = np.zeros(2)
+            a_[p['o']], b_[p['o']] = p['lo'], p['hi'] + 1; a_[1 - p['o']], b_[1 - p['o']] = p['c0'], p['c1'] + 1
+            nar = np.array([[a_[0], a_[1]], [b_[0], a_[1]], [b_[0], b_[1]], [a_[0], b_[1]]]) * KOM + m0
+            dr['naroza'] = np.round(nar @ R + srodek, 3).tolist()          # prostokat otworu w scianie
+            dr['os'] = 'x' if p['o'] == 0 else 'y'
             dr['wneka_m2'] = round(float(w_.sum() * KOM ** 2), 2)
         drzwi.append(dr)
     L[WNEKI] = 0
@@ -337,6 +365,7 @@ def podziel(k, log=print):
     sala = [r for r in k.get('znaczniki', []) if r.get('rodzaj') == 'sala']
     wys = k.get('wysokosc_m') or WYS_DOMYSLNA
     wyn = []
+    RM = np.zeros(shape, int)                              # pomieszczenia do lica (do rysunku scian)
     for i in np.unique(L[L > 0]):
         m = ndimage.binary_fill_holes(L == i)                # meble/slupy w srodku nie zmniejszaja powierzchni
         # zakamarki niewidziane (cien za meblem przy scianie), zamkniete przez to pomieszczenie i przeszkody
@@ -348,6 +377,7 @@ def podziel(k, log=print):
         pw = float(m.sum() * KOM ** 2)
         if pw < 0.5:
             continue
+        RM[m & (RM == 0)] = i
         # granica: sciana / sasiednie pomieszczenie / nieznane
         pierscien = ndimage.binary_dilation(m) & ~m
         sciana = (pierscien & ndimage.binary_dilation(prz_g, iterations=1)).sum()
@@ -357,7 +387,7 @@ def podziel(k, log=print):
         # obrys
         cs = find_contours(np.pad(m, 1).astype(float), 0.5)
         c = max(cs, key=len) - 1
-        poly = approximate_polygon(c, tolerance=1.5)
+        poly = _prostuj(approximate_polygon(c, tolerance=TOL_RYS / KOM))
         poly_m = (poly * KOM + m0) @ R + srodek
         # wymiary w ukladzie scian
         ij_ = np.argwhere(m) * KOM
@@ -377,6 +407,30 @@ def podziel(k, log=print):
                     'zamkniecie': round(zamk, 2),
                     'ocena': 'pewne' if zamk >= 0.85 else 'do sprawdzenia' if zamk >= 0.6 else 'niepewne',
                     'srodek': np.round(cm, 2).tolist(), 'obrys': np.round(poly_m, 3).tolist()})
+    # sciany do rysunku: miedzy licami sasiednich pomieszczen (szczeliny do SCIANA_WEWN_MAX) + sciany zewnetrzne
+    # o grubosci SCIANA_ZEWN na zewnatrz obrysu (lica zewnetrznego skaner nie widzi); otwory drzwiowe zostaja puste
+    sciany_arch = []
+    try:
+        INT = RM > 0
+        pad = int(SCIANA_ZEWN / KOM) + 4
+        def kolo(r_):                                         # kwadrat: w ukladzie scian narozniki zostaja proste
+            r_ = max(1, int(round(r_ / KOM))); return np.ones((2 * r_ + 1, 2 * r_ + 1), bool)
+        Ip = np.pad(INT, pad)
+        Z = ndimage.binary_closing(Ip, kolo(SCIANA_WEWN_MAX / 2))
+        wew = Z & ~Ip
+        zew = ndimage.binary_dilation(Z, kolo(SCIANA_ZEWN)) & ~Z
+        Wm = (wew | zew) & ~np.pad(WNEKI, pad)
+        Wm = remove_small_objects(Wm, max_size=int(0.05 / KOM ** 2))
+        for c in find_contours(np.pad(Wm, 1).astype(float), 0.5):
+            if len(c) < 4:
+                continue
+            p = approximate_polygon(c - 1 - pad, tolerance=TOL_RYS / KOM)
+            p = _prostuj(p)
+            if len(p) < 4:
+                continue
+            sciany_arch.append(np.round((p * KOM + m0) @ R + srodek, 3).tolist())
+    except Exception as e:
+        log(f'sciany do rysunku: blad {e}')
     # numeracja: od lewej gory, wierszami co ~3 m
     wyn.sort(key=lambda p: (-round(p['srodek'][1] / 3), p['srodek'][0]))
     stary = {}
@@ -387,7 +441,61 @@ def podziel(k, log=print):
     drzwi = [d_ for d_ in drzwi if d_['a'] and d_['b']]
     log(f"obrys budynku r={r_uzyty} m; pomieszczenia: {len(wyn)}, drzwi/przejscia: {len(drzwi)}, kierunek scian {np.degrees(kat):.1f} st., {time.time() - t0:.1f} s")
     return {'wersja': WERSJA, 'kierunek_st': round(float(np.degrees(kat)), 2), 'wys_zrodlo': k.get('wysokosc_zrodlo', ''), 'obrys_r_m': r_uzyty,
-            'pomieszczenia': wyn, 'drzwi': drzwi}
+            'pomieszczenia': wyn, 'drzwi': drzwi, 'sciany_arch': sciany_arch, 'sciana_zewn_m': SCIANA_ZEWN}
+
+
+# ---------------------------------------------------------------- rysunek architektoniczny (jak inwentaryzacja w ArCADii)
+WARSTWY_ARCH = (('ARCH_SCIANY', 2), ('ARCH_SCIANY_KRESKOWANIE', 8), ('ARCH_STOLARKA_DRZWI', 6), ('ARCH_OPIS POMIESZCZEN', 1),
+                ('ARCH_OPIS WYS POM', 4), ('Kontur wewnętrzny', 6))
+
+
+def warstwy_arch(doc):
+    for n, k in WARSTWY_ARCH:
+        if n not in doc.layers:
+            doc.layers.add(n, color=k)
+    doc.layers.get('ARCH_SCIANY').dxf.lineweight = 50
+
+
+def rysuj_arch(msp, wynik, dx=0.0, wys=None, kreskuj=True):
+    """Sciany obiema licami z kreskowaniem, otwory drzwiowe ze skrzydlem i lukiem, kontury i opisy pomieszczen
+    (nr | nazwa, powierzchnia, hsw). Wspolrzedne wyniku w metrach (uklad mapy); dx - przesuniecie kondygnacji na arkuszu."""
+    przes = lambda P: [(x + dx, y) for x, y in P]
+    for pl in wynik.get('sciany_arch', []):
+        msp.add_lwpolyline(przes(pl), close=True, dxfattribs={'layer': 'ARCH_SCIANY'})
+    if kreskuj and wynik.get('sciany_arch'):
+        h = msp.add_hatch(dxfattribs={'layer': 'ARCH_SCIANY_KRESKOWANIE'})
+        h.set_pattern_fill('ANSI31', scale=0.02)
+        for pl in wynik['sciany_arch']:
+            h.paths.add_polyline_path(przes(pl), is_closed=True)
+    for d_ in wynik.get('drzwi', []):
+        if not d_.get('naroza'):
+            continue
+        n = np.array(przes(d_['naroza']))
+        zawias, oscieze = n[0], n[1]
+        w_ = np.linalg.norm(oscieze - zawias)
+        t = n[3] - n[0]; t = t / (np.linalg.norm(t) or 1)
+        koniec = zawias - t * w_                              # skrzydlo otwarte na 90 st. od lica
+        msp.add_line(tuple(zawias), tuple(koniec), dxfattribs={'layer': 'ARCH_STOLARKA_DRZWI'})
+        a1 = np.degrees(np.arctan2(*(koniec - zawias)[::-1])); a2 = np.degrees(np.arctan2(*(oscieze - zawias)[::-1]))
+        if (a2 - a1) % 360 > 180:
+            a1, a2 = a2, a1
+        msp.add_arc(tuple(zawias), w_, a1, a2, dxfattribs={'layer': 'ARCH_STOLARKA_DRZWI'})
+        for a_, b_ in ((n[0], n[3]), (n[1], n[2])):                  # oscieza (linie lica w otworze)
+            msp.add_line(tuple(a_), tuple(b_), dxfattribs={'layer': 'ARCH_STOLARKA_DRZWI'})
+    for p in wynik.get('pomieszczenia', []):
+        msp.add_lwpolyline(przes(p['obrys']), close=True, dxfattribs={'layer': 'Kontur wewnętrzny'})
+        x, y = p['srodek'][0] + dx, p['srodek'][1]
+        t1 = f"{p['nr']} | {p['nazwa']}" if p['nazwa'] else str(p['nr'])
+        msp.add_text(t1, height=0.15, dxfattribs={'layer': 'ARCH_OPIS POMIESZCZEN'}).set_placement((x, y + 0.05), align=_TA.BOTTOM_CENTER)
+        msp.add_text(f"{p['pow_m2']:.2f} m²".replace('.', ','), height=0.15,
+                     dxfattribs={'layer': 'ARCH_OPIS POMIESZCZEN'}).set_placement((x, y - 0.05), align=_TA.TOP_CENTER)
+        h_ = wys or p.get('wys_m')
+        if h_:
+            msp.add_text(f"hśw={h_:.2f}m".replace('.', ','), height=0.10,
+                         dxfattribs={'layer': 'ARCH_OPIS WYS POM'}).set_placement((x, y - 0.32), align=_TA.TOP_CENTER)
+
+
+from ezdxf.enums import TextEntityAlignment as _TA
 
 
 # ---------------------------------------------------------------- zapis
