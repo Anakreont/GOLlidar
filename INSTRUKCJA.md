@@ -294,3 +294,12 @@ python3 ~/skaner/skan_log.py parter_A --imu /dev/ttyACM0 --baro
 ```
 
 Enter zapisuje znacznik, Ctrl+C kończy nagranie.
+
+## Pomieszczenia z mapy (od 27.11.2026)
+
+`mapa/pomieszczenia.py` dzieli kondygnację na pomieszczenia na podstawie `_wynik/mapa.json`. Wolna przestrzeń to to, co widać z trasy operatora. Podział robi watershed po odległości od ścian, a obszary są łączone, gdy przejście między nimi jest szerokie; wąskie przejścia 0,55–1,6 m zostają jako drzwi.
+Wynik: `pomieszczenia.json`, `pomieszczenia.csv` (powierzchnia, kubatura, wymiary, ocena), `pomieszczenia.png` oraz warstwy `POM_OBRYS`, `POM_NIEPEWNE`, `DRZWI` i podpisy w `rzut.dxf`.
+Liczy się samo przy „Przelicz”. Dla już policzonej mapy: `python3 mapa/przetworz.py <sesja> --tylko-dxf --pomieszczenia`.
+Ocena: „pewne” = obrys w ≥ 85% zamknięty zmierzonymi ścianami, „do sprawdzenia” = 60–85%, „niepewne” = poniżej 60%.
+Nazwa pomieszczenia pochodzi ze znacznika „sala” wpisanego w telefonie wewnątrz obrysu.
+Test: `python3 mapa/test_pomieszczenia.py` (dom syntetyczny, błąd powierzchni ≤ 3%).

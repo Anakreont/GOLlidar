@@ -774,7 +774,7 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/api/sesja':
             pliki = sorted(p for p in os.listdir(k) if os.path.isfile(os.path.join(k, p)))
             wyn = sorted('_wynik/' + p for p in os.listdir(os.path.join(k, '_wynik'))
-                         if p in ('rzut.dxf', 'podglad.png', 'przekroje.dxf', 'model3d.dxf', 'model3d.obj', 'log.txt', 'blad.txt')
+                         if p in ('rzut.dxf', 'podglad.png', 'przekroje.dxf', 'model3d.dxf', 'model3d.obj', 'log.txt', 'blad.txt', 'pomieszczenia.csv', 'pomieszczenia.png')
                          or (p.startswith('przekroj_') and p.endswith('.jpg'))
                          or (p.startswith('porownanie_') and p.endswith('.png'))) if os.path.isdir(os.path.join(k, '_wynik')) else []
             pj = os.path.join(k, '_wynik', 'przekroje.json')

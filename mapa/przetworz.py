@@ -281,6 +281,12 @@ def przetworz(kat):
                 r.pop('obraz')
     with open(os.path.join(wy, 'mapa.json'), 'w', encoding='utf-8') as f:
         json.dump(wynik, f, ensure_ascii=False, separators=(',', ':'))
+    try:
+        print('POSTEP etap pomieszczenia', flush=True)
+        import pomieszczenia
+        pomieszczenia.policz(kat)
+    except Exception as e:                 # pomieszczenia sa dodatkiem - blad nie moze zatrzymac mapy
+        print('pomieszczenia: blad', e)
     print('POSTEP etap eksport', flush=True)
     dxf_i_podglad(kat)
     model3d(kat)
@@ -354,6 +360,11 @@ def obrocona(k, st):
                             **({'linia': (np.array(r['linia']) - m0).tolist()} if r.get('linia') else {}),
                             **({'wym': [[w[0] - m0[0], w[1] - m0[1], w[2] - m0[0], w[3] - m0[1], w[4]] for w in r['wym']]}
                                if r.get('wym') else {})) for r in zn]
+    if k.get('_pom'):
+        P = k['_pom']
+        k2['_pom'] = dict(P, pomieszczenia=[dict(p, obrys=(f(p['obrys']) - m0).tolist(), srodek=(f(p['srodek'])[0] - m0).tolist())
+                                            for p in P['pomieszczenia']],
+                          drzwi=[dict(d, xy=(f(d['xy'])[0] - m0).tolist()) for d in P['drzwi']])
     mx = wsz.max(0) - m0; k2['szer'], k2['wys'] = float(mx[0]), float(mx[1])
     return k2
 
@@ -366,8 +377,16 @@ def dxf_i_podglad(kat):
     with open(os.path.join(wy, 'mapa.json'), encoding='utf-8') as f:
         M = json.load(f)
     nz = nazwy(kat)
+    try:
+        with open(os.path.join(wy, 'pomieszczenia.json'), encoding='utf-8') as f:
+            POM = {str(p['nr']): p for p in json.load(f)['kondygnacje']}
+    except (OSError, ValueError, KeyError):
+        POM = {}
+    for k in M['kondygnacje']:
+        if str(k['nr']) in POM:
+            k['_pom'] = POM[str(k['nr'])]
     doc = ezdxf.new('R2010', setup=True); doc.units = ezdxf.units.M
-    for n, kol in (('SCIANY', 7), ('PUNKTY', 8), ('TRASA', 1), ('OPIS', 3), ('ZDJECIA', 5), ('PRZEKROJE', 6), ('ZNACZNIKI', 2), ('POMIESZCZENIA', 4), ('WYMIARY', 1),
+    for n, kol in (('POM_OBRYS', 4), ('POM_NIEPEWNE', 1), ('DRZWI', 30), ('SCIANY', 7), ('PUNKTY', 8), ('TRASA', 1), ('OPIS', 3), ('ZDJECIA', 5), ('PRZEKROJE', 6), ('ZNACZNIKI', 2), ('POMIESZCZENIA', 4), ('WYMIARY', 1),
                    ('SKALA', 7)):
         doc.layers.add(n, color=kol)
     from dxf_wspolne import podzialka
@@ -388,6 +407,19 @@ def dxf_i_podglad(kat):
         if k['trasa']:
             msp.add_lwpolyline([(x + dx, y) for x, y in k['trasa']], dxfattribs={'layer': 'TRASA'})
             tr = np.array(k['trasa']); ax.plot(tr[:, 0] + dx, tr[:, 1], 'r-', lw=0.4, alpha=0.5)
+        for p in (k.get('_pom') or {}).get('pomieszczenia', []):
+            o = [(x + dx, y) for x, y in p['obrys']]
+            msp.add_lwpolyline(o, close=True, dxfattribs={'layer': 'POM_OBRYS' if p['ocena'] == 'pewne' else 'POM_NIEPEWNE'})
+            tx = f"{p['nr']}{' ' + p['nazwa'] if p['nazwa'] else ''}  {p['pow_m2']:.2f} m2".replace('.', ',')
+            msp.add_text(tx, height=0.18, dxfattribs={'layer': 'POMIESZCZENIA'}).set_placement((p['srodek'][0] + dx, p['srodek'][1] - 0.3))
+            if p['ocena'] != 'pewne':
+                msp.add_text(p['ocena'], height=0.12, dxfattribs={'layer': 'POM_NIEPEWNE'}).set_placement((p['srodek'][0] + dx, p['srodek'][1] - 0.55))
+            oo = np.array(o + o[:1]); ax.plot(oo[:, 0], oo[:, 1], '-', color='teal' if p['ocena'] == 'pewne' else 'darkorange', lw=0.8)
+            ax.text(p['srodek'][0] + dx, p['srodek'][1] - 0.3, tx, fontsize=7, color='teal', ha='center')
+        for d_ in (k.get('_pom') or {}).get('drzwi', []):
+            msp.add_text(f"{d_['typ']} {d_['szer_m']:.2f}".replace('.', ','), height=0.1,
+                         dxfattribs={'layer': 'DRZWI'}).set_placement((d_['xy'][0] + dx, d_['xy'][1]))
+            msp.add_circle((d_['xy'][0] + dx, d_['xy'][1]), 0.08, dxfattribs={'layer': 'DRZWI'})
         najl = najlepsze_pomiary(k['znaczniki'])
         for r in k['znaczniki']:
             if r['rodzaj'] == 'system':
@@ -437,6 +469,12 @@ def dxf_i_podglad(kat):
 if __name__ == '__main__':
     k = sys.argv[1].rstrip('/')
     if '--tylko-dxf' in sys.argv:
+        if not os.path.exists(os.path.join(k, '_wynik', 'pomieszczenia.json')) or '--pomieszczenia' in sys.argv:
+            try:
+                import pomieszczenia
+                pomieszczenia.policz(k)
+            except Exception as e:
+                print('pomieszczenia: blad', e)
         dxf_i_podglad(k); model3d(k)
     else:
         W = przetworz(k)
