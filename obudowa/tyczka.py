@@ -205,31 +205,29 @@ def napis(tekst, wys_lit, z0, x_srodek, y_tyl, y_przod):
     return m, u1 - u0
 
 
-R_KOL = 20.0       # promien kolumny uchwytu L2 (O40; wczesniej O50)
-R_KAN = 12.0       # promien kanalu kabla (O24)
+R_KOL = 21.0       # promien kolumny uchwytu L2 (O42; v1 O50)
+R_KAN = 15.0       # promien kanalu w srodku (O30) - kable L2, GPS i czujnik; scianka 6 mm (sztywnosc jak O40/O24)
+# Wneka serwisowa z klapka (+X): w srodku rury GPS ATGM336H (plytka 13,1 x 15,7 mm + antena ceramiczna) i czujnik
+# temp./wilg. (np. SHT31 / BME280). GPS i antena przyklejone od srodka do klapki (antena patrzy na zewnatrz przez 2 mm
+# PETG); czujnik nizej, za szczelinami w klapce i w przeciwleglej sciance (przewiew przez rure).
+WNEKA_SZ = 18.0    # szerokosc otworu w rurze
+WNEKA_H = 62.0     # wysokosc otworu
+PAD_X = 24.0       # plaska powierzchnia pod klapke (x od osi kolumny)
+KLAPKA_SZ = 30.0   # szerokosc klapki (= szerokosc plaskiego pola)
+KLAPKA_GR = 2.0
 
 
-# GPS ATGM336H: plytka 13,1 x 15,7 mm (+ goldpiny), antena ceramiczna na kabelku IPEX.
-GPS_WN = (34.0, 20.0, 12.0)   # wnetrze obudowy GPS: X (od kolumny na zewnatrz), Y, Z - plytka na dnie, antena na wierzchu pod pokrywa
-GPS_SC = 2.0                  # scianki obudowy GPS
-GPS_LUZ = 0.25                # luz pokrywy (wciskana)
-CZUJ_KLATKA = (24.0, 18.0, 34.0)   # wnetrze klatki czujnika temp./wilg. (np. SHT31, BME280): X, Y, Z
-
-
-def uchwyt_l2_sciana(kat=20.0, PLYTA_H=100.0, NAD=120.0, tekst="GOLlidar", gps=True, czujnik=True):
+def uchwyt_l2_sciana(kat=20.0, PLYTA_H=100.0, NAD=120.0, tekst="GOLlidar", wneka=True):
     """Uchwyt L2 na PLASKA, PIONOWA scianke plecaka (zewnetrzna, od strony za operatorem) przy gornej krawedzi.
     Uklad: scianka w plaszczyznie Y = 0, na zewnatrz +Y (= do tylu za operatorem), gora skrzyni na Z = PLYTA_H + 10.
-    Plyta 70 x PLYTA_H x 6 mm, 4 x M5 przez scianke (od srodka duze podkladki), z mostkiem do kolumny. Kolumna O40
-    (kanal O24) odsunieta od scianki; plytka O64 pod L2 (4 x M3 na O51) ok. NAD mm nad krawedzia skrzyni, pochylona
+    Plyta 70 x PLYTA_H x 6 mm, 4 x M5 przez scianke (od srodka duze podkladki), z mostkiem do kolumny. Kolumna O42
+    (kanal O30) odsunieta od scianki; plytka O64 pod L2 (4 x M3 na O51) ok. NAD mm nad krawedzia skrzyni, pochylona
     o 'kat' do tylu (+Y), pod nia stozek 30 st. (druk bez podpor).
     Kabel L2 wychodzi z boku podstawy L2 (strona -Y, do scianki): opada i wchodzi OKNEM 20 x 30 mm tuz pod stozkiem,
-    dalej kolumna w dol i poziomym kanalem przez plyte do otworu O30 w sciance. Dodatkowo otwor O24 przez srodek
-    plytki (gdyby kabel wychodzil od spodu L2). Na kolumnie od strony +Y wypukly napis 'tekst'.
-    GPS (ATGM336H): zamknieta obudowa z boku (+X), wnetrze 34 x 20 x 12 mm, na wspornikach 45 st.; plytka na dnie,
-    antena ceramiczna na wierzchu (zewnetrzny koniec, poza obrysem L2) pod cienka pokrywa (pokrywa_gps.stl, wciskana);
-    przewod otworem O8 do kanalu. Czujnik temp./wilg.: klatka z boku (-X), otwarta od dolu, szczeliny wentylacyjne, przewod otworem O8
-    do kanalu - z dala od plecow operatora i od elektroniki w skrzyni.
-    Druk tak jak w modelu (stoi na dolnej krawedzi, kolumna pionowo), bez podpor."""
+    dalej kolumna w dol i poziomym kanalem przez plyte do otworu O30 w sciance. Dodatkowo otwor O24 przez srodek plytki.
+    W srodku rury, za klapka z boku (+X, klapka_tuby.stl, 2 x wkret M3): GPS (gora) i czujnik temp./wilg. (dol,
+    przewiew szczelinami w klapce i w sciance -X). Przewody w dol tym samym kanalem do skrzyni.
+    Na kolumnie od strony +Y wypukly napis 'tekst'. Druk tak jak w modelu (stoi na dolnej krawedzi), bez podpor."""
     a = np.radians(kat)
     Yk = 6 + R_KOL                                     # os kolumny od scianki
     RP = L2_PLYTA / 2
@@ -251,59 +249,55 @@ def uchwyt_l2_sciana(kat=20.0, PLYTA_H=100.0, NAD=120.0, tekst="GOLlidar", gps=T
     lacz = b(-R_KOL, R_KOL, 0, Yk, 0, PLYTA_H)        # pelny mostek scianka-kolumna (sztywnosc)
     gora = U(kula(R_KOL, p0), stozek(R_KOL, RP, 0, Lc), wzd(RP, Lc, Lc + 5))
     czesci = [plyta, kol, lacz, gora]
+    zh1 = Zg - 12.0; zh0 = zh1 - WNEKA_H               # otwor wneki
+    if wneka:                                          # plaskie pole pod klapke, dol i gora sciete 45 st.
+        hy = KLAPKA_SZ / 2; zp0, zp1 = zh0 - 10, zh1 + 10; xw = 8.0
+        pk = [[x, y, z] for y in (Yk - hy, Yk + hy) for (x, z) in ((xw, zp0 - (PAD_X - xw)), (PAD_X, zp0), (PAD_X, zp1), (xw, zp1 + (PAD_X - xw)))]
+        czesci.append(trimesh.convex.convex_hull(np.array(pk)))
     if tekst:
         h = 11.0
         nap, dl = napis(tekst, h, 0, 0, Yk + R_KOL - 2.0, Yk + R_KOL + 1.0)
-        z0 = PLYTA_H + 10 + 8 + max(0.0, (Zg - 14 - (PLYTA_H + 18) - dl) / 2)   # nad krawedzia skrzyni, pod oknem
+        z0 = PLYTA_H + 18 + max(0.0, (Zg - 14 - (PLYTA_H + 18) - dl) / 2)
         nap.apply_translation((0, 0, z0))
         czesci.append(nap)
-    gx, gy, gz = GPS_WN
-    zs = Zg - 30.0                                     # gora obudowy GPS
-    gx0 = R_KOL - 4                                    # obudowa wchodzi w kolumne
-    gx1 = R_KOL + gx + GPS_SC                          # zewnetrzna scianka
-    if gps:
-        czesci.append(b(gx0, gx1, Yk - gy / 2 - GPS_SC, Yk + gy / 2 + GPS_SC, zs - gz - GPS_SC, zs))
-        for y in (Yk - gy / 2 - GPS_SC, Yk + gy / 2):                                    # dwa wsporniki 45 st. przy sciankach
-            d = gx1 - gx0
-            czesci.append(trimesh.convex.convex_hull(np.array(
-                [[gx0, yy, z] for yy in (y, y + GPS_SC) for z in (zs - gz - GPS_SC, zs - gz - GPS_SC - d)] +
-                [[gx1, yy, zs - gz - GPS_SC] for yy in (y, y + GPS_SC)])))
-    zt = PLYTA_H + 22.0                                # dol klatki czujnika
-    if czujnik:
-        kx, ky, kz = CZUJ_KLATKA
-        czesci.append(b(-R_KOL - kx - 2, -R_KOL + 4, Yk - ky / 2 - 2, Yk + ky / 2 + 2, zt, zt + kz + 2))
     m = U(*czesci)
     zk = 30.0                                          # wysokosc kanalu kabla przez plyte (otwor O30 w sciance)
     otw = [c(0, Yk, R_KAN, zk, Zg), kula(R_KAN, p0, 3),
-           wzd(R_KAN, -1, Lc + 6),                     # kanal przez stozek i plytke (otwor O24 w srodku plytki)
+           wzd(12, -1, Lc + 6),                        # kanal przez stozek i plytke (otwor O24 w srodku plytki)
            cy(0, zk, R_KAN, -1, Yk), kula(R_KAN, (0, Yk, zk), 3),
            b(-10, 10, Yk - R_KOL - 2, Yk, Zg - 36, Zg - 6)]   # okno na kabel L2 od strony scianki (-Y)
-    if gps:
-        otw += [b(R_KOL, R_KOL + gx, Yk - gy / 2, Yk + gy / 2, zs - gz, zs + 1),          # wnetrze, otwarte od gory (pokrywa)
-                cx(Yk, zs - gz / 2, 4.0, 0, R_KOL + 1)]                                   # przewod do kanalu
-    if czujnik:
-        kx, ky, kz = CZUJ_KLATKA
-        otw += [b(-R_KOL - kx, -R_KOL - 1, Yk - ky / 2, Yk + ky / 2, zt - 1, zt + kz),     # wnetrze, otwarte od dolu
-                cx(Yk, zt + kz - 6, 4.0, -R_KOL - 2, 0)]                                    # przewod do kanalu
-        for i in range(4):                                                                 # szczeliny wentylacyjne
-            z = zt + 6 + i * 6.5
-            otw += [b(-R_KOL - kx - 3, -R_KOL - kx + 1, Yk - ky / 2 + 3, Yk + ky / 2 - 3, z, z + 2.5),
-                    b(-R_KOL - kx + 3, -R_KOL - 4, Yk - ky / 2 - 3, Yk + ky / 2 + 3, z, z + 2.5)]
+    if wneka:
+        otw += [b(0, PAD_X + 1, Yk - WNEKA_SZ / 2, Yk + WNEKA_SZ / 2, zh0, zh1)]           # otwor wneki
+        for z in (zh0 - 5, zh1 + 5):
+            otw += [cx(Yk, z, 1.25, PAD_X - 12, PAD_X + 1, 24)]                             # wkrety M3 (otwor 2,5 w plastik)
+        for i in range(4):                                                                  # przewiew: szczeliny w sciance -X
+            z = zh0 + 3 + i * 5.0
+            otw += [b(-R_KOL - 2, -R_KAN + 1, Yk - 6, Yk + 6, z, z + 2.0)]
     for x in (-24, 24):
         for z in (12, PLYTA_H - 12):
             otw += [cy(x, z, 2.75, -1, Yk + 30), cy(x, z, 5.5, 6, Yk + 30)]   # M5 + dostep do lba od zewnatrz
     for ox, oy in L2_OTWORY:
-        otw += [wzd(1.7, Lc + 1, Lc + 6, ox, oy, 24), wzd(3.2, 2, Lc + 1.0, ox, oy, 24)]  # M3 (plytka 4 mm) + leb od spodu (tunel wychodzi pod stozkiem, kolumny nie nacina)
+        otw += [wzd(1.7, Lc + 1, Lc + 6, ox, oy, 24), wzd(3.2, 2, Lc + 1.0, ox, oy, 24)]  # M3 (plytka 4 mm) + leb od spodu
     return D(m, *otw)
 
 
-def pokrywa_gps():
-    """Wciskana pokrywa obudowy GPS w uchwycie L2: plyta 1,2 mm (antena pod nia), kolnierz 3 mm w otwor.
-    Druk plyta do stolu. Lepiej nie z czarnego filamentu z weglem (tlumi GPS)."""
-    gx, gy, _ = GPS_WN
-    m = U(b(0, gx + GPS_SC, -gy / 2 - GPS_SC, gy / 2 + GPS_SC, 0, 1.2),
-          b(GPS_LUZ, gx - GPS_LUZ, -gy / 2 + GPS_LUZ, gy / 2 - GPS_LUZ, 1.2, 4.2))
-    return D(m, b(GPS_LUZ + 1.2, gx - GPS_LUZ - 1.2, -gy / 2 + GPS_LUZ + 1.2, gy / 2 - GPS_LUZ - 1.2, 1.2, 5))
+def klapka_tuby():
+    """Klapka wneki w rurze uchwytu L2 (2 x wkret M3 x 10). Od srodka: u gory GPS ATGM336H + antena (tasma dwustronna,
+    antena ceramika na zewnatrz), na dole szczeliny przewiewu przy czujniku temp./wilg. Prowadnica 1,5 mm wchodzi
+    w otwor (centruje). Druk plaska strona do stolu. Nie z filamentu z weglem (tlumi GPS)."""
+    hz = WNEKA_H + 20
+    m = U(b(0, KLAPKA_GR, -KLAPKA_SZ / 2, KLAPKA_SZ / 2, 0, hz),
+          b(-1.5, 0.01, -WNEKA_SZ / 2 + 0.3, WNEKA_SZ / 2 - 0.3, 10.3, 10 + WNEKA_H - 0.3))
+    otw = [b(-2, 0, -WNEKA_SZ / 2 + 1.5, WNEKA_SZ / 2 - 1.5, 11.5, 10 + WNEKA_H - 1.5)]   # prowadnica jako ramka
+    for z in (5, hz - 5):
+        otw += [cx(0, z, 1.7, -1, 3, 24)]
+    for i in range(4):                                  # szczeliny przewiewu (dolna czesc = czujnik)
+        z = 14 + i * 5.0
+        otw += [b(-2, 3, -6, 6, z, z + 2.0)]
+    m = D(m, *otw)
+    m.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, (0, 1, 0)))     # plasko na stole
+    m.apply_translation(-m.bounds[0])
+    return m
 
 
 def kolano90():
@@ -337,7 +331,7 @@ if __name__ == "__main__":
                      ("uchwyt_l2_wieko_0", lambda: uchwyt_l2_wieko(0)), ("uchwyt_l2_wieko_20", lambda: uchwyt_l2_wieko(20)),
                      ("uchwyt_l2_wieko_35", lambda: uchwyt_l2_wieko(35)),
                      ("uchwyt_l2_sciana_0", lambda: uchwyt_l2_sciana(0)), ("uchwyt_l2_sciana_20", lambda: uchwyt_l2_sciana(20)),
-                     ("uchwyt_l2_sciana_35", lambda: uchwyt_l2_sciana(35)), ("pokrywa_gps", pokrywa_gps)):
+                     ("uchwyt_l2_sciana_35", lambda: uchwyt_l2_sciana(35)), ("klapka_tuby", klapka_tuby)):
         m = f()
         assert m.is_watertight, nazwa
         m.export(f"{nazwa}.stl")
