@@ -41,7 +41,7 @@ def czytaj_arcadia(d):
     RE = re.compile(r'isa_V[0-9A-F]+_B([0-9A-F]{16})([LR][0-9A-F]{16})(\w+)')
     poz = defaultdict(lambda: {'S': [], 'DR': [], 'E': [], 'okna': []})
     for e in d.modelspace():
-        if e.dxftype() != 'ARCADIA_RXENTITY':
+        if e.dxftype() not in ('ARCADIA_RXENTITY', 'ACAD_PROXY_ENTITY'):   # ArCADia zapisana z ArCADii / z AutoCADa
             continue
         m = RE.match(_warstwa(e))
         if not m or m.group(2)[0] != 'L':
@@ -195,8 +195,7 @@ def _do_m(K, s):
 
 def czytaj(plik):
     d = ezdxf.readfile(plik)
-    if any(e.dxftype() == 'ARCADIA_RXENTITY' for e in d.modelspace()) and \
-            sum(1 for e in d.modelspace() if e.dxftype() == 'ARCADIA_RXENTITY') > 200:
+    if sum(1 for e in d.modelspace() if e.dxftype() in ('ARCADIA_RXENTITY', 'ACAD_PROXY_ENTITY')) > 200:
         return czytaj_arcadia(d)
     return czytaj_warstwy(d)
 
