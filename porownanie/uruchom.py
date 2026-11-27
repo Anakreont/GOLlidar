@@ -272,6 +272,13 @@ def main():
             shutil.copy(zp, os.path.join(kat, '_wynik', f'porownanie_k{nr}.png'))
         wynik['kondygnacje'].append(wk)
     json.dump(wynik, open(os.path.join(wy, 'wynik.json'), 'w'), indent=1, ensure_ascii=False)
+    # nakladka na nasza mape z odchylkami w cm (porownanie/nakladka.py)
+    if os.path.exists(os.path.join(kat, '_wynik', 'mapa.json')):
+        try:
+            from nakladka import nakladka
+            nakladka(kat)
+        except Exception as e:
+            print('== nakladka: BLAD', e, flush=True)
     print('== wyniki:', wy)
 
 

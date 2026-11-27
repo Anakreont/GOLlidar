@@ -23,3 +23,17 @@ Do programów trafia to samo, co do naszego potoku: obroty D500 po korekcji ruch
 Uwaga: Cartographer z robostack nie rozwiązuje `include` w plikach .lua, więc `uruchom.py` skleja konfigurację w `_porownanie/_lua/`. Globalne szukanie pętli jest wyłączone (`global_sampling_ratio = 0`), bo podobne sale łączyły się błędnie.
 
 Test na sesji syntetycznej (korytarz 30 m i 4 sale różnej szerokości, 254 s): Cartographer odtworzył układ poprawnie w obu wariantach (sam LiDAR 85 s, z IMU 44 s na 2 rdzeniach). slam_toolbox na tym samym nagraniu się gubi: korytarz wychodzi skrócony, a sale zlewają się w jedną. Karto potrzebuje odometrii z przesunięciem (np. z kół robota), a my podajemy tylko kurs. Dlatego slam_toolbox nie jest w metodach domyślnych.
+
+## Nakładka na naszą mapę (`nakladka.py`) — od 27.11.2026
+
+Po każdym porównaniu mapa każdego programu jest automatycznie nakładana na naszą (`_wynik/mapa.json`):
+obrót co 2° (też odbicie) + przesunięcie z korelacji FFT, potem ICP z obcinaniem dalekich par.
+Wynik: `k<N>_nakladka_<metoda>.png` (nasza szara, ich ściany kolorem wg odchyłki) i `nakladka.json`.
+
+W przeglądarce (zakładka Porównanie SLAM) tabela: mediana, 90 %, udział < 5/10/20 cm, wspólne ściany,
+ocena; przycisk „↻ Przelicz nakładkę” liczy ją dla starszych porównań bez ponownego SLAM.
+Ręcznie: `python3 porownanie/nakladka.py <sesja>`.
+
+Uwaga: to **zgodność dwóch map**, nie dokładność. Odchyłki liczone tylko dla ścian widocznych w obu
+mapach (do 30 cm), więc przy rozsypanej mapie mediana bywa mała, a mówi o tym niski udział „wspólne ściany”
+(< 70 % = mapy się nie pokrywają). Dokładność rozstrzyga dalmierz albo rzut CAD.

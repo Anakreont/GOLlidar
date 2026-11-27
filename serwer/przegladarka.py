@@ -535,7 +535,30 @@ def stan_por(n, k):
             pass
     if not st:
         st = 'błąd' if os.path.exists(os.path.join(wy, 'blad.txt')) else ('gotowe' if wyn else 'brak')
-    return {'stan': st, 'pliki': pliki, 'wynik': wyn, 'dostepne': bool(skrypt_por()), 'metody': list(METODY_POR)}
+    nak = {}
+    try:
+        nak = json.load(open(os.path.join(wy, 'nakladka.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        pass
+    return {'stan': st, 'pliki': pliki, 'wynik': wyn, 'dostepne': bool(skrypt_por()), 'metody': list(METODY_POR),
+            'nakladka': nak, 'mapa': os.path.exists(os.path.join(k, '_wynik', 'mapa.json')),
+            'nak_stan': W_NAK.get(n, '')}
+
+
+W_NAK = {}                     # sesja -> 'liczy' (nakladka map SLAM na nasza mape)
+
+
+def licz_nakladke(n, k):
+    wy = os.path.join(k, '_porownanie')
+    try:
+        with open(os.path.join(wy, 'nakladka.log'), 'w') as f:
+            subprocess.run([sys.executable, os.path.join(REPO, 'porownanie', 'nakladka.py'), k],
+                           stdout=f, stderr=subprocess.STDOUT, timeout=1800, env=ENV_DZIECI)
+    except Exception:
+        pass
+    finally:
+        with BLOK:
+            W_NAK.pop(n, None)
 
 
 KOLEJKA_L2 = queue.Queue()
@@ -916,6 +939,17 @@ class H(BaseHTTPRequestHandler):
                 return self._json({'blad': 'zla wartosc'}, 400)
             os.makedirs(os.path.join(k, '_wynik', 'l2'), exist_ok=True)
             open(os.path.join(k, '_wynik', 'l2', 'wybor.txt'), 'w').write(w)
+            return self._json({'ok': True})
+        if u.path == '/api/nakladka':
+            if not os.path.exists(os.path.join(k, '_wynik', 'mapa.json')):
+                return self._json({'blad': 'brak naszej mapy (mapa.json) - najpierw policz mape'}, 409)
+            if not any(f.endswith('.yaml') for f in os.listdir(os.path.join(k, '_porownanie'))) if os.path.isdir(os.path.join(k, '_porownanie')) else True:
+                return self._json({'blad': 'brak map z porownania SLAM'}, 409)
+            with BLOK:
+                if W_NAK.get(q['n']):
+                    return self._json({'blad': 'juz liczy'}, 409)
+                W_NAK[q['n']] = 'liczy'
+            threading.Thread(target=licz_nakladke, args=(q['n'], k), daemon=True).start()
             return self._json({'ok': True})
         if u.path == '/api/porownaj':
             if not skrypt_por():

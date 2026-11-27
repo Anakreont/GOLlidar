@@ -384,13 +384,19 @@ function porownanie(){const P=S.porownanie||{stan:'brak',pliki:[],wynik:{}};clea
  const kond=(P.wynik&&P.wynik.kondygnacje)||[];
  if(kond.length){h+='<table><tr><th>kondygnacja</th><th>czas nagrania</th><th>skanów</th><th>metoda</th><th>wynik</th></tr>';
   kond.forEach(k=>Object.entries(k.metody||{}).forEach(([m,r])=>{h+='<tr><td>'+k.nr+'</td><td>'+Math.round(k.czas_s)+' s</td><td>'+k.skanow+'</td><td>'+esc(POR_NAZ[m]||m)+'</td><td class="mala">'+(r.blad?'<span style="color:var(--czerw)">błąd: '+esc(r.blad)+'</span>':'liczono '+Math.round(r.czas_s)+' s')+'</td></tr>'}));h+='</table>'}
+ const NK=P.nakladka||{},nk=Object.values(NK),nzaj=P.nak_stan=='liczy';
+ if(kond.length||nk.length){h+='<h3>Nakładka na naszą mapę (odchyłki)</h3><p class="mala">Mapa programu obrócona i przesunięta tak, żeby najlepiej leżała na naszej; liczona odległość każdego punktu ściany do naszej ściany. Liczone tylko ściany widoczne w obu mapach (do 30 cm). To <b>zgodność map ze sobą</b>, nie dokładność – która lepsza, rozstrzyga pomiar dalmierzem lub rzut CAD.</p>';
+  if(nk.length){h+='<table><tr><th>kond.</th><th>metoda</th><th>mediana</th><th>90 %</th><th>&lt; 5 cm</th><th>&lt; 10 cm</th><th>&lt; 20 cm</th><th>wspólne ściany</th><th>ocena</th></tr>';
+   nk.sort((a,b)=>a.kondygnacja-b.kondygnacja||a.mediana_cm-b.mediana_cm).forEach(r=>{const oc=r.wspolne_proc<70?['mapy się nie pokrywają (rozjechana mapa?)','var(--czerw)']:r.mediana_cm<=3&&r.do_10cm_proc>=90?['zgodne','#1a7f37']:r.mediana_cm<=6?['drobne różnice','#9a6700']:['duże różnice','var(--czerw)'];
+    h+='<tr><td>'+r.kondygnacja+'</td><td>'+esc(POR_NAZ[r.metoda]||r.metoda)+'</td><td>'+liczba(r.mediana_cm,1)+' cm</td><td>'+liczba(r.p90_cm,1)+' cm</td><td>'+liczba(r.do_5cm_proc,0)+' %</td><td>'+liczba(r.do_10cm_proc,0)+' %</td><td>'+liczba(r.do_20cm_proc,0)+' %</td><td>'+liczba(r.wspolne_proc,0)+' %</td><td style="color:'+oc[1]+'">'+oc[0]+'</td></tr>'});h+='</table>'}
+  h+='<p><button class="btn" '+(nzaj||zaj||!P.mapa?'disabled ':'')+'onclick="porNak()">'+(nzaj?'liczy nakładkę…':'↻ Przelicz nakładkę')+'</button>'+(P.mapa?'':' <span class="mala">brak naszej mapy</span>')+'</p>'}
  const png=P.pliki.filter(f=>f.endsWith('.png')),dxf=P.pliki.filter(f=>f.endsWith('.dxf'));
- const zest=png.filter(f=>f.includes('_zestawienie')),inne=png.filter(f=>!f.includes('_zestawienie'));
+ const zest=png.filter(f=>f.includes('_zestawienie')||f.includes('_nakladka_')),inne=png.filter(f=>!f.includes('_zestawienie')&&!f.includes('_nakladka_'));
  h+=zest.concat(inne).map(f=>{const n=f.replace('_porownanie/','');return'<h3>'+esc(n)+'</h3><a href="'+plik(f)+'" target="_blank"><img src="'+plik(f)+'&v='+Date.now()+'" style="max-width:100%;border:1px solid var(--linia);border-radius:8px;background:#fff"></a>'}).join('');
  if(dxf.length)h+='<h3>DXF (punkty ścian)</h3><p>'+dxf.map(f=>'<a class="btn" href="'+plik(f)+'">⬇ '+esc(f.replace('_porownanie/',''))+'</a>').join(' ')+'</p>';
  if(P.pliki.some(f=>f.endsWith('przebieg.log')))h+='<p class="mala"><a href="'+plik('_porownanie/przebieg.log')+'" target="_blank">dziennik liczenia</a>'+(P.pliki.some(f=>f.endsWith('blad.txt'))?' · <a href="'+plik('_porownanie/blad.txt')+'" target="_blank">błąd</a>':'')+'</p>';
  $('tpor').innerHTML=h;
- if(zaj){const n=S.n;porT=setTimeout(()=>{if(S&&S.n==n)fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(S&&S.n==n){S.porownanie=d.porownanie;porownanie()}})},15000)}}
+ if(zaj||nzaj){const n=S.n;porT=setTimeout(()=>{if(S&&S.n==n)fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(S&&S.n==n){S.porownanie=d.porownanie;porownanie()}})},15000)}}
 // ---------------------------------------------------------------- dopasowanie do rzutu CAD (mapa/dopasuj_cad.py)
 const ZR_NAZ={nasz:'nasza mapa',carto_imu:'Cartographer + IMU',carto:'Cartographer (sam LiDAR)',slam_toolbox:'slam_toolbox'};
 let cadT=null;
@@ -422,6 +428,7 @@ function cadWgraj(){const f=$('cadPlik').files[0];if(!f){alert('Wybierz plik DXF
  post('api/cad_wgraj?b='+encodeURIComponent(S.cad.budynek)+'&nazwa='+encodeURIComponent(f.name),()=>cadOdswiez(),f).finally(()=>{const e=$('cadInfo');if(e)e.textContent=''})}
 function cadUstaw(){post('api/cad_ustaw?b='+encodeURIComponent(S.cad.budynek)+'&warstwa='+encodeURIComponent($('cadW').value)+'&jedn='+$('cadJ').value,()=>cadOdswiez())}
 function cadLicz(z,kl){post('api/dopasuj?n='+S.n+'&zrodlo='+z+(kl!==undefined?'&klaster='+kl:''),()=>cadOdswiez())}
+function porNak(){post('api/nakladka?n='+S.n,()=>fetch('api/sesja?n='+S.n).then(r=>r.json()).then(d=>{S.porownanie=d.porownanie;porownanie()}))}
 function porLicz(m){post('api/porownaj?n='+S.n+'&metody='+m,()=>fetch('api/sesja?n='+S.n).then(r=>r.json()).then(d=>{S.porownanie=d.porownanie;porownanie()}))}
 // ---------------------------------------------------------------- Unitree L2 (l2/l2_mapa.sh: l2.bin -> rosbag -> Point-LIO -> rzut)
 let l2T=null;
