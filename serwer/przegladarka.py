@@ -20,7 +20,7 @@ import skan_web as SW          # tylko funkcje czytajace CSV inwentaryzacji
 
 ARGS = None
 SESJA_RE = re.compile(r'^[A-Za-z0-9_+\-]{1,100}$')
-PLIK_RE = re.compile(r'^((_wynik|_porownanie|_wynik/l2)/)?[A-Za-z0-9_\-]{1,60}\.(jpg|csv|txt|bin|dxf|png|json|obj|log|pcd)$')
+PLIK_RE = re.compile(r'^((_wynik|_porownanie|_wynik/l2|_wynik/l2/petle)/)?[A-Za-z0-9_\-]{1,60}\.(jpg|csv|txt|bin|dxf|png|json|obj|log|pcd)$')
 KOLEJKA = queue.PriorityQueue()   # (0 = recznie z przycisku, 1 = automat, licznik, sesja)
 NR_ZLEC = __import__('itertools').count()
 W_TOKU = {}                    # sesja -> 'czeka' | 'liczy'
@@ -611,7 +611,29 @@ def stan_l2(n, k):
             otw = json.load(open(os.path.join(wy, 'otwory.json'), encoding='utf-8'))
         except ValueError:
             pass
-    return {'stan': st, 'pliki': pliki, 'wysokosci': wys, 'otwory': otw, 'dostepne': bool(skrypt_l2()),
+    # wersja z zamknieciem petli (l2_petle.py -> _wynik/l2/petle)
+    wp = os.path.join(wy, 'petle'); petle = None
+    if os.path.isdir(wp):
+        jp = lambda p: os.path.exists(os.path.join(wp, p))
+        petle = {'pliki': sorted('_wynik/l2/petle/' + p for p in os.listdir(wp)
+                                 if p in ('rzut.png', 'rzut.dxf', 'trasa.png', 'otwory.csv', 'chmura.pcd', 'blad.txt')),
+                 'raport': None, 'wysokosci': {}, 'otwory': []}
+        try:
+            petle['raport'] = json.load(open(os.path.join(wp, 'petle.json'), encoding='utf-8')) if jp('petle.json') else None
+            petle['otwory'] = json.load(open(os.path.join(wp, 'otwory.json'), encoding='utf-8')) if jp('otwory.json') else []
+        except ValueError:
+            pass
+        if jp('wysokosci.txt'):
+            for l in open(os.path.join(wp, 'wysokosci.txt'), encoding='utf-8', errors='replace'):
+                if '=' in l:
+                    a_, b_ = l.strip().split('=', 1); petle['wysokosci'][a_] = b_
+    wybor = 'bez'
+    try:
+        wybor = open(os.path.join(wy, 'wybor.txt')).read().strip() or 'bez'
+    except OSError:
+        pass
+    return {'stan': st, 'pliki': pliki, 'wysokosci': wys, 'otwory': otw, 'dostepne': bool(skrypt_l2()), 'petle': petle,
+            'wybor': wybor if (wybor == 'bez' or (petle and '_wynik/l2/petle/rzut.dxf' in petle['pliki'])) else 'bez',
             'liczy_s': round(time.time() - t0) if t0 else None, 'nagranie_s': czas, 'mb': round(rozmiar(os.path.join(k, 'l2.bin')) / 1e6, 1)}
 
 
@@ -887,6 +909,13 @@ class H(BaseHTTPRequestHandler):
                     return self._json({'blad': 'mapa L2 tej sesji juz jest w kolejce'}, 409)
                 W_L2[q['n']] = 'czeka'
             KOLEJKA_L2.put(q['n'])
+            return self._json({'ok': True})
+        if u.path == '/api/l2_wybor':
+            w = q.get('w', 'bez')
+            if w not in ('bez', 'petle'):
+                return self._json({'blad': 'zla wartosc'}, 400)
+            os.makedirs(os.path.join(k, '_wynik', 'l2'), exist_ok=True)
+            open(os.path.join(k, '_wynik', 'l2', 'wybor.txt'), 'w').write(w)
             return self._json({'ok': True})
         if u.path == '/api/porownaj':
             if not skrypt_por():

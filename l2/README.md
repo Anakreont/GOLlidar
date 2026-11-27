@@ -29,3 +29,33 @@ Stan na 26.11.2026: `l2_rzut.py` sprawdzony na sztucznej chmurze. Instalator i P
    - Do istniejącego środowiska raz: `~/.local/bin/micromamba run -p ~/ros1_l2 pip install rosbags`.
 4. Protokół i przeliczenie punktów: `l2_protokol.py` (wg unilidar_sdk2 i discodyer/unilidar_driver). Sprawdzone na sztucznych pakietach; na prawdziwym L2 jeszcze nie.
 5. **Przeglądarka na Dellu** (od 27.11.2026): zakładka „Unitree L2 (3D)” przy nagraniu – przycisk „Policz mapę L2” (kolejka, jedno liczenie naraz, w tym samym limicie pamięci co mapy 2D; trwa mniej więcej tyle, co nagranie), podgląd rzutu, wysokość w świetle, pobieranie `rzut.dxf` (w m/cm/mm) i `chmura.pcd`. Nagrania bez D500 mają stan „tylko L2” – nie są traktowane jak puste i automat nie liczy dla nich mapy 2D. Usuwanie/przeliczanie mapy 2D nie kasuje wyników L2. Lista nagrań: budynek → dzień → nagranie (przełącznik „wg kondygnacji”).
+
+## Zamykanie pętli (`l2_petle.py`) — od 27.11.2026
+
+Point-LIO sam nie zamyka pętli, więc na długiej trasie (cała szkoła) mapa może się
+lekko rozjechać: ten sam korytarz przy powrocie wychodzi przesunięty o kilkadziesiąt cm.
+`l2_mapa.sh` liczy więc **dwie wersje**:
+
+| wersja | gdzie | co |
+|---|---|---|
+| bez pętli | `_wynik/l2/` | czysty Point-LIO (jak dotąd) |
+| z pętlami | `_wynik/l2/petle/` | to samo + korekta trasy po powrotach w znane miejsca |
+
+Jak działa: co ~1 m / 15° klatka kluczowa → przy powrocie (< 5 m od miejsca sprzed
+> 15 m trasy) dopasowanie ICP 3D → odrzucenie słabych i „korytarzowych” (zdegenerowanych)
+dopasowań → graf pozycji (x, y, z, kurs) z odporną stratą → poprawka rozłożona na wszystkie
+skany → nowa chmura → rzut DXF + okna i drzwi.
+
+Pliki w `_wynik/l2/petle/`: `rzut.dxf`, `rzut.png`, `trasa.png` (trasa przed/po, pętle na
+czerwono), `petle.json` (raport), `otwory.csv`, `chmura.pcd`. Gdy coś pójdzie nie tak —
+`blad.txt`, a wersja bez pętli zostaje nietknięta.
+
+W przeglądarce (zakładka L2) wybierasz, którą wersję eksportować (zapis w `_wynik/l2/wybor.txt`);
+przycisk „Rzut L2 DXF” w nagłówku pobiera wybraną. **Wybieraj po porównaniu z CAD lub
+pomiarami kontrolnymi** — w D500 pętle (`posegraf.py`) są wyłączone, bo tam pogarszały wynik.
+
+Zmienne: `L2_PETLE=0` wyłącza, `L2_ZOSTAW_BAG=1` zostawia `pointlio_wynik.bag`.
+Ręcznie: `python3 l2_petle.py pointlio_wynik.bag wyjscie/`.
+
+Test na symulacji (pierścień korytarzy 40×24 m, dryf 2°/min): błąd max **150 → 21 cm**,
+na końcu trasy 126 → 9 cm; bez dryfu i na prostej trasie mapa się nie zmienia.

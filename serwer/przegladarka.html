@@ -220,7 +220,7 @@ function zatrzymaj(){if(confirm('Zatrzymać liczenie tej sesji (mapa, porównani
 function zatrzymajWszystko(){if(confirm('Zatrzymać WSZYSTKIE liczenia i wyczyścić kolejkę?'))post('api/zatrzymaj_wszystko',j=>{alert('Zatrzymano: '+j.ile);setTimeout(()=>{lista();if(S)otworz(S.n)},1500)})}
 function naglowek(){const i=S.info,ma=S.wyniki.includes('_wynik/rzut.dxf'),cz=S.czujniki||{d500:true},L2=S.l2||{};
  $('nag').innerHTML='<div class="tyt"><b>'+esc(i.budynek||'?')+' › '+esc(i.kondygnacja||'?')+'</b><div>'+esc((i.start||'').replace('T',' ').slice(0,16))+' · '+esc(S.n)+' · '+(cz.d500?'D500 <span class="pill '+esc(S.stan)+'">'+stanTxt(S.stan,S.postep)+'</span>':'bez D500')+(cz.l2?' · L2 <span class="pill '+esc(L2.stan)+'">'+esc(L2.stan)+'</span>':'')+'</div></div>'+
- (cz.l2&&L2.pliki&&L2.pliki.includes('_wynik/l2/rzut.dxf')?'<a class="btn'+(ma?'':' gl')+'" href="'+plik('_wynik/l2/rzut.dxf')+'">⬇ Rzut L2 DXF</a>':'')+
+ (cz.l2&&L2.pliki&&L2.pliki.includes('_wynik/l2/rzut.dxf')?'<a class="btn'+(ma?'':' gl')+'" href="'+plik(L2.wybor=='petle'?'_wynik/l2/petle/rzut.dxf':'_wynik/l2/rzut.dxf')+'">⬇ Rzut L2 DXF'+(L2.wybor=='petle'?' (pętle)':'')+'</a>':'')+
  (ma?'<a class="btn gl" href="'+plik('_wynik/rzut.dxf')+'">⬇ Rzut DXF</a>':'')+
  (S.wyniki.includes('_wynik/przekroje.dxf')?'<a class="btn" href="'+plik('_wynik/przekroje.dxf')+'">⬇ Przekroje DXF</a>':'')+
  (S.wyniki.includes('_wynik/model3d.dxf')?'<a class="btn" href="'+plik('_wynik/model3d.dxf')+'">⬇ Model 3D DXF</a><a class="btn" href="'+plik('_wynik/model3d.obj')+'">OBJ</a>':'')+
@@ -438,8 +438,18 @@ function l2(){const X=S.l2||{stan:'brak',pliki:[]},cz=S.czujniki||{};clearTimeou
  const O=X.otwory||[];if(O.length){let no=0,nd=0;h+='<h3>Okna i drzwi wykryte w ścianach ('+O.filter(o=>o.typ=='okno').length+' okien, '+O.filter(o=>o.typ=='drzwi').length+' drzwi)</h3><p class="mala">Na rzucie DXF warstwy OKNA, DRZWI i OTWORY_OPIS – można je wyłączyć. Ściana bez punktów i bez przeszkody przed nią = otwór; zasłonięte meblami nie są liczone. Wymiary w świetle muru z chmury punktów – sprawdzić na miejscu.</p><table><tr><th>nr</th><th>typ</th><th>szer. m</th><th>wys. m</th><th>parapet m</th><th>nadproże m</th></tr>'+
   O.map((o,i)=>'<tr><td>'+(o.typ=='okno'?'O':'D')+(i+1)+'</td><td>'+o.typ+'</td><td>'+liczba(o.szer)+'</td><td>'+liczba(o.wys)+'</td><td>'+(o.typ=='okno'?liczba(o.parapet):'–')+'</td><td>'+liczba(o.nadproze)+'</td></tr>').join('')+'</table>'}
  if(ma('rzut.png'))h+='<a href="'+plik('_wynik/l2/rzut.png')+'" target="_blank"><img src="'+plik('_wynik/l2/rzut.png')+'&v='+Date.now()+'" style="max-width:100%;border:1px solid var(--linia);border-radius:8px;background:#fff"></a>';
+ const Pt=X.petle;
+ if(Pt){const r=Pt.raport||{},mp=f=>Pt.pliki.includes('_wynik/l2/petle/'+f),pp=f=>plik('_wynik/l2/petle/'+f);
+  h+='<h3>Wersja z zamknięciem pętli</h3><p class="mala">Gdy wracasz w to samo miejsce, program dopasowuje skany i prostuje całą trasę (graf pozycji). Mapa bez pętli zostaje – wybierz lepszą, najlepiej po porównaniu z rzutem CAD albo pomiarami kontrolnymi.</p>';
+  if(mp('blad.txt'))h+='<p style="color:var(--czerw)">Zamykanie pętli nie powiodło się – <a href="'+pp('blad.txt')+'" target="_blank">szczegóły</a>. Mapa bez pętli jest poprawna.</p>';
+  if(r.petli!=null)h+='<div class="stat" style="max-width:720px"><div><b>'+r.petli+'</b>pętli przyjętych (kandydatów '+r.kandydatow+')</div><div><b>'+(r.max_przesuniecie_trasy_cm!=null?liczba(r.max_przesuniecie_trasy_cm,1)+' cm':'–')+'</b>max poprawka trasy</div><div><b>'+liczba(r.trasa_m,0)+' m</b>trasa</div><div><b>'+Object.values(r.odrzucone||{}).reduce((a,b)=>a+b,0)+'</b>odrzuconych (korytarze, słabe dopasowanie)</div></div>'+(r.uwaga?'<p class="mala">'+esc(r.uwaga)+'</p>':'');
+  h+='<p>Do eksportu: <select class="btn" onchange="l2Wybor(this.value)"><option value="bez"'+(X.wybor!='petle'?' selected':'')+'>mapa bez pętli</option><option value="petle"'+(X.wybor=='petle'?' selected':'')+(mp('rzut.dxf')?'':' disabled')+'>mapa z pętlami</option></select> '+
+   (mp('rzut.dxf')?'<a class="btn" href="'+pp('rzut.dxf')+'">⬇ Rzut DXF (pętle)</a> ':'')+(mp('otwory.csv')?'<a class="btn" href="'+pp('otwory.csv')+'">⬇ Okna i drzwi (pętle)</a> ':'')+(mp('chmura.pcd')?'<a class="btn" href="'+pp('chmura.pcd')+'">⬇ Chmura (pętle)</a>':'')+'</p>';
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:10px">'+(mp('trasa.png')?'<a href="'+pp('trasa.png')+'" target="_blank"><img src="'+pp('trasa.png')+'&v='+Date.now()+'" style="width:100%;border:1px solid var(--linia);border-radius:8px;background:#fff"></a>':'')+
+   (mp('rzut.png')?'<a href="'+pp('rzut.png')+'" target="_blank"><img src="'+pp('rzut.png')+'&v='+Date.now()+'" style="width:100%;border:1px solid var(--linia);border-radius:8px;background:#fff"></a>':'')+'</div>'}
  $('tl2').innerHTML=h;
  if(zaj){const n=S.n;l2T=setTimeout(()=>{if(S&&S.n==n)fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(S&&S.n==n){const by=S.l2.stan;S.l2=d.l2;l2();if(by!=d.l2.stan)naglowek()}})},15000)}}
+function l2Wybor(w){post('api/l2_wybor?n='+S.n+'&w='+w,()=>fetch('api/sesja?n='+S.n).then(r=>r.json()).then(d=>{S.l2=d.l2;l2();naglowek()}))}
 function l2Licz(){post('api/l2_licz?n='+S.n,()=>fetch('api/sesja?n='+S.n).then(r=>r.json()).then(d=>{S.l2=d.l2;l2();naglowek();lista()}))}
 // ---------------------------------------------------------------- model 3D
 const R3={};
