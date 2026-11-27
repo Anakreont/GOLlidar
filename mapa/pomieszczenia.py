@@ -32,6 +32,7 @@ OSCIEZE = 0.35        # tyle sciany w linii przejscia (z kazdej strony) oznacza 
 OTWOR_MAX = 2.2       # najszerszy otwor z oscieznicami po obu stronach, ktory dzieli pomieszczenia [m]
 MEBEL_MAX = 1.5       # najwieksze wolnostojace skupisko traktowane jako mebel [m]
 LICO = 0.08          # o ile obrys wolnej przestrzeni jest przed licem sciany (szum punktow + poszerzenie) [m]
+BEZ_ZNACZNIKA_MAX = 3.0   # obszar bez znacznika 'sala' (gdy sa znaczniki) mniejszy niz to - dolaczany do sasiada [m2]
 MIN_POW = 0.8         # mniejsze obszary dolaczane do sasiada (nie przez drzwi) [m2]
 WYS_DOMYSLNA = 2.70
 
@@ -132,20 +133,6 @@ def przejscie(L, a, b, prz, wolne=None):
     # koniec przejscia oparty o przeszkode (np. drzwi przy narozniku - krotkie oscieze i sciana prostopadla)
     dotyk = [pas(lo - 3, lo, pop - t, pop + t + 1).any(), pas(hi + 1, hi + 4, pop - t, pop + t + 1).any()]
     wyn['dotyk'] = int(sum(dotyk))
-    # czy za przejsciem przestrzen sie rozszerza po obu stronach (drzwi) - w przekroju korytarza nie
-    if wolne is not None:
-        sr = (lo + hi) // 2; gap = hi - lo + 1; off = int(round(0.4 / KOM))
-        rozs = []
-        for zn in (-1, 1):
-            r_ = pop + zn * off
-            if not (0 <= r_ < (prz.shape[1 - o])):
-                rozs.append(False); continue
-            linia = wolne[:, r_] if o == 0 else wolne[r_, :]
-            if not linia[min(max(sr, 0), len(linia) - 1)]:
-                rozs.append(False); continue
-            lab_, _ = ndimage.label(linia)
-            rozs.append((lab_ == lab_[sr]).sum() >= gap + int(round(0.3 / KOM)))
-        wyn['rozszerza'] = all(rozs)
     # grubosc sciany przy oscieznicach: wiersze poprzeczne z przeszkoda na >= polowie dlugosci pasa
     prof = [pas(i0, i1, pop - sz, pop + sz + 1).mean(axis=0) for (i0, i1), j in zip(strony, jest) if j]
     if prof:
@@ -159,6 +146,22 @@ def przejscie(L, a, b, prz, wolne=None):
                 k_ = lab_[blisko[np.argmin(np.abs(blisko - c))]]
                 rz = np.where(lab_ == k_)[0]
                 wyn['c0'], wyn['c1'] = int(rz.min() + max(pop - sz, 0)), int(rz.max() + max(pop - sz, 0))
+    # czy za przejsciem przestrzen sie rozszerza po obu stronach (drzwi) - w przekroju korytarza nie
+    if wolne is not None:
+        sr = (lo + hi) // 2; gap = hi - lo + 1
+        gr_ = (wyn['c1'] - wyn['c0'] + 1) * KOM / 2 if 'c1' in wyn else 0.15
+        off = int(round((gr_ + 0.25) / KOM))
+        rozs = []
+        for zn in (-1, 1):
+            r_ = pop + zn * off
+            if not (0 <= r_ < (prz.shape[1 - o])):
+                rozs.append(False); continue
+            linia = wolne[:, r_] if o == 0 else wolne[r_, :]
+            if not linia[min(max(sr, 0), len(linia) - 1)]:
+                rozs.append(False); continue
+            lab_, _ = ndimage.label(linia)
+            rozs.append((lab_ == lab_[sr]).sum() >= gap + int(round(0.08 / KOM)))   # drzwi wezsze od przestrzeni po obu stronach
+        wyn['rozszerza'] = all(rozs)
     return wyn
 
 
@@ -262,7 +265,7 @@ def podziel(k, log=print):
         p = OPIS[(a, b)]
         if not (DRZWI_MIN - 2 * LICO <= p['szer'] <= OTWOR_MAX):
             return False
-        return p['osc'] == 2 or (p['osc'] == 1 and p['dotyk'] == 2 and p.get('rozszerza') and p['szer'] <= 1.2)
+        return bool(p.get('rozszerza')) and (p['osc'] == 2 or (p['osc'] == 1 and p['dotyk'] == 2 and p['szer'] <= 1.2))
     while True:
         do = [(nk, a, b) for (a, b), nk in granice(L).items() if not drzwi_(a, b)]
         if not do:
@@ -285,6 +288,29 @@ def podziel(k, log=print):
             break
         OPIS.clear()
 
+    # znaczniki "Jestem tu": maly obszar bez znacznika (kabina WC, wneka, resztka) dolaczany do sasiada ze znacznikiem
+    sala_ = [r for r in k.get('znaczniki', []) if r.get('rodzaj') == 'sala']
+    if len(sala_) >= 3:
+        def lab_zn():
+            z = set()
+            for r in sala_:
+                qi = np.round(((np.array([r['x'], r['y']]) - srodek) @ R.T - m0) / KOM).astype(int)
+                if 0 <= qi[0] < shape[0] and 0 <= qi[1] < shape[1] and L[qi[0], qi[1]] > 0:
+                    z.add(int(L[qi[0], qi[1]]))
+            return z
+        while True:
+            zn = lab_zn(); gr = granice(L); zm = False
+            ids = np.unique(L[L > 0])
+            pw_ = dict(zip(ids, np.asarray(ndimage.sum(np.ones(shape), L, ids)) * KOM ** 2))
+            for i in sorted(ids, key=lambda i: pw_[i]):
+                if i in zn or pw_[i] > BEZ_ZNACZNIKA_MAX:
+                    continue
+                sas = [(nk, b if a == i else a) for (a, b), nk in gr.items() if i in (a, b) and (b if a == i else a) in zn]
+                if sas:
+                    polacz(L, max(sas)[1], i); zm = True; break
+            if not zm:
+                break
+
     # drzwi = pozostale przejscia; wneka drzwiowa (otwor w grubosci sciany) wycinana z obu pomieszczen
     drzwi, WNEKI = [], np.zeros(shape, bool)
     for (a, b), nk in granice(L).items():
@@ -293,7 +319,7 @@ def podziel(k, log=print):
         if not mA.any():
             continue
         c = np.argwhere(mA).mean(0) * KOM + m0
-        jest_dr = p['osc'] == 2 or (p['osc'] == 1 and p.get('dotyk') == 2 and p.get('rozszerza'))
+        jest_dr = bool(p.get('rozszerza')) and (p['osc'] == 2 or (p['osc'] == 1 and p.get('dotyk') == 2))
         szer = p['szer'] + 2 * LICO if jest_dr else p['szer']           # w swietle oscieznic
         dr = {'a': a, 'b': b, 'szer_m': round(float(szer), 2), 'xy': np.round(c @ R + srodek, 2).tolist(),
               'typ': ('drzwi' if szer <= 1.4 else 'otwor') if jest_dr else 'przejscie', 'oscieza': p['osc']}
