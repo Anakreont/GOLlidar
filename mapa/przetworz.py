@@ -371,6 +371,37 @@ def obrocona(k, st):
     return k2
 
 
+def kawalki_punktow(kat, k):
+    """Numer kawalka (jak w kawalki.dxf) dla kazdego punktu chmury kondygnacji k (chmura_cm = Qd[::3]):
+    odtworzenie Qd z kf.npz ta sama droga co w przetworz(). Zwraca (etykiety, {nr: nazwa warstwy}) albo (None, {})."""
+    try:
+        import kawalki as KW
+        lab, czasy, t0 = KW.etykiety_kf(kat)
+        z = np.load(os.path.join(kat, '_wynik', 'kf.npz'))
+        gr = np.cumsum(z['dl'])[:-1]
+        kf = list(zip(z['X'], np.split(z['p'].astype(float), gr), np.split(z['n'].astype(float), gr)))
+        Q, Nn, ile = kondygnacja(kf, z['kt'], k['od'] - 0.051, k['do'] + 0.051)
+        th = kierunek(Q, Nn); c, s = np.cos(-th), np.sin(-th); R = np.array([[c, s], [-s, c]])
+        kom = np.round((Q @ R) / KOM).astype(np.int64)
+        _, odw = np.unique(kom[:, 0] * 1000003 + kom[:, 1], return_inverse=True)
+        par = np.unique(np.stack([odw, ile], 1), axis=0)
+        widz = np.bincount(par[:, 0], minlength=odw.max() + 1)
+        et = lab[ile[widz[odw] >= MIN_KF]][::3]
+        if len(et) * 2 != len(k['chmura_cm']):
+            return None, {}
+        import time as _t
+        g = lambda s_: _t.strftime('%H.%M.%S', _t.localtime((t0 / 1e9) + s_)) if t0 else f'{s_:.0f}s'
+        sl = KW.sale(kat, t0)
+        nazwy = {}
+        for n_, (od, do) in czasy.items():
+            sale_ = list(dict.fromkeys(nz for t, nz in sl if od - 1 <= t <= do + 1 and nz))
+            nazwy[n_] = KW._nazwa_warstwy(f'PUNKTY_K{n_:02d} {g(od)}-{g(do)}' + (' ' + ' '.join(sale_) if sale_ else ''))
+        return et, nazwy
+    except Exception as e:
+        print('punkty wg kawalkow: pomijam -', e)
+        return None, {}
+
+
 def dxf_i_podglad(kat):
     """DXF i PNG z mapa.json - szybkie, bez ponownego liczenia mapy (np. po zmianie nazw kondygnacji)."""
     import ezdxf, matplotlib
@@ -397,15 +428,27 @@ def dxf_i_podglad(kat):
     widoczne = [k for k in M['kondygnacje'] if not nz.get(str(k['nr']), {}).get('ukryj')]
     fig, ax = plt.subplots(figsize=(max(8, 6 * len(widoczne)), 7))
     for k in widoczne:
+        k_org = k
         k = obrocona(k, nz.get(str(k['nr']), {}).get('obrot') or 0)
         nazwa = nz.get(str(k['nr']), {}).get('nazwa') or f"Odcinek {k['nr']}"
         for pl in k['sciany']:
             msp.add_lwpolyline([(x + dx, y) for x, y in pl], dxfattribs={'layer': 'SCIANY'})
             ax.plot([x + dx for x, _ in pl], [y for _, y in pl], 'k-', lw=1.2)
         ch = np.array(k['chmura_cm']).reshape(-1, 2) / 100
-        for p in ch[::2]:
-            msp.add_point((p[0] + dx, p[1]), dxfattribs={'layer': 'PUNKTY'})
-        ax.scatter(ch[:, 0] + dx, ch[:, 1], s=0.2, c='0.7', lw=0)
+        et, nzw = kawalki_punktow(kat, k_org)
+        if et is not None:                        # punkty na warstwach kawalkow (kolory jak w kawalki.dxf / podgladzie)
+            KOL_ = [1, 2, 3, 4, 5, 6, 30, 140, 200, 240]
+            for n_, w_ in nzw.items():
+                if w_ not in doc.layers:
+                    doc.layers.add(w_, color=KOL_[n_ % 10])
+            for p_, e_ in zip(ch[::2], et[::2]):
+                msp.add_point((p_[0] + dx, p_[1]), dxfattribs={'layer': nzw.get(int(e_), 'PUNKTY')})
+            cm_ = plt.cm.tab20(np.linspace(0, 1, 20))
+            ax.scatter(ch[:, 0] + dx, ch[:, 1], s=0.2, c=[cm_[int(e_) % 20] if e_ else (0.7, 0.7, 0.7, 1) for e_ in et], lw=0)
+        else:
+            for p in ch[::2]:
+                msp.add_point((p[0] + dx, p[1]), dxfattribs={'layer': 'PUNKTY'})
+            ax.scatter(ch[:, 0] + dx, ch[:, 1], s=0.2, c='0.7', lw=0)
         if k['trasa']:
             msp.add_lwpolyline([(x + dx, y) for x, y in k['trasa']], dxfattribs={'layer': 'TRASA'})
             tr = np.array(k['trasa']); ax.plot(tr[:, 0] + dx, tr[:, 1], 'r-', lw=0.4, alpha=0.5)

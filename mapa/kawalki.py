@@ -55,6 +55,32 @@ def podziel(kt, ciecia):
     return nr
 
 
+def etykiety_kf(kat):
+    """Numer kawalka (jak w kawalki.dxf: K01, K02...; 0 = pominiety) dla kazdego kluczowego skanu z kf.npz,
+    oraz {nr: (od_s, do_s)} i t0. Ta sama regula ciecia i pomijania malych kawalkow co w kawalki()."""
+    z = np.load(os.path.join(kat, '_wynik', 'kf.npz'))
+    kt = z['kt']; gr = np.cumsum(z['dl'])[:-1]
+    Pl = np.split(z['p'].astype(float), gr); Nl = np.split(z['n'].astype(float), gr)
+    try:
+        ciecia, t0 = przekroje_czasy(kat)
+    except (OSError, KeyError):
+        ciecia, t0 = np.array([]), 0
+    if 'fr' in z.files and len(z['fr']) == len(kt):
+        fr = z['fr']; nr = np.concatenate([[0], np.cumsum(np.diff(fr) != 0)])
+    else:
+        nr = podziel(kt, ciecia)
+    lab = np.zeros(len(kt), int); czasy = {}; n_ = 0
+    for c in range(nr.max() + 1):
+        idx = np.where(nr == c)[0]
+        if len(idx) < MIN_KF:
+            continue
+        ile = sum(int((np.isfinite(Nl[i][:, 0]) & (np.hypot(*Pl[i].T) < 7.0)).sum()) for i in idx)
+        if ile < 300:
+            continue
+        n_ += 1; lab[idx] = n_; czasy[n_] = (float(kt[idx[0]]), float(kt[idx[-1]]))
+    return lab, czasy, t0
+
+
 def kawalki(kat):
     from eksport_dxf import lica
     z = np.load(os.path.join(kat, '_wynik', 'kf.npz'))
