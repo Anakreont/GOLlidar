@@ -1,5 +1,7 @@
 # Skaner 2D na Raspberry Pi 3B+ — instrukcja
 
+**Zestaw z Unitree L2 (plecak, od 27.11.2026):** schemat połączeń `dokumentacja/schemat_polaczen_l2.png` (zasilanie z Parkside X20V, L2 po Ethernecie, kamera CSI, GPS ATGM336H na UART, czujnik temp./wilg. i BMP280 na I2C). Poniżej opis starszego zestawu z D500 na tyczce.
+
 Zestaw: LiDAR D500 (LDROBOT STL-19P), czujnik przechyłu BNO085, barometr BMP280, Raspberry Pi 3B+, powerbank, monopod z gwintem 1/4".
 
 ## 1. Schemat połączeń

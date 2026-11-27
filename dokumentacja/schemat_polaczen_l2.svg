@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1080" viewBox="0 0 1600 1080" font-family="DejaVu Sans, Arial, sans-serif">
+<style>
+ .t{font-size:15px;fill:#1f2933}.b{font-weight:bold}.m{font-size:12.5px;fill:#52606d}.h{font-size:17px;font-weight:bold;fill:#111827}
+ .box{fill:#fff;stroke:#334155;stroke-width:1.6}
+ .rura{fill:#fff7ed;stroke:#c2410c;stroke-width:1.8}
+ .pw{stroke:#dc2626;stroke-width:3.4;fill:none;stroke-linejoin:round}
+ .eth{stroke:#ea580c;stroke-width:4.5;fill:none}.usb{stroke:#2563eb;stroke-width:3;fill:none}
+ .i2c{stroke:#7c3aed;stroke-width:3;fill:none}.uart{stroke:#059669;stroke-width:3;fill:none}
+ .csi{stroke:#0891b2;stroke-width:7;fill:none}
+ .opt{stroke-dasharray:8 6}
+ .grp{fill:#f8fafc;stroke:#94a3b8;stroke-width:1.4;stroke-dasharray:6 5}
+ .pin{font-size:13px;fill:#1f2933;font-family:DejaVu Sans Mono, monospace}
+ .lab{font-size:13px;font-weight:bold;font-family:DejaVu Sans Mono, monospace}
+</style>
+<rect width="1600" height="1080" fill="#fff"/>
+<text x="30" y="42" style="font-size:26px;font-weight:bold;fill:#111827">GOLlidar – schemat połączeń (plecak z Unitree L2)</text>
+<text x="30" y="66" class="m">Stan 27.11.2026 · pomarańczowe ramki = elementy w rurze uchwytu (kable kanałem w dół do otworu Ø33) · linie przerywane = opcjonalne · przed podłączeniem sprawdź napięcia miernikiem</text>
+
+<!-- ================= ZASILANIE ================= -->
+<rect x="20" y="90" width="340" height="960" rx="14" class="grp"/>
+<text x="38" y="118" class="h">Zasilanie (w skrzyni)</text>
+<rect x="45" y="135" width="290" height="62" rx="10" class="box"/>
+<text x="60" y="160" class="t b">Akumulator Parkside X20V</text>
+<text x="60" y="180" class="m">18–21 V · 2 Ah ≈ 2 h · 4 Ah ≈ 4 h</text>
+<rect x="45" y="225" width="290" height="44" rx="10" class="box"/><text x="60" y="253" class="t">Adapter X20V → przewody</text>
+<rect x="45" y="297" width="290" height="44" rx="10" class="box"/><text x="60" y="325" class="t">Bezpiecznik 3 A (na plusie)</text>
+<rect x="45" y="369" width="290" height="44" rx="10" class="box"/><text x="60" y="397" class="t">Włącznik główny</text>
+<rect x="45" y="441" width="290" height="62" rx="10" class="box"/>
+<text x="60" y="466" class="t">Moduł odcięcia napięcia</text><text x="60" y="486" class="m">próg 15,5–16 V (chroni akumulator)</text>
+<path d="M190 197 V225 M190 269 V297 M190 341 V369 M190 413 V441" class="pw"/>
+<path d="M190 503 V540 M110 540 H270 M110 540 V572 M270 540 V572" class="pw"/>
+<rect x="40" y="572" width="140" height="96" rx="10" class="box"/>
+<text x="52" y="597" class="t b">Przetwornica</text><text x="52" y="618" class="t">5,1 V, min. 3 A</text>
+<text x="52" y="638" class="m">ustawić miernikiem</text><text x="52" y="654" class="m">przed podłączeniem</text>
+<rect x="200" y="572" width="140" height="96" rx="10" class="box"/>
+<text x="212" y="597" class="t b">Step-down</text><text x="212" y="618" class="t">12,0 V / 2 A</text>
+<text x="212" y="638" class="m">CC/CV, w obudowie</text><text x="212" y="654" class="m">ustawić miernikiem</text>
+<text x="38" y="740" class="m">Minusy wszystkich przetwornic</text>
+<text x="38" y="756" class="m">połączone – wspólna masa.</text>
+
+<text x="38" y="790" class="h">Kolory</text>
+<line x1="40" y1="805" x2="95" y2="805" class="pw"/><text x="105" y="810" class="m">zasilanie</text>
+<line x1="40" y1="830" x2="95" y2="830" class="eth"/><text x="105" y="835" class="m">Ethernet (L2)</text>
+<line x1="40" y1="855" x2="95" y2="855" class="csi"/><text x="105" y="860" class="m">taśma kamery CSI</text>
+<line x1="40" y1="880" x2="95" y2="880" class="uart"/><text x="105" y="885" class="m">UART (GPS)</text>
+<line x1="40" y1="905" x2="95" y2="905" class="i2c"/><text x="105" y="910" class="m">I2C (czujniki)</text>
+<line x1="40" y1="930" x2="95" y2="930" class="usb"/><text x="105" y="935" class="m">USB</text>
+<line x1="40" y1="955" x2="95" y2="955" class="usb opt"/><text x="105" y="960" class="m">opcjonalne</text>
+
+<!-- ================= ELEMENTY W RURZE (gora) ================= -->
+<rect x="430" y="100" width="300" height="96" rx="10" class="rura"/>
+<text x="446" y="127" class="t b">Unitree L2 (LiDAR 3D)</text>
+<text x="446" y="147" class="m">na górze rury, 4 × M3 × 8</text>
+<text x="446" y="165" class="m">12 V / ok. 1 A, wtyk DC 3,5 × 1,35</text>
+<text x="446" y="183" class="m">IP 192.168.2.62, UDP 6101 / 6201</text>
+<rect x="760" y="100" width="300" height="96" rx="10" class="rura"/>
+<text x="776" y="127" class="t b">Kamera Pi Module 3 Wide</text>
+<text x="776" y="147" class="m">w rurze, obiektyw do tyłu</text>
+<text x="776" y="165" class="m">taśma CSI 15-pin, ok. 1 m</text>
+
+<!-- ================= RASPBERRY PI ================= -->
+<rect x="430" y="300" width="610" height="470" rx="16" fill="#ecfdf5" stroke="#047857" stroke-width="2"/>
+<text x="452" y="410" class="h">Raspberry Pi 3B+</text>
+<text x="452" y="430" class="m">w skrzyni plecaka</text>
+<text x="452" y="448" class="m">rejestrator skan_web.py</text>
+<text x="452" y="466" class="m">strona na telefonie (Wi-Fi)</text>
+<rect x="470" y="318" width="130" height="40" rx="8" class="box"/><text x="486" y="343" class="t">Ethernet</text>
+<rect x="800" y="318" width="130" height="40" rx="8" class="box"/><text x="812" y="343" class="t">CSI kamera</text>
+<rect x="446" y="520" width="150" height="40" rx="8" class="box"/><text x="460" y="545" class="t">microUSB 5 V</text>
+<rect x="470" y="712" width="190" height="40" rx="8" class="box"/><text x="486" y="737" class="t">USB × 4</text>
+
+<!-- GPIO -->
+<rect x="700" y="390" width="320" height="360" rx="10" class="box"/>
+<text x="716" y="415" class="t b">Złącze GPIO</text>
+<text x="716" y="447" class="pin">pin 1   3,3 V</text>
+<text x="716" y="475" class="pin">pin 2/4 5 V</text>
+<text x="716" y="503" class="pin">pin 3   SDA  (I2C)</text>
+<text x="716" y="531" class="pin">pin 5   SCL  (I2C)</text>
+<text x="716" y="559" class="pin">pin 6   GND</text>
+<text x="716" y="587" class="pin">pin 8   TXD  (GPIO14)</text>
+<text x="716" y="615" class="pin">pin 9   GND</text>
+<text x="716" y="643" class="pin">pin 10  RXD  (GPIO15)</text>
+<text x="716" y="671" class="pin">pin 12  GPIO18 (PPS)</text>
+<text x="716" y="700" class="m">GPS: w config.txt enable_uart=1</text>
+<text x="716" y="717" class="m">i dtoverlay=disable-bt; konsola szer.</text>
+<text x="716" y="734" class="m">wyłączona → port /dev/serial0</text>
+
+<!-- ================= PERYFERIA PRAWE ================= -->
+<rect x="1150" y="380" width="420" height="180" rx="10" class="rura"/>
+<text x="1166" y="406" class="t b">GPS ATGM336H + antena (IPEX)</text>
+<text x="1166" y="425" class="m">w rurze; antena pod płaszczem, płytka w szczelinie</text>
+<text x="1166" y="452" class="lab" fill="#dc2626">VCC → pin 4  (5 V)</text>
+<text x="1166" y="474" class="lab" fill="#111827">GND → pin 6</text>
+<text x="1166" y="496" class="lab" fill="#059669">TX  → pin 10 (RXD)</text>
+<text x="1166" y="518" class="lab" fill="#059669">RX  → pin 8  (TXD)</text>
+<text x="1166" y="540" class="lab" fill="#64748b">PPS → pin 12 (opcja)</text>
+
+<rect x="1150" y="590" width="420" height="160" rx="10" class="rura"/>
+<text x="1166" y="616" class="t b">Czujnik temp./wilg. SHT31 (I2C 0x44)</text>
+<text x="1166" y="635" class="m">w rurze, przy szczelinach przewiewu</text>
+<text x="1166" y="662" class="lab" fill="#dc2626">VCC → pin 1  (3,3 V)</text>
+<text x="1166" y="684" class="lab" fill="#111827">GND → pin 9</text>
+<text x="1166" y="706" class="lab" fill="#7c3aed">SDA → pin 3   SCL → pin 5</text>
+<text x="1166" y="730" class="m">BME280 zamiast SHT31: adres 0x77 (BMP280 ma 0x76)</text>
+
+<rect x="1150" y="780" width="420" height="118" rx="10" class="box"/>
+<text x="1166" y="806" class="t b">BMP280 – barometr (I2C 0x76)</text>
+<text x="1166" y="825" class="m">przy Raspberry Pi w skrzyni, przewody 10–20 cm</text>
+<text x="1166" y="852" class="lab" fill="#7c3aed">VCC→1  SDA→3  SCL→5  GND→6</text>
+<text x="1166" y="878" class="m">ta sama magistrala I2C co czujnik temp./wilg.</text>
+
+<!-- ================= OPCJONALNE ================= -->
+<rect x="430" y="860" width="330" height="96" rx="10" class="box" stroke-dasharray="7 5"/>
+<text x="446" y="886" class="t b">LiDAR D500 + adapter USB</text>
+<text x="446" y="906" class="m">opcja · /dev/ttyUSB0, 230400 bps</text>
+<text x="446" y="924" class="m">nagrywa się razem z L2 (2D na tyczce)</text>
+<rect x="790" y="860" width="330" height="96" rx="10" class="box" stroke-dasharray="7 5"/>
+<text x="806" y="886" class="t b">BNO085 + konwerter CH343</text>
+<text x="806" y="906" class="m">opcja · /dev/ttyACM0, SHTP (P1 → 3Vo)</text>
+<text x="806" y="924" class="m">przy L2 zbędny – L2 ma własne IMU</text>
+
+<!-- ================= POLACZENIA ================= -->
+<!-- 5 V do Pi -->
+<path d="M110 668 V690 H390 V540 H446" class="pw"/>
+<text x="200" y="708" class="m" fill="#dc2626">5 V do Pi: krótki, gruby</text>
+<!-- 12 V do L2 -->
+<path d="M270 668 V676 H375 V148 H430" class="pw"/>
+<text x="382" y="138" class="m" fill="#dc2626">12 V</text>
+<!-- Ethernet L2 -->
+<path d="M535 196 V318" class="eth"/>
+<text x="545" y="262" class="m" fill="#ea580c">kabel L2 – RJ45</text>
+<!-- CSI -->
+<path d="M865 196 V318" class="csi"/>
+<text x="878" y="262" class="m" fill="#0891b2">taśma CSI</text>
+<!-- GPS UART bundle -->
+<path d="M1150 470 H1080 V600 H1020" class="uart"/>
+<!-- czujnik I2C -->
+<path d="M1150 670 H1095 V517 H1020" class="i2c"/>
+<!-- BMP280 I2C -->
+<path d="M1150 840 H1095 V670" class="i2c"/><circle cx="1095" cy="670" r="5" fill="#7c3aed"/>
+<!-- opcjonalne USB -->
+<path d="M530 752 V860" class="usb opt"/>
+<path d="M610 752 V800 H955 V860" class="usb opt"/>
+
+<text x="30" y="1068" class="m">dokumentacja/schemat_polaczen_l2.svg · obsługa GPS i czujnika temp./wilg. w rejestratorze – do dopisania po podłączeniu (port /dev/serial0, I2C 0x44)</text>
+</svg>
