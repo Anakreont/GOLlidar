@@ -205,161 +205,110 @@ def napis(tekst, wys_lit, z0, x_srodek, y_tyl, y_przod):
     return m, u1 - u0
 
 
-R_KOL = 21.0       # promien kolumny uchwytu L2 (O42; v1 O50)
-R_KAN = 15.0       # promien kanalu w srodku (O30) - kable L2, GPS i czujnik; scianka 6 mm (sztywnosc jak O40/O24)
-# Wneka serwisowa z klapka (+X): w srodku rury GPS ATGM336H (plytka 13,1 x 15,7 mm + antena ceramiczna) i czujnik
-# temp./wilg. (np. SHT31 / BME280). GPS i antena przyklejone od srodka do klapki (antena patrzy na zewnatrz przez 2 mm
-# PETG); czujnik nizej, za szczelinami w klapce i w przeciwleglej sciance (przewiew przez rure).
-WNEKA_SZ = 18.0    # szerokosc otworu w rurze
-WNEKA_H = 62.0     # wysokosc otworu
-PAD_X = 24.0       # plaska powierzchnia pod klapke (x od osi kolumny)
-KLAPKA_SZ = 30.0   # szerokosc klapki (= szerokosc plaskiego pola)
-KLAPKA_GR = 2.0
-# GPS ATGM336H na klapce: plytka 13,1 x 15,7 x 1,6 mm wsuwana od dolu w prowadnice; antena ceramiczna (zmierzyc!)
-# w kolysce nad plytka, opaska 2,5 mm; czujnik temp./wilg. na polce na dole klapki, opaska, przy szczelinach.
-GPS_PL = (13.1, 15.7, 1.6)
-ANTENA = (13.5, 22.0, 9.0)    # max szerokosc (y), dlugosc (z), grubosc (x) anteny w kolysce
-# Kamera Raspberry Pi Camera Module 3 Wide: plytka 25 x 24 mm, 4 otwory M2 (rozstaw 21 x 12,5, 2 mm od krawedzi),
-# wys. z obiektywem 12,4 mm, obiektyw ok. 9,5 mm od gornej krawedzi (sprawdzic na plytce). Tasma w dol do kanalu.
-KAM_PL = (25.0, 24.0)
-KAM_OTW = [(-10.5, 10.0), (10.5, 10.0), (-10.5, -2.5), (10.5, -2.5)]   # otwory wzgl. srodka plytki (x, z), gora +z
-KAM_SOCZ_Z = 2.5             # srodek obiektywu wzgl. srodka plytki
-KAM_WYS = 12.4               # plytka + obiektyw
-KAM_PAD = (38.0, 50.0, 26.0) # pole pod oslone kamery: szer. (x), wys. (z), odleglosc lica od osi kolumny (y)
+R_KOL = 24.0       # promien kolumny uchwytu L2 (O48)
+R_KAN = 16.0       # promien kanalu (O32): kable L2, GPS, czujnika, tasma kamery
+SKORA = 1.6        # najcienszy plaszcz rury nad obiektywem / antena
+# Elementy w srodku rury, wsuwane OD GORY przez otwor w plytce L2 (przed przykreceniem L2), kazdy we wlasnej prowadnicy
+# do ogranicznika; z zewnatrz widac tylko otwor obiektywu i szczeliny przewiewu.
+GPS_PL = (13.1, 15.7, 1.6)    # ATGM336H (goldpiny 5 x 2,54 na krotszym boku - w dol)
+ANTENA = (13.5, 22.0, 8.0)    # max szer. x dl. x grubosc anteny ceramicznej (zmierzyc!)
+CZUJNIK = (16.0, 3.0)         # max szerokosc plytki czujnika temp./wilg. (SHT31, BME280...) i grubosc szczeliny
+KAM_PL = (25.0, 24.0, 1.0)    # Camera Module 3 Wide: plytka 25 x 24 x 1 mm
+KAM_WYS = 12.4                # plytka + obiektyw
+KAM_SOCZ = 9.5                # srodek obiektywu od gornej krawedzi plytki (sprawdzic na kamerze)
+KAM_OBIEKTYW = 9.6            # szerokosc oprawy obiektywu (kwadrat ok. 8,5 mm + luz)
 
 
-def uchwyt_l2_sciana(kat=20.0, PLYTA_H=100.0, NAD=120.0, tekst="GOLlidar", wneka=True, kamera=True):
-    """Uchwyt L2 na PLASKA, PIONOWA scianke plecaka (zewnetrzna, od strony za operatorem) przy gornej krawedzi.
+def uchwyt_l2_sciana(kat=20.0, PLYTA_H=100.0, NAD=120.0, tekst="GOLlidar"):
+    """Uchwyt L2 na PLASKA, PIONOWA scianke plecaka (zewnetrzna, od strony za operatorem) - JEDEN WYDRUK.
     Uklad: scianka w plaszczyznie Y = 0, na zewnatrz +Y (= do tylu za operatorem), gora skrzyni na Z = PLYTA_H + 10.
-    Plyta 70 x PLYTA_H x 6 mm, 4 x M5 przez scianke (od srodka duze podkladki), z mostkiem do kolumny. Kolumna O42
-    (kanal O30) odsunieta od scianki; plytka O64 pod L2 (4 x M3 na O51) ok. NAD mm nad krawedzia skrzyni, pochylona
-    o 'kat' do tylu (+Y), pod nia stozek 30 st. (druk bez podpor).
-    Kabel L2 wychodzi z boku podstawy L2 (strona -Y, do scianki): opada i wchodzi OKNEM 20 x 30 mm tuz pod stozkiem,
-    dalej kolumna w dol i poziomym kanalem przez plyte do otworu O30 w sciance. Dodatkowo otwor O24 przez srodek plytki.
-    W srodku rury, za klapka z boku (+X, klapka_tuby.stl, 2 x wkret M3): GPS (gora) i czujnik temp./wilg. (dol,
-    przewiew szczelinami w klapce i w sciance -X). Przewody w dol tym samym kanalem do skrzyni.
-    Od tylu (+Y) kieszen kamery Camera Module 3 Wide z oslona (oslona_kamery.stl, 2 x M3), tasma w dol kanalem.
-    Na boku -X wypukly napis 'tekst'. Druk tak jak w modelu (stoi na dolnej krawedzi), bez podpor."""
+    Plyta 70 x PLYTA_H x 6 mm, 4 x M5 przez scianke (od srodka duze podkladki), mostek do kolumny. Kolumna O48 (kanal O32)
+    przechodzi plynnie w plytke O64 pod L2 (4 x M3 na O51) pochylona o 'kat' do tylu; srodek plytki nad osia kolumny.
+    Przez plytke pionowy otwor (kanal + prowadnice) - przez niego, ZANIM przykrecisz L2, wsuwa sie od gory do
+    ogranicznikow: kamere (prowadnice po bokach plytki, obiektyw do tylu przez otwor w plaszczu), antene GPS (wneka
+    w plaszczu, 1,2 mm pod powierzchnia), plytke GPS i czujnik temp./wilg. (szczeliny przy sciance kanalu). Przewody
+    i tasma kamery w dol kanalem; kabel L2 oknem 20 x 30 mm od strony scianki i tym samym kanalem do otworu
+    w sciance skrzyni (kanal O32 -> otwor O33). Napis 'tekst' na boku -X. Druk tak jak w modelu (stoi na dolnej krawedzi), bez podpor."""
     a = np.radians(kat)
     Yk = 6 + R_KOL                                     # os kolumny od scianki
     RP = L2_PLYTA / 2
-    Lc = (RP - R_KOL) / np.tan(np.radians(30))         # dlugosc stozka (30 st. od osi)
-    Zg = PLYTA_H - 10 + NAD - Lc + 10                  # gora kolumny (punkt obrotu)
-    p0 = np.array([0, Yk, Zg])
-    R = trimesh.transformations.rotation_matrix(-a, (1, 0, 0))          # os pochylona do +Y
-    def wzd(r, l0, l1, x=0.0, y=0.0, n=72):
+    Zt = PLYTA_H - 10 + NAD - 22.0                     # gora czesci walcowej kolumny
+    Zp = Zt + 20.0                                     # srodek plytki L2 (nad osia kolumny)
+    R = trimesh.transformations.rotation_matrix(-a, (1, 0, 0))          # os plytki pochylona do +Y
+    pp = np.array([0, Yk, Zp])
+    def pl(r, l0, l1, x=0.0, y=0.0, n=72):             # walec wzdluz osi plytki (l = 0 na spodzie plytki)
         m = cylinder(radius=r, height=l1 - l0, sections=n); m.apply_translation((x, y, (l0 + l1) / 2))
-        m.apply_transform(R); m.apply_translation(p0); return m
-    def stozek(r0, r1, l0, l1, n=96):
+        m.apply_transform(R); m.apply_translation(pp); return m
+    def kolo_pl(r, l, n=96):
         f = np.linspace(0, 2 * np.pi, n, endpoint=False)
-        pk = np.vstack([np.c_[r0 * np.cos(f), r0 * np.sin(f), np.full(n, l0)], np.c_[r1 * np.cos(f), r1 * np.sin(f), np.full(n, l1)]])
-        m = trimesh.convex.convex_hull(pk); m.apply_transform(R); m.apply_translation(p0); return m
-    def kula(r, pkt, sub=4):
-        k = trimesh.creation.icosphere(subdivisions=sub, radius=r); k.apply_translation(pkt); return k
+        P = np.c_[r * np.cos(f), r * np.sin(f), np.full(n, l), np.ones(n)] @ R.T
+        return P[:, :3] + pp
+    f = np.linspace(0, 2 * np.pi, 96, endpoint=False)
+    gora_kol = np.c_[R_KOL * np.cos(f), Yk + R_KOL * np.sin(f), np.full(96, Zt)]
+    przejscie = trimesh.convex.convex_hull(np.vstack([gora_kol, kolo_pl(RP, 0)]))
     plyta = b(-35, 35, 0, 6, 0, PLYTA_H)
-    kol = c(0, Yk, R_KOL, 0, Zg)
-    lacz = b(-R_KOL, R_KOL, 0, Yk, 0, PLYTA_H)        # pelny mostek scianka-kolumna (sztywnosc)
-    gora = U(kula(R_KOL, p0), stozek(R_KOL, RP, 0, Lc), wzd(RP, Lc, Lc + 5))
-    czesci = [plyta, kol, lacz, gora]
-    zh1 = Zg - 12.0; zh0 = zh1 - WNEKA_H               # otwor wneki
-    if wneka:                                          # plaskie pole pod klapke, dol i gora sciete 45 st.
-        hy = KLAPKA_SZ / 2; zp0, zp1 = zh0 - 10, zh1 + 10; xw = 8.0
-        pk = [[x, y, z] for y in (Yk - hy, Yk + hy) for (x, z) in ((xw, zp0 - (PAD_X - xw)), (PAD_X, zp0), (PAD_X, zp1), (xw, zp1 + (PAD_X - xw)))]
-        czesci.append(trimesh.convex.convex_hull(np.array(pk)))
-    kx, kz, ky = KAM_PAD
-    zc = Zg - 8 - kz / 2                               # srodek pola kamery (od tylu, +Y)
-    if kamera:
-        hx = kx / 2; zp0, zp1 = zc - kz / 2, zc + kz / 2; yw = 6.0
-        pk = [[x, Yk + y, z] for x in (-hx, hx) for (y, z) in ((yw, zp0 - (ky - yw)), (ky, zp0), (ky, zp1), (yw, zp1))]
-        czesci.append(trimesh.convex.convex_hull(np.array(pk)))
-    if tekst:                                          # napis na boku -X, nad szczelinami przewiewu (od tylu jest kamera)
-        dol_txt = (Zg - 12 - WNEKA_H + 24) if wneka else PLYTA_H + 14
-        gora_txt = Zg - 6
-        h = min(11.0, (gora_txt - dol_txt) / 5.4)
-        nap, dl = napis(tekst, h, 0, 0, R_KOL - 2.0, R_KOL + 1.0)      # wzgledem osi kolumny, potem obrot na -X
+    kol = c(0, Yk, R_KOL, 0, Zt)
+    lacz = b(-R_KOL, R_KOL, 0, Yk, 0, PLYTA_H)
+    czesci = [plyta, kol, lacz, przejscie, pl(RP, 0, 5)]
+    if tekst:
+        dol_txt, gora_txt = PLYTA_H + 16, Zt - 4
+        h = min(11.0, (gora_txt - dol_txt) / 5.6)
+        nap, dl = napis(tekst, h, 0, 0, R_KOL - 2.0, R_KOL + 1.0)
         nap.apply_translation((0, 0, dol_txt + max(0.0, (gora_txt - dol_txt - dl) / 2)))
         nap.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, (0, 0, 1)))   # +Y -> -X
         nap.apply_translation((0, Yk, 0))
         czesci.append(nap)
     m = U(*czesci)
-    zk = 30.0                                          # wysokosc kanalu kabla przez plyte (otwor O30 w sciance)
-    otw = [c(0, Yk, R_KAN, zk, Zg), kula(R_KAN, p0, 3),
-           wzd(12, -1, Lc + 6),                        # kanal przez stozek i plytke (otwor O24 w srodku plytki)
-           cy(0, zk, R_KAN, -1, Yk), kula(R_KAN, (0, Yk, zk), 3),
-           b(-10, 10, Yk - R_KOL - 2, Yk, Zg - 36, Zg - 6)]   # okno na kabel L2 od strony scianki (-Y)
-    if wneka:
-        otw += [b(0, PAD_X + 1, Yk - WNEKA_SZ / 2, Yk + WNEKA_SZ / 2, zh0, zh1)]           # otwor wneki
-        for z in (zh0 - 5, zh1 + 5):
-            otw += [cx(Yk, z, 1.25, PAD_X - 12, PAD_X + 1, 24)]                             # wkrety M3 (otwor 2,5 w plastik)
-        for i in range(4):                                                                  # przewiew: szczeliny w sciance -X
-            z = zh0 + 3 + i * 5.0
-            otw += [b(-R_KOL - 2, -R_KAN + 1, Yk - 6, Yk + 6, z, z + 2.0)]
-    if kamera:                                         # kieszen kamery: plytka lezy na polkach Yk+11, tasma w dol do kanalu
-        otw += [b(-KAM_PL[0] / 2 - 0.5, KAM_PL[0] / 2 + 0.5, Yk + 11, Yk + ky + 1, zc - KAM_PL[1] / 2 - 6.5, zc + KAM_PL[1] / 2 + 0.5),
-                b(-9, 9, Yk + 4, Yk + 12, zc - KAM_PL[1] / 2 - 6.5, zc - KAM_PL[1] / 2 + 2)]     # przejscie tasmy do kanalu
-        for x in (-(kx / 2 - 2.5), kx / 2 - 2.5):
-            otw += [cy(x, zc, 1.25, Yk + ky - 10, Yk + ky + 1, 24)]                       # wkrety M3 oslony
+
+    GORA = Zp + 30                                     # prowadnice wychodza przez plytke
+    def kier(fi, r0, r1, sz, z0, z1):                  # prostopadloscian w kierunku fi (st.): promieniowo r0..r1, szer. sz
+        mm = b(r0, r1, -sz / 2, sz / 2, z0, z1)
+        mm.apply_transform(trimesh.transformations.rotation_matrix(np.radians(fi), (0, 0, 1)))
+        mm.apply_translation((0, Yk, 0)); return mm
+    zk = 30.0
+    # wysokosci (od gory): kamera, antena, GPS, czujnik
+    z_kam_g = Zt - 8.0                                 # gorna krawedz plytki kamery
+    z_kam_d = z_kam_g - KAM_PL[1]                      # ogranicznik kamery
+    z_socz = z_kam_g - KAM_SOCZ
+    z_ant = Zt - 4.0 - ANTENA[1]                       # ogranicznik anteny
+    z_gps = z_kam_d - 4.0 - GPS_PL[1]                  # ogranicznik GPS
+    z_cz = PLYTA_H + 14.0                              # ogranicznik czujnika (nad krawedzia skrzyni)
+    yb = R_KOL - SKORA - KAM_WYS                       # tyl plytki kamery (od osi kolumny, w strone +Y)
+    otw = [c(0, Yk, R_KAN, zk, GORA), cy(0, zk, R_KAN, -1, Yk), trimesh.creation.icosphere(subdivisions=3, radius=R_KAN).apply_translation((0, Yk, zk)),
+           b(-10, 10, Yk - R_KOL - 2, Yk, Zt - 30, Zt - 2)]                                 # okno kabla L2 (-Y)
+    # kamera: rowki na krawedzie plytki + kanal obiektywu do plaszcza + okno obiektywu z fazka (120 st.)
+    otw += [b(-KAM_PL[0] / 2 - 0.4, KAM_PL[0] / 2 + 0.4, Yk + yb - 0.3, Yk + yb + KAM_PL[2] + 0.4, z_kam_d, GORA),
+            b(-KAM_OBIEKTYW / 2, KAM_OBIEKTYW / 2, Yk + yb, Yk + R_KOL - SKORA, z_kam_d, GORA)]
+    rs = 5.2; rz = rs + SKORA * np.tan(np.radians(62)) + 0.6
+    f = np.linspace(0, 2 * np.pi, 40, endpoint=False)
+    otw += [trimesh.convex.convex_hull(np.vstack([np.c_[rs * np.cos(f), np.full(40, Yk + R_KOL - SKORA - 0.05), z_socz + rs * np.sin(f)],
+                                                  np.c_[rz * np.cos(f), np.full(40, Yk + R_KOL + 0.3), z_socz + rz * np.sin(f)]]))]
+    # antena GPS: wneka w plaszczu (kierunek -22,5 st., miedzy srubami M3), 1,2 mm pod powierzchnia
+    sz_a = ANTENA[0] + 0.6
+    r_a = np.sqrt((R_KOL - SKORA) ** 2 - (sz_a / 2) ** 2)                      # naroza wneki tez pod plaszczem
+    otw += [kier(-22.5, r_a - ANTENA[2] - 0.5, r_a, sz_a, z_ant, GORA)]
+    # plytka GPS: szczelina przy sciance kanalu (kierunek 180 st., -X)
+    otw += [kier(180, R_KAN - 2.5, R_KAN + 1.5, GPS_PL[0] + 0.7, z_gps, GORA)]
+    # czujnik: szczelina od strony scianki (-Y), przewiew szczelinami -Y i +Y na jego wysokosci
+    otw += [kier(-90, R_KAN - 2.5, R_KAN + CZUJNIK[1] - 2.5, CZUJNIK[0] + 0.6, z_cz, GORA)]
+    for i in range(4):
+        z = z_cz + 2 + i * 4.5
+        otw += [b(-6, 6, Yk - R_KOL - 1, Yk - R_KAN + 2, z, z + 2.2), b(-6, 6, Yk + R_KAN - 2, Yk + R_KOL + 1, z, z + 2.2)]
     for x in (-24, 24):
         for z in (12, PLYTA_H - 12):
             otw += [cy(x, z, 2.75, -1, Yk + 30), cy(x, z, 5.5, 6, Yk + 30)]   # M5 + dostep do lba od zewnatrz
+    # tunele na leb M3 i klucz od spodu - omijaja z zapasem 1,5 mm kanal, wneke anteny i obiektyw (nie otwieraja ich na zewnatrz)
+    chron = U(c(0, Yk, R_KAN + 1.5, 0, Zp), kier(-22.5, r_a - ANTENA[2] - 2, r_a + 1.5, sz_a + 3, z_ant - 1.5, GORA),
+              b(-KAM_OBIEKTYW / 2 - 1.5, KAM_OBIEKTYW / 2 + 1.5, Yk + yb - 2, Yk + R_KOL - SKORA + 1.5, z_kam_d - 1.5, GORA),
+              b(-KAM_PL[0] / 2 - 1.9, KAM_PL[0] / 2 + 1.9, Yk + yb - 2, Yk + yb + KAM_PL[2] + 2, z_kam_d - 1.5, GORA))
     for ox, oy in L2_OTWORY:
-        otw += [wzd(1.7, Lc + 1, Lc + 6, ox, oy, 24), wzd(3.2, 2, Lc + 1.0, ox, oy, 24)]  # M3 (plytka 4 mm) + leb od spodu
+        tun = pl(3.2, -35, 1.0, ox, oy, 24)
+        kier_r = (R[:3, :3] @ np.array([ox, oy, 0.0])) / np.hypot(ox, oy)      # promieniowo na zewnatrz (w ukladzie plytki)
+        tun2 = tun.copy(); tun2.apply_translation(kier_r * 12)
+        tun = trimesh.convex.convex_hull(np.vstack([tun.vertices, tun2.vertices]))   # rowek otwarty na zewnatrz: wkret i klucz z boku
+        otw += [pl(1.7, 1, 6, ox, oy, 24),                                  # M3 (plytka 4 mm)
+                D(tun, chron)]
     return D(m, *otw)
-
-
-def klapka_tuby():
-    """Klapka wneki w rurze uchwytu L2 (2 x wkret M3 x 10), od srodka stelaz (bez tasmy):
-    - GPS ATGM336H: prowadnice z rowkiem 1,9 mm, plytka wsuwana od dolu (goldpiny w dol) do zderzaka;
-    - antena ceramiczna: kolyska nad GPS (polka od dolu) + opaska 2,5 mm przez szczeliny w klapce;
-    - czujnik temp./wilg.: polka na dole + dwa zeberka odsuwajace od klapki (powietrze z tylu) + opaska; szczeliny
-      przewiewu w klapce za czujnikiem.
-    Uklad lokalny: x = grubosc (x > 0 lico zewn., x < 0 do srodka rury), y w poprzek, z wzdluz (otwor wneki z 10..72).
-    Druk plaska strona do stolu - stelaz stoi pionowo, bez podpor. Nie z filamentu z weglem (tlumi GPS)."""
-    hz = WNEKA_H + 20; zo0, zo1 = 10.0, 10.0 + WNEKA_H; hy = WNEKA_SZ / 2 - 0.35   # wnetrze otworu (z luzem)
-    cz = [b(0, KLAPKA_GR, -KLAPKA_SZ / 2, KLAPKA_SZ / 2, 0, hz)]
-    cz += [b(-1.5, 0.01, -hy, -hy + 1.2, zo0 + 0.35, zo1 - 0.35), b(-1.5, 0.01, hy - 1.2, hy, zo0 + 0.35, zo1 - 0.35),
-           b(-1.5, 0.01, -hy, hy, zo0 + 0.35, zo0 + 1.5), b(-1.5, 0.01, -hy, hy, zo1 - 1.5, zo1 - 0.35)]   # ramka centrujaca
-    z_cz = zo0 + 1.5                                                                       # czujnik: polka + zeberka
-    cz += [b(-9, 0.01, -hy, hy, z_cz, z_cz + 1.5)] + [b(-3.0, 0.01, y - 0.6, y + 0.6, z_cz, z_cz + 16) for y in (-5, 5)]
-    gw, gh, gt = GPS_PL                                                                    # GPS: prowadnice
-    z_g0 = z_cz + 19.0; z_g1 = z_g0 + gh + 0.6
-    yr = gw / 2 + 0.25
-    for sg in (-1, 1):
-        cz += [b(-6.5, 0.01, *sorted((sg * (yr - 1.2), sg * hy)), z_g0, z_g1)]
-    cz += [b(-6.5, 0.01, -hy, hy, z_g1, z_g1 + 1.5)]                                     # zderzak u gory
-    z_a = z_g1 + 3.0                                                                       # antena: polka kolyski
-    cz += [b(-ANTENA[2] - 1.5, 0.01, -hy, hy, z_a, z_a + 1.5)]
-    m = U(*cz)
-    otw = [b(-4.2, -2.3, -yr, yr, z_g0 - 1, z_g1 + 0.01),                                  # rowek na PCB (1,9 mm)
-           b(-7, -1.6, -(yr - 1.2) + 0.01, (yr - 1.2) - 0.01, z_g0 - 1, z_g1)]             # miedzy prowadnicami wolno
-    for z in (5, hz - 5):
-        otw += [cx(0, z, 1.7, -2, 3, 24)]                                                 # M3
-    for zz in (z_cz + 8, z_a + 1.5 + ANTENA[1] / 2):                                     # szczeliny na opaske 2,5 mm
-        for y in (-(hy - 0.8), hy - 0.8):
-            otw += [b(-2, 3, y - 0.8, y + 0.8, zz - 1.6, zz + 1.6)]
-    for i in range(4):                                                                    # przewiew za czujnikiem
-        z = z_cz + 2.5 + i * 3.5
-        otw += [b(-2, 3, -4, 4, z, z + 2.0)]
-    m = D(m, *otw)
-    m.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, (0, 1, 0)))     # plasko na stole
-    m.apply_translation(-m.bounds[0])
-    return m
-
-
-def oslona_kamery():
-    """Oslona kieszeni kamery (Camera Module 3 Wide) od tylu rury: plyta 2 mm na 2 x wkret M3 x 10, okno obiektywu
-    O15 z fazka (pod kat 120 st.), 4 tulejki dociskajace plytke kamery (kolki O1,7 w otwory M2).
-    Druk lico do stolu. Uklad lokalny: z = grubosc (0 = lico zewn., rosnie do srodka), x, y = szer./wys. (y do gory)."""
-    kx, kz, ky = KAM_PAD
-    dl = ky - 11 - 1.0                                   # od lica oslony do lica plytki kamery (plytka 1 mm na polkach Yk+11)
-    assert dl - KAM_WYS + 1.0 > 0.3, dl
-    m = U(b(-kx / 2, kx / 2, -kz / 2, kz / 2, 0, 2),
-          *[c(x, z, 2.2, 1.9, dl, 24) for x, z in KAM_OTW],                                 # tulejki do lica plytki
-          *[c(x, z, 0.85, dl - 0.1, dl + 1.2, 16) for x, z in KAM_OTW])                     # kolki w otwory M2
-    f = np.linspace(0, 2 * np.pi, 48, endpoint=False); r1 = 7.5 + 2.2 * np.tan(np.radians(60))
-    stozek = trimesh.convex.convex_hull(np.vstack([np.c_[7.5 * np.cos(f), 7.5 * np.sin(f) + KAM_SOCZ_Z, np.full(48, 2.1)],
-                                                   np.c_[r1 * np.cos(f), r1 * np.sin(f) + KAM_SOCZ_Z, np.full(48, -0.1)]]))
-    return D(m, stozek, *[c(x, 0, 1.7, -1, 3, 24) for x in (-(kx / 2 - 2.5), kx / 2 - 2.5)])
 
 
 def kolano90():
@@ -393,7 +342,7 @@ if __name__ == "__main__":
                      ("uchwyt_l2_wieko_0", lambda: uchwyt_l2_wieko(0)), ("uchwyt_l2_wieko_20", lambda: uchwyt_l2_wieko(20)),
                      ("uchwyt_l2_wieko_35", lambda: uchwyt_l2_wieko(35)),
                      ("uchwyt_l2_sciana_0", lambda: uchwyt_l2_sciana(0)), ("uchwyt_l2_sciana_20", lambda: uchwyt_l2_sciana(20)),
-                     ("uchwyt_l2_sciana_35", lambda: uchwyt_l2_sciana(35)), ("klapka_tuby", klapka_tuby), ("oslona_kamery", oslona_kamery)):
+                     ("uchwyt_l2_sciana_35", lambda: uchwyt_l2_sciana(35))):
         m = f()
         assert m.is_watertight, nazwa
         m.export(f"{nazwa}.stl")
