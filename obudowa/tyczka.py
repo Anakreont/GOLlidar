@@ -209,7 +209,10 @@ R_KOL = 20.0       # promien kolumny uchwytu L2 (O40; wczesniej O50)
 R_KAN = 12.0       # promien kanalu kabla (O24)
 
 
-GPS_POLKA = 56.0  # polka pod modul GPS (np. NEO-M8N / BN-880 do 38 x 38 mm) - modul na ZEWNETRZNYM koncu, poza obrysem L2 (x > 37,5)
+# GPS ATGM336H: plytka 13,1 x 15,7 mm (+ goldpiny), antena ceramiczna na kabelku IPEX.
+GPS_WN = (34.0, 20.0, 12.0)   # wnetrze obudowy GPS: X (od kolumny na zewnatrz), Y, Z - plytka na dnie, antena na wierzchu pod pokrywa
+GPS_SC = 2.0                  # scianki obudowy GPS
+GPS_LUZ = 0.25                # luz pokrywy (wciskana)
 CZUJ_KLATKA = (24.0, 18.0, 34.0)   # wnetrze klatki czujnika temp./wilg. (np. SHT31, BME280): X, Y, Z
 
 
@@ -222,8 +225,9 @@ def uchwyt_l2_sciana(kat=20.0, PLYTA_H=100.0, NAD=120.0, tekst="GOLlidar", gps=T
     Kabel L2 wychodzi z boku podstawy L2 (strona -Y, do scianki): opada i wchodzi OKNEM 20 x 30 mm tuz pod stozkiem,
     dalej kolumna w dol i poziomym kanalem przez plyte do otworu O30 w sciance. Dodatkowo otwor O24 przez srodek
     plytki (gdyby kabel wychodzil od spodu L2). Na kolumnie od strony +Y wypukly napis 'tekst'.
-    GPS: polka 56 x 42 mm z boku (+X; modul na zewnetrznym koncu, poza cieniem L2), z rantem i szczelinami na opaske, pod nia wspornik 45 st.; przewod otworem O8
-    do kanalu. Czujnik temp./wilg.: klatka z boku (-X), otwarta od dolu, szczeliny wentylacyjne, przewod otworem O8
+    GPS (ATGM336H): zamknieta obudowa z boku (+X), wnetrze 34 x 20 x 12 mm, na wspornikach 45 st.; plytka na dnie,
+    antena ceramiczna na wierzchu (zewnetrzny koniec, poza obrysem L2) pod cienka pokrywa (pokrywa_gps.stl, wciskana);
+    przewod otworem O8 do kanalu. Czujnik temp./wilg.: klatka z boku (-X), otwarta od dolu, szczeliny wentylacyjne, przewod otworem O8
     do kanalu - z dala od plecow operatora i od elektroniki w skrzyni.
     Druk tak jak w modelu (stoi na dolnej krawedzi, kolumna pionowo), bez podpor."""
     a = np.radians(kat)
@@ -253,14 +257,17 @@ def uchwyt_l2_sciana(kat=20.0, PLYTA_H=100.0, NAD=120.0, tekst="GOLlidar", gps=T
         z0 = PLYTA_H + 10 + 8 + max(0.0, (Zg - 14 - (PLYTA_H + 18) - dl) / 2)   # nad krawedzia skrzyni, pod oknem
         nap.apply_translation((0, 0, z0))
         czesci.append(nap)
-    zs = Zg - 32.0                                     # gora polki GPS
+    gx, gy, gz = GPS_WN
+    zs = Zg - 30.0                                     # gora obudowy GPS
+    gx0 = R_KOL - 4                                    # obudowa wchodzi w kolumne
+    gx1 = R_KOL + gx + GPS_SC                          # zewnetrzna scianka
     if gps:
-        x0, x1, h2 = R_KOL - 3, R_KOL - 3 + GPS_POLKA, 21.0
-        czesci.append(b(x0, x1, Yk - h2, Yk + h2, zs - 4, zs))                       # polka 4 mm
-        czesci.append(b(x1 - 2, x1, Yk - h2, Yk + h2, zs, zs + 3))                   # rant zewnetrzny
-        wsp = trimesh.convex.convex_hull(np.array([[x0, y, z] for y in (Yk - 4, Yk + 4) for z in (zs - 4, zs - 4 - (x1 - x0))] +
-                                                  [[x1, y, zs - 4] for y in (Yk - 4, Yk + 4)]))      # wspornik 45 st.
-        czesci.append(wsp)
+        czesci.append(b(gx0, gx1, Yk - gy / 2 - GPS_SC, Yk + gy / 2 + GPS_SC, zs - gz - GPS_SC, zs))
+        for y in (Yk - gy / 2 - GPS_SC, Yk + gy / 2):                                    # dwa wsporniki 45 st. przy sciankach
+            d = gx1 - gx0
+            czesci.append(trimesh.convex.convex_hull(np.array(
+                [[gx0, yy, z] for yy in (y, y + GPS_SC) for z in (zs - gz - GPS_SC, zs - gz - GPS_SC - d)] +
+                [[gx1, yy, zs - gz - GPS_SC] for yy in (y, y + GPS_SC)])))
     zt = PLYTA_H + 22.0                                # dol klatki czujnika
     if czujnik:
         kx, ky, kz = CZUJ_KLATKA
@@ -272,9 +279,8 @@ def uchwyt_l2_sciana(kat=20.0, PLYTA_H=100.0, NAD=120.0, tekst="GOLlidar", gps=T
            cy(0, zk, R_KAN, -1, Yk), kula(R_KAN, (0, Yk, zk), 3),
            b(-10, 10, Yk - R_KOL - 2, Yk, Zg - 36, Zg - 6)]   # okno na kabel L2 od strony scianki (-Y)
     if gps:
-        otw += [cx(Yk, zs + 6, 4.0, 0, R_KOL + 6)]                                    # przewod GPS do kanalu
-        for y in (Yk - 12, Yk + 12):
-            otw += [b(R_KOL + 14, R_KOL + GPS_POLKA - 10, y - 1.5, y + 1.5, zs - 5, zs + 1)]   # szczeliny na opaske
+        otw += [b(R_KOL, R_KOL + gx, Yk - gy / 2, Yk + gy / 2, zs - gz, zs + 1),          # wnetrze, otwarte od gory (pokrywa)
+                cx(Yk, zs - gz / 2, 4.0, 0, R_KOL + 1)]                                   # przewod do kanalu
     if czujnik:
         kx, ky, kz = CZUJ_KLATKA
         otw += [b(-R_KOL - kx, -R_KOL - 1, Yk - ky / 2, Yk + ky / 2, zt - 1, zt + kz),     # wnetrze, otwarte od dolu
@@ -287,8 +293,17 @@ def uchwyt_l2_sciana(kat=20.0, PLYTA_H=100.0, NAD=120.0, tekst="GOLlidar", gps=T
         for z in (12, PLYTA_H - 12):
             otw += [cy(x, z, 2.75, -1, Yk + 30), cy(x, z, 5.5, 6, Yk + 30)]   # M5 + dostep do lba od zewnatrz
     for ox, oy in L2_OTWORY:
-        otw += [wzd(1.7, Lc + 1, Lc + 6, ox, oy, 24), wzd(3.2, -30, Lc + 1.0, ox, oy, 24)]  # M3 (plytka 4 mm) + leb od spodu
+        otw += [wzd(1.7, Lc + 1, Lc + 6, ox, oy, 24), wzd(3.2, 2, Lc + 1.0, ox, oy, 24)]  # M3 (plytka 4 mm) + leb od spodu (tunel wychodzi pod stozkiem, kolumny nie nacina)
     return D(m, *otw)
+
+
+def pokrywa_gps():
+    """Wciskana pokrywa obudowy GPS w uchwycie L2: plyta 1,2 mm (antena pod nia), kolnierz 3 mm w otwor.
+    Druk plyta do stolu. Lepiej nie z czarnego filamentu z weglem (tlumi GPS)."""
+    gx, gy, _ = GPS_WN
+    m = U(b(0, gx + GPS_SC, -gy / 2 - GPS_SC, gy / 2 + GPS_SC, 0, 1.2),
+          b(GPS_LUZ, gx - GPS_LUZ, -gy / 2 + GPS_LUZ, gy / 2 - GPS_LUZ, 1.2, 4.2))
+    return D(m, b(GPS_LUZ + 1.2, gx - GPS_LUZ - 1.2, -gy / 2 + GPS_LUZ + 1.2, gy / 2 - GPS_LUZ - 1.2, 1.2, 5))
 
 
 def kolano90():
@@ -322,7 +337,7 @@ if __name__ == "__main__":
                      ("uchwyt_l2_wieko_0", lambda: uchwyt_l2_wieko(0)), ("uchwyt_l2_wieko_20", lambda: uchwyt_l2_wieko(20)),
                      ("uchwyt_l2_wieko_35", lambda: uchwyt_l2_wieko(35)),
                      ("uchwyt_l2_sciana_0", lambda: uchwyt_l2_sciana(0)), ("uchwyt_l2_sciana_20", lambda: uchwyt_l2_sciana(20)),
-                     ("uchwyt_l2_sciana_35", lambda: uchwyt_l2_sciana(35))):
+                     ("uchwyt_l2_sciana_35", lambda: uchwyt_l2_sciana(35)), ("pokrywa_gps", pokrywa_gps)):
         m = f()
         assert m.is_watertight, nazwa
         m.export(f"{nazwa}.stl")
