@@ -137,11 +137,11 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
 <div id="modal" onclick="if(event.target===this)zamknij()"><div class="okno" id="mokno"></div></div>
 <script>
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let L=[],S=null,M=null,NZ={},KO=[],tryb=null,pA=null,seg=0,wid={x:0,y:0,s:50},wyb=null,rozwin={};
-const KOL={pomiar:'#0d9488',sala:'#1e3a8a',foto:'#2563eb',przekroj:'#9333ea',punkt:'#ea580c',notatka:'#16a34a',oprawy:'#0891b2',grzejnik:'#dc2626',okno:'#ca8a04'};
-const NAZ={pomiar:'Pomiary',sala:'Nazwy pomieszczeń',sciany:'Ściany',chmura:'Chmura punktów',trasa:'Trasa',foto:'Zdjęcia',przekroj:'Przekroje',punkt:'Punkty',notatka:'Notatki',oprawy:'Oprawy',grzejnik:'Grzejniki',okno:'Okna'};
+let POM=null,L=[],S=null,M=null,NZ={},KO=[],tryb=null,pA=null,seg=0,wid={x:0,y:0,s:50},wyb=null,rozwin={};
+const KOL={pom:'#2a9d8f',pomiar:'#0d9488',sala:'#1e3a8a',foto:'#2563eb',przekroj:'#9333ea',punkt:'#ea580c',notatka:'#16a34a',oprawy:'#0891b2',grzejnik:'#dc2626',okno:'#ca8a04'};
+const NAZ={pom:'Pomieszczenia',pomiar:'Pomiary',sala:'Nazwy pomieszczeń',sciany:'Ściany',chmura:'Chmura punktów',trasa:'Trasa',foto:'Zdjęcia',przekroj:'Przekroje',punkt:'Punkty',notatka:'Notatki',oprawy:'Oprawy',grzejnik:'Grzejniki',okno:'Okna'};
 const ZNAK={foto:'📷',przekroj:'⊥',punkt:'•',notatka:'✎',oprawy:'💡',grzejnik:'♨',okno:'▭'};
-const W={pomiar:1,sala:1,sciany:1,chmura:1,trasa:1,foto:1,przekroj:1,punkt:1,notatka:1,oprawy:1,grzejnik:1,okno:1};
+const W={pom:1,pomiar:1,sala:1,sciany:1,chmura:1,trasa:1,foto:1,przekroj:1,punkt:1,notatka:1,oprawy:1,grzejnik:1,okno:1};
 let JEDN='cm';try{JEDN=localStorage.getItem('lidar_jedn')||'cm'}catch(e){}
 const czasTxt=s=>s<60?'<1 min':s<3600?Math.round(s/60)+' min':Math.floor(s/3600)+' h '+Math.round(s%3600/60)+' min';
 function stanTxt(st,p){if(!p)return esc(st);const godz=new Date(Date.now()+p.eta_s*1000).toTimeString().slice(0,5);
@@ -209,13 +209,17 @@ function czysc(){$('nag').innerHTML='<div class="tyt"><b>Wybierz nagranie z list
 // ---------------------------------------------------------------- sesja
 function otworz(n){fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{S=d;S.n=n;M=null;wyb=null;rysujListe();naglowek();galeria();przekroje();znaczniki();inwent();pliki();porownanie();cad();l2();
  if(S.czujniki&&!S.czujniki.d500&&S.czujniki.l2&&$('w2d').classList.contains('akt'))pokazWidok('wl2');
- fetch('api/mapa?n='+n).then(r=>r.ok?r.json():null).then(j=>{if(j){M=j.mapa;NZ=j.nazwy||{};KO=j.kontrola||[];seg=0;
- (M.kondygnacje||[]).forEach(k=>{k.znaczniki.forEach(z=>{if((z.opis||'').startsWith('POMIAR '))z.rodzaj='pomiar'});grupujPom(k.znaczniki)});}else{M=null;KO=[]}panel();warstwy();dopasuj();rys();if($('w3d').classList.contains('akt'))tryb3d()})})}
+ fetch('api/mapa?n='+n).then(r=>r.ok?r.json():null).then(j=>{POM=j?j.pomieszczenia:null;if(j){M=j.mapa;NZ=j.nazwy||{};KO=j.kontrola||[];seg=0;
+ (M.kondygnacje||[]).forEach(k=>{k.znaczniki.forEach(z=>{if((z.opis||'').startsWith('POMIAR '))z.rodzaj='pomiar'});grupujPom(k.znaczniki)});}else{M=null;KO=[]}panel();warstwy();dopasuj();rys();inwent();if($('w3d').classList.contains('akt'))tryb3d()})})}
 function kawTxt(){const K=S.kawalki||{};if(K.stan=='gotowe')return'<a class="btn" title="Mapa pocięta na przekrojach i przerwach – każdy kawałek jako blok do przesuwania/obracania w CAD" href="'+plik('_wynik/kawalki.dxf')+'">⬇ Kawałki DXF</a><a class="btn" href="'+plik('_wynik/kawalki.png')+'" target="_blank">podgląd</a>';
  if(K.stan=='liczy'||K.stan=='czeka')return'<span class="btn">✂ tnę na kawałki…</span>';
  if(K.stan=='brak')return'<button class="btn" title="Potnij mapę na kawałki w miejscach przekrojów i przerw – do ręcznego sklejania w CAD" onclick="kawLicz()">✂ Kawałki</button>';return''}
+function pomTxt(){const P_=S.pomieszczenia||{};if(P_.stan=='liczy'||P_.stan=='czeka')return'<span class="btn">🏠 dzielę na pomieszczenia…</span>';
+ if(P_.stan=='brak'||P_.stan=='gotowe')return'<button class="btn" title="Podziel rzut na pomieszczenia: obrysy, powierzchnie (bez wnęk drzwiowych), kubatury, drzwi – z gotowej mapy, kilka sekund" onclick="pomLicz()">🏠 '+(P_.stan=='gotowe'?'Przelicz pomieszczenia':'Pomieszczenia')+'</button>';return''}
+function pomLicz(){post('api/pomieszczenia?n='+S.n,()=>{S.pomieszczenia={stan:'liczy'};naglowek();const n=S.n;const f=()=>fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(!S||S.n!=n)return;S.pomieszczenia=d.pomieszczenia;S.wyniki=d.wyniki;naglowek();
+ if(d.pomieszczenia.stan=='liczy'||d.pomieszczenia.stan=='czeka')setTimeout(f,3000);else{otworz(n);if(d.pomieszczenia.stan!='gotowe')alert('Podział na pomieszczenia nie wyszedł – szczegóły w Plikach (pomieszczenia_log.txt)')}});setTimeout(f,3000)})}
 function kawLicz(){post('api/kawalki?n='+S.n,()=>{S.kawalki={stan:'liczy'};naglowek();const n=S.n;const f=()=>fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(!S||S.n!=n)return;S.kawalki=d.kawalki;S.wyniki=d.wyniki;naglowek();if(d.kawalki.stan!='gotowe')setTimeout(f,10000)});setTimeout(f,10000)})}
-function zajeta(){const z=x=>x=='liczy'||x=='czeka';return z(S.stan)||z((S.porownanie||{}).stan)||z((S.cad||{}).stan)||z((S.kawalki||{}).stan)||z((S.l2||{}).stan)}
+function zajeta(){const z=x=>x=='liczy'||x=='czeka';return z(S.stan)||z((S.porownanie||{}).stan)||z((S.cad||{}).stan)||z((S.kawalki||{}).stan)||z((S.l2||{}).stan)||z((S.pomieszczenia||{}).stan)}
 function zatrzymaj(){if(confirm('Zatrzymać liczenie tej sesji (mapa, porównanie, CAD, kawałki) i usunąć ją z kolejki?'))post('api/zatrzymaj?n='+S.n,()=>{setTimeout(()=>{lista();otworz(S.n)},1500)})}
 function zatrzymajWszystko(){if(confirm('Zatrzymać WSZYSTKIE liczenia i wyczyścić kolejkę?'))post('api/zatrzymaj_wszystko',j=>{alert('Zatrzymano: '+j.ile);setTimeout(()=>{lista();if(S)otworz(S.n)},1500)})}
 function naglowek(){const i=S.info,ma=S.wyniki.includes('_wynik/rzut.dxf'),cz=S.czujniki||{d500:true},L2=S.l2||{};
@@ -224,7 +228,7 @@ function naglowek(){const i=S.info,ma=S.wyniki.includes('_wynik/rzut.dxf'),cz=S.
  (ma?'<a class="btn gl" href="'+plik('_wynik/rzut.dxf')+'">⬇ Rzut DXF</a>':'')+
  (S.wyniki.includes('_wynik/przekroje.dxf')?'<a class="btn" href="'+plik('_wynik/przekroje.dxf')+'">⬇ Przekroje DXF</a>':'')+
  (S.wyniki.includes('_wynik/model3d.dxf')?'<a class="btn" href="'+plik('_wynik/model3d.dxf')+'">⬇ Model 3D DXF</a><a class="btn" href="'+plik('_wynik/model3d.obj')+'">OBJ</a>':'')+
- (zajeta()?'<button class="btn" style="color:var(--czerw)" onclick="zatrzymaj()">⏹ Zatrzymaj</button>':'')+kawTxt()+'<select class="btn" title="Jednostka plików DXF (rysunek 1:1)" onchange="ustawJedn(this.value)">'+['m','cm','mm'].map(j=>'<option value="'+j+'"'+(j==JEDN?' selected':'')+'>DXF w '+j+'</option>').join('')+'</select>'+
+ (zajeta()?'<button class="btn" style="color:var(--czerw)" onclick="zatrzymaj()">⏹ Zatrzymaj</button>':'')+pomTxt()+kawTxt()+'<select class="btn" title="Jednostka plików DXF (rysunek 1:1)" onchange="ustawJedn(this.value)">'+['m','cm','mm'].map(j=>'<option value="'+j+'"'+(j==JEDN?' selected':'')+'>DXF w '+j+'</option>').join('')+'</select>'+
  (cz.d500?'<button class="btn" onclick="przelicz()">🔄 Przelicz</button>':'')+(cz.l2?'<button class="btn" onclick="pokazWidok(\'wl2\')">🧊 Mapa L2</button>':'')+'<div class="menu"><button class="btn" onclick="this.parentNode.classList.toggle(\'otw\')">⋯</button><div class="lista">'+
  '<button onclick="usunMape()">Usuń mapę tej sesji (policzy się od nowa)</button><button style="color:var(--czerw)" onclick="usunSesje()">Przenieś całą sesję do kosza</button></div></div>'}
 function przelicz(){post('api/przelicz?n='+S.n,()=>{alert('Zlecone – mapa liczy się ok. 1 min na każde 8 min nagrania.');lista()})}
@@ -276,6 +280,11 @@ function rys(){const r=c.getBoundingClientRect(),d=devicePixelRatio||1;if(!r.wid
  for(let x=-2;x<=k.szer+2;x+=m){const[a,b]=P(x,-2),[a2,b2]=P(x,k.wys+2);g.beginPath();g.moveTo(a,b);g.lineTo(a2,b2);g.stroke()}
  for(let y=-2;y<=k.wys+2;y+=m){const[a,b]=P(-2,y),[a2,b2]=P(k.szer+2,y);g.beginPath();g.moveTo(a,b);g.lineTo(a2,b2);g.stroke()}
  if(W.chmura){g.fillStyle='rgba(100,116,139,.35)';const ch=k.chmura_cm,st=wid.s<30?2:1;for(let i=0;i<ch.length;i+=2*st){const[a,b]=P(ch[i]/100,ch[i+1]/100);g.fillRect(a,b,1.4,1.4)}}
+ const PK=POM&&W.pom?(POM.kondygnacje||[]).find(x=>x.nr==k.nr):null;
+ if(PK){const KP={'pewne':'42,157,143','do sprawdzenia':'233,196,106','niepewne':'231,111,81'};
+  PK.pomieszczenia.forEach(p=>{const c_=KP[p.ocena]||KP.niepewne;g.fillStyle='rgba('+c_+',.22)';g.strokeStyle='rgba('+c_+',.9)';g.lineWidth=1.5;g.beginPath();
+   p.obrys.forEach((q,i)=>{const[a,b]=P(q[0],q[1]);i?g.lineTo(a,b):g.moveTo(a,b)});g.closePath();g.fill();g.stroke()});
+  (PK.drzwi||[]).forEach(d=>{if(d.typ=='przejscie')return;const[a,b]=P(d.xy[0],d.xy[1]);g.fillStyle='#b45309';g.fillRect(a-4,b-4,8,8)})}
  if(W.trasa&&k.trasa.length){g.strokeStyle='rgba(239,68,68,.45)';g.lineWidth=1.2;g.setLineDash([4,3]);g.beginPath();k.trasa.forEach((p,i)=>{const[a,b]=P(p[0],p[1]);i?g.lineTo(a,b):g.moveTo(a,b)});g.stroke();g.setLineDash([])}
  if(W.sciany){g.lineCap='round';k.sciany.forEach((pl,j)=>{g.strokeStyle=(k.typy_scian||[])[j]=='inne'?'#475569':'#111827';g.lineWidth=Math.max(1.6,Math.min(4,wid.s*0.035));g.beginPath();pl.forEach((p,i)=>{const[a,b]=P(p[0],p[1]);i?g.lineTo(a,b):g.moveTo(a,b)});g.stroke()})}
  k.znaczniki.forEach(z=>{if(z.rodzaj=='system'||!W[z.rodzaj])return;
@@ -283,6 +292,9 @@ function rys(){const r=c.getBoundingClientRect(),d=devicePixelRatio||1;if(!r.wid
    for(let d=-32;d<=32;d+=8){const[a1,b1]=P(z.x+Lc*Math.cos(A+d*Math.PI/180),z.y+Lc*Math.sin(A+d*Math.PI/180));g.lineTo(a1,b1)}g.closePath();g.fill();g.stroke()}
   if(z.linia){const[a1,b1]=P(z.linia[0][0],z.linia[0][1]),[a2,b2]=P(z.linia[1][0],z.linia[1][1]);g.strokeStyle='rgba(147,51,234,.8)';g.lineWidth=2;g.setLineDash([7,4]);g.beginPath();g.moveTo(a1,b1);g.lineTo(a2,b2);g.stroke();g.setLineDash([]);
    const dx=a2-a1,dy=b2-b1,n=Math.hypot(dx,dy)||1,px=-dy/n*6,py=dx/n*6;g.beginPath();g.moveTo(a1-px,b1-py);g.lineTo(a1+px,b1+py);g.moveTo(a2-px,b2-py);g.lineTo(a2+px,b2+py);g.stroke()}});
+ if(PK){PK.pomieszczenia.forEach(p=>{const[a,b]=P(p.srodek[0],p.srodek[1]),t1=p.nr+(p.nazwa?' '+p.nazwa:''),t2=liczba(p.pow_m2)+' m²';g.textAlign='center';
+  g.font='bold 12px system-ui';const w_=Math.max(g.measureText(t1).width,g.measureText(t2).width);g.fillStyle='rgba(255,255,255,.8)';g.fillRect(a-w_/2-3,b+8,w_+6,30);
+  g.fillStyle='#134e4a';g.fillText(t1,a,b+21);g.font='12px system-ui';g.fillText(t2,a,b+35);g.textAlign='left'})}
  k.znaczniki.forEach(z=>{if(z.rodzaj!='sala'||!W.sala)return;const[a,b]=P(z.x,z.y);g.font='bold 13px system-ui';g.textAlign='center';const w=g.measureText(z.opis).width;g.fillStyle='rgba(255,255,255,.85)';g.fillRect(a-w/2-4,b-10,w+8,19);g.fillStyle='#1e3a8a';g.fillText(z.opis,a,b+4);g.textAlign='left'});
  k.znaczniki.forEach(z=>{if(z.rodzaj!='pomiar'||!W.pomiar||!z.wym||(z.ukryty&&z!==wyb))return;   // linie wymiarowe pomiaru z postoju
   z.wym.forEach(w=>{const[a1,b1]=P(w[0],w[1]),[a2,b2]=P(w[2],w[3]),L=Math.hypot(a2-a1,b2-b1)||1,ux=(a2-a1)/L,uy=(b2-b1)/L;
@@ -365,9 +377,15 @@ function pomiaryTab(){const Z=(S.znaczniki||[]).filter(z=>(z.opis||'').startsWit
    przod:p.przod?liczba(p.przod):liczba(p.a),bok:p.bok?liczba(p.bok):liczba(p.b),obrys:liczba(p.obrys||p.pole,1),prost:liczba(p.pole,1)}});
  return'<h3>Pomieszczenia – pomiar ze skanera</h3><p class="mala">↕ wymiar przed siebie, ↔ w bok (względem kierunku patrzenia przy pomiarze); powierzchnia z obrysu (uskoki, wnęki), prostokąt dla porównania. Kilka pomiarów jednego pomieszczenia – każdy w osobnym wierszu; ✓ = ten pokazany na rzucie (najmniej zasłonięty). Pozostałe na rzucie jako małe kropki – kliknij, by zobaczyć.</p>'+
   tab(W_,['nr','godz','przod','bok','obrys','prost'],['pomieszczenie','godz.','↕ m','↔ m','pow. m²','prostokąt m²'])}
-function inwent(){$('tinw').innerHTML=pomiaryTab()+'<h3>Oświetlenie</h3>'+tab(S.oprawy,['nr','typ','opraw','punktow','moc','moc_razem','uwagi'],['pomieszczenie','rodzaj','opraw','pkt/oprawę','W/pkt','W razem','uwagi'])+
+function inwent(){$('tinw').innerHTML=pomTab()+pomiaryTab()+'<h3>Oświetlenie</h3>'+tab(S.oprawy,['nr','typ','opraw','punktow','moc','moc_razem','uwagi'],['pomieszczenie','rodzaj','opraw','pkt/oprawę','W/pkt','W razem','uwagi'])+
  '<h3>Grzejniki</h3>'+tab(S.grzejniki,['nr','rodzaj','sztuk','zeberek','szer','dl','uwagi'],['pomieszczenie','rodzaj','szt.','żeberek','szer. cm','dł. cm','uwagi'])+
  '<h3>Okna i drzwi zewnętrzne</h3>'+tab(S.okna,['nr','typ','rodzaj','szer','wys_cm','rama','szyby','sztuk','uwagi'],['pomieszczenie','typ','rodzaj','szer. cm','wys. cm','rama','szyby','szt.','uwagi'])}
+function pomTab(){if(!POM)return'<h3>Pomieszczenia</h3><p class="mala">Nie policzone – przycisk „🏠 Pomieszczenia” u góry.</p>';let h='',sum=0,sk=0;
+ (POM.kondygnacje||[]).forEach(K=>{const nz=(NZ[K.nr]||{}).nazwa||'Odcinek '+K.nr;h+='<h3>Pomieszczenia – '+esc(nz)+'</h3><table><tr><th>nr</th><th>nazwa</th><th>typ</th><th>pow. m²</th><th>wys. m</th><th>kub. m³</th><th>wymiary m</th><th>ocena</th></tr>';
+  K.pomieszczenia.forEach(p=>{sum+=p.pow_m2;sk+=p.kub_m3;h+='<tr><td>'+p.nr+'</td><td>'+esc(p.nazwa)+'</td><td>'+esc(p.typ)+'</td><td>'+liczba(p.pow_m2)+'</td><td>'+liczba(p.wys_m)+'</td><td>'+liczba(p.kub_m3,1)+'</td><td>'+liczba(p.dl_m)+' × '+liczba(p.szer_m)+
+   '</td><td title="część obrysu zamknięta zmierzoną ścianą: '+Math.round(p.zamkniecie*100)+' %">'+esc(p.ocena)+'</td></tr>'});
+  const dr=(K.drzwi||[]).filter(d=>d.typ!='przejscie');h+='</table><p class="mala">Drzwi/otwory: '+dr.length+(dr.length?' ('+dr.map(d=>liczba(d.szer_m)).join(', ')+' m)':'')+'. Wnęki drzwiowe nie są wliczone do powierzchni. Wysokość: '+esc(K.wys_zrodlo||'')+'</p>'});
+ return h+'<p><b>Razem: '+liczba(sum)+' m², '+liczba(sk,1)+' m³</b></p>'}
 function pliki(){const opis={'rzut.dxf':'Rzut kondygnacji (DXF, metry)','przekroje.dxf':'Przekroje pionowe (DXF)','model3d.dxf':'Model 3D (DXF, 3DFACE)','model3d.obj':'Model 3D (OBJ)','podglad.png':'Podgląd rzutu (PNG)','pomieszczenia.csv':'Pomieszczenia: powierzchnie, kubatury, ocena (CSV, Excel)','pomieszczenia.png':'Podział na pomieszczenia (PNG)','log.txt':'Dziennik liczenia','blad.txt':'Błąd liczenia'};
  $('tpl').innerHTML='<h3>Wyniki</h3><table>'+(S.wyniki.filter(f=>!f.includes('przekroj_')).map(f=>{const n=f.replace('_wynik/','');return'<tr><td><a href="'+plik(f)+'" target="_blank">'+esc(n)+'</a></td><td class="mala">'+(opis[n]||'')+'</td></tr>'}).join('')||'<tr><td class="mala">brak – mapa: '+esc(S.stan)+'</td></tr>')+'</table>'+
  '<h3>Dane z nagrania</h3><table>'+S.pliki.filter(f=>!f.startsWith('foto_')).map(f=>'<tr><td><a href="'+plik(f)+'">'+esc(f)+'</a></td></tr>').join('')+'</table>'+

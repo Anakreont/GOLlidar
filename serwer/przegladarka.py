@@ -237,7 +237,7 @@ def zatrzymaj(n):
     import signal
     ile = 0
     with BLOK:
-        for rodz in ('mapa', 'por', 'cad', 'kaw', 'l2'):
+        for rodz in ('mapa', 'por', 'cad', 'kaw', 'l2', 'pom'):
             p = PROC.get((rodz, n))
             if p:
                 ZATRZ.add((rodz, n))
@@ -262,7 +262,7 @@ def zatrzymaj_i_czekaj(n, limit=20.0):
     while time.time() < koniec:
         zatrzymaj(n)
         with BLOK:
-            zajeta = (n in W_TOKU or n in W_POR or n in W_CAD or n in W_KAW or n in W_L2
+            zajeta = (n in W_TOKU or n in W_POR or n in W_CAD or n in W_KAW or n in W_L2 or n in W_POM
                       or any(kl[1] == n for kl in PROC))
         if not zajeta:
             return True
@@ -484,6 +484,23 @@ def pracownik_cad():
 
 
 W_KAW = {}                     # sesja -> 'liczy' (ciecie mapy na kawalki do recznego sklejania w CAD)
+W_POM = {}                     # sesja -> 'liczy' (podzial na pomieszczenia z gotowej mapy, bez liczenia mapy od nowa)
+
+
+def licz_pomieszczenia(n, k):
+    wy = os.path.join(k, '_wynik')
+    try:
+        with BLOK:
+            W_POM[n] = 'liczy'
+        r = uruchom(('pom', n), [sys.executable, os.path.join(REPO, 'mapa', 'przetworz.py'), k, '--tylko-dxf', '--pomieszczenia'],
+                    capture_output=True, text=True, env=ENV_DZIECI)
+        with open(os.path.join(wy, 'pomieszczenia_log.txt'), 'w') as f:
+            f.write((r.stdout or '') + (r.stderr or ''))
+        with BLOK:
+            ZATRZ.discard(('pom', n))
+    finally:
+        with BLOK:
+            W_POM.pop(n, None)
 
 
 def licz_kawalki(n, k):
@@ -783,6 +800,8 @@ class H(BaseHTTPRequestHandler):
                                'porownanie': stan_por(q['n'], k), 'cad': stan_cad(q['n'], k), 'czujniki': czujniki(k), 'l2': stan_l2(q['n'], k),
                                'kawalki': {'stan': W_KAW.get(q['n']) or ('gotowe' if os.path.exists(os.path.join(k, '_wynik', 'kawalki.dxf')) else
                                            ('brak danych' if not os.path.exists(os.path.join(k, '_wynik', 'kf.npz')) else 'brak'))},
+                               'pomieszczenia': {'stan': W_POM.get(q['n']) or ('gotowe' if os.path.exists(os.path.join(k, '_wynik', 'pomieszczenia.json')) else
+                                                 ('brak danych' if not os.path.exists(os.path.join(k, '_wynik', 'mapa.json')) else 'brak'))},
                                'znaczniki': znaczniki(k), 'oprawy': SW.wiersze_pom(k), 'grzejniki': SW.wiersze_grz(k),
                                'okna': SW.wiersze_okn(k)})
         if u.path == '/api/mapa':
@@ -795,7 +814,10 @@ class H(BaseHTTPRequestHandler):
                             if os.path.exists(os.path.join(k, '_wynik', 'nazwy.json')) else {}, ensure_ascii=False)
             pk = os.path.join(k, 'kontrola.json')
             ko = open(pk, 'rb').read() if os.path.exists(pk) else b'[]'
-            return self._wyslij(200, 'application/json; charset=utf-8', b'{"mapa":' + dane + b',"nazwy":' + nz.encode() + b',"kontrola":' + ko + b'}')
+            pp = os.path.join(k, '_wynik', 'pomieszczenia.json')
+            po = open(pp, 'rb').read() if os.path.exists(pp) else b'null'
+            return self._wyslij(200, 'application/json; charset=utf-8', b'{"mapa":' + dane + b',"nazwy":' + nz.encode() + b',"kontrola":' + ko +
+                                b',"pomieszczenia":' + po + b'}')
         if u.path == '/plik':
             f = q.get('f', '')
             if not k or not PLIK_RE.match(f):
@@ -901,7 +923,7 @@ class H(BaseHTTPRequestHandler):
             return self._json({'ok': True, 'rzut': ust})
         if u.path == '/api/zatrzymaj_wszystko':
             with BLOK:
-                nazwy = set(W_TOKU) | set(W_POR) | set(W_CAD) | set(W_KAW) | set(W_L2) | {n_ for _, n_ in PROC}
+                nazwy = set(W_TOKU) | set(W_POR) | set(W_CAD) | set(W_KAW) | set(W_L2) | set(W_POM) | {n_ for _, n_ in PROC}
             ile = sum(zatrzymaj(n_) for n_ in nazwy)
             return self._json({'ok': True, 'ile': ile})
         if u.path == '/api/oproznij_kosz':
@@ -973,6 +995,15 @@ class H(BaseHTTPRequestHandler):
                     return self._json({'blad': 'juz sie liczy'}, 409)
                 W_KAW[q['n']] = 'czeka'
             threading.Thread(target=licz_kawalki, args=(q['n'], k), daemon=True).start()
+            return self._json({'ok': True})
+        if u.path == '/api/pomieszczenia':
+            if not os.path.exists(os.path.join(k, '_wynik', 'mapa.json')):
+                return self._json({'blad': 'najpierw policz mape'}, 409)
+            with BLOK:
+                if q['n'] in W_POM or q['n'] in W_TOKU:
+                    return self._json({'blad': 'juz sie liczy'}, 409)
+                W_POM[q['n']] = 'czeka'
+            threading.Thread(target=licz_pomieszczenia, args=(q['n'], k), daemon=True).start()
             return self._json({'ok': True})
         if u.path == '/api/dopasuj':
             if not ustawienia_cad(info(k).get('budynek', '')):

@@ -299,7 +299,8 @@ Enter zapisuje znacznik, Ctrl+C kończy nagranie.
 
 `mapa/pomieszczenia.py` dzieli kondygnację na pomieszczenia na podstawie `_wynik/mapa.json`. Wolna przestrzeń to to, co widać z trasy operatora. Podział robi watershed po odległości od ścian, a obszary są łączone, gdy przejście między nimi jest szerokie; wąskie przejścia 0,55–1,6 m zostają jako drzwi.
 Wynik: `pomieszczenia.json`, `pomieszczenia.csv` (powierzchnia, kubatura, wymiary, ocena), `pomieszczenia.png` oraz warstwy `POM_OBRYS`, `POM_NIEPEWNE`, `DRZWI` i podpisy w `rzut.dxf`.
-Liczy się samo przy „Przelicz”. Dla już policzonej mapy: `python3 mapa/przetworz.py <sesja> --tylko-dxf --pomieszczenia`.
+Liczy się samo przy „Przelicz”. Z gotowej mapy (kilka sekund): przycisk **🏠 Pomieszczenia** u góry strony albo `python3 mapa/przetworz.py <sesja> --tylko-dxf --pomieszczenia`. Na rzucie warstwa „Pomieszczenia”, tabela z sumą w zakładce Inwentaryzacja.
+Drzwi: przejście, przy którym ściana biegnie dalej w tej samej linii po obu stronach (ościeża ≥ 35 cm), albo po jednej stronie przy narożniku, gdy przestrzeń za przejściem rozszerza się z obu stron. Otwory do 2,2 m z ościeżami też dzielą pomieszczenia. **Wnęka drzwiowa (otwór w grubości ściany) nie wchodzi do powierzchni.**
 Ocena: „pewne” = obrys w ≥ 85% zamknięty zmierzonymi ścianami, „do sprawdzenia” = 60–85%, „niepewne” = poniżej 60%.
 Nazwa pomieszczenia pochodzi ze znacznika „sala” wpisanego w telefonie wewnątrz obrysu.
-Test: `python3 mapa/test_pomieszczenia.py` (dom syntetyczny, błąd powierzchni ≤ 3%).
+Test: `python3 mapa/test_pomieszczenia.py [png]` (dwa domy syntetyczne: korytarz 1,5 m i 1,05 m, WC przy narożniku, otwór 2 m).
