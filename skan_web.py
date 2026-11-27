@@ -880,8 +880,83 @@ def info_sesji(p):
     return d
 
 
+# ----------------------------------------------------------------------------- kopia na serwer (sync_http.py)
+TRYBY_WYSYLKI = {"auto": "automatycznie zawsze", "dom": "automatycznie tylko w sieci domowej", "reczny": "tylko ręcznie (przyciskiem)"}
+_SIEC = {"t": 0.0, "ssid": ""}
+
+
+def biezaca_siec():
+    """SSID Wi-Fi maliny (pamietane 15 s - strona pyta o stan dwa razy na sekunde)."""
+    if time.time() - _SIEC["t"] > 15:
+        try:
+            import sync_http
+            _SIEC["ssid"] = sync_http.biezaca_siec()
+        except Exception:
+            _SIEC["ssid"] = ""
+        _SIEC["t"] = time.time()
+    return _SIEC["ssid"]
+
+
+def sync_plik(nazwa, dom):
+    try:
+        with open(os.path.join(ARGS.katalog, nazwa), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return dom
+
+
+def stan_wysylki():
+    u = ustawienia()
+    tryb = u.get("wysylka_tryb") or "auto"
+    log = ""
+    try:
+        with open(os.path.join(ARGS.katalog, ".sync_log"), encoding="utf-8", errors="replace") as f:
+            log = f.read().strip().splitlines()[-1][:200]
+    except (OSError, IndexError):
+        pass
+    return {"tryb": tryb, "opis": TRYBY_WYSYLKI.get(tryb, tryb), "dom": u.get("wysylka_dom", ""), "siec": biezaca_siec(),
+            "kolejka": len(sync_plik(".sync_kolejka", [])), "skonf": os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "sync.conf")),
+            "log": log}
+
+
+def kopia_sesji(n, p, kolejka, stan):
+    """Ile tej sesji jest na serwerze: ok / czesc / kolejka / brak (wg ostatniego przebiegu sync_http.py)."""
+    lok = sum(os.path.getsize(os.path.join(p, x)) for x in os.listdir(p)
+              if re.fullmatch(r"[a-z0-9_]{1,40}\.(csv|txt|bin|jpg)", x) and os.path.isfile(os.path.join(p, x)))
+    st = stan.get(n) or {}
+    zd = min(st.get("zdalnie", 0), lok)
+    if st.get("pelna") and st.get("lokalnie") == lok:
+        k = "ok"
+    elif n in kolejka:
+        k = "kolejka"
+    elif zd > 0:
+        k = "czesc"
+    else:
+        k = "brak"
+    return {"k": k, "proc": min(99, int(100 * zd / lok)) if lok and k != "ok" else 100, "czas": st.get("czas", 0)}
+
+
+def wyslij_w_tle(arg=None):
+    sk = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sync.sh")
+    subprocess.Popen(["bash", sk] + (arg or []), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def do_kolejki(nazwy):
+    """Dopisuje sesje do kolejki wysylki (plik czyta sync_http.py; wysylka trwa w tle do skutku)."""
+    kol = sync_plik(".sync_kolejka", [])
+    for n in nazwy:
+        if sesja_sciezka(n) and n not in kol:
+            kol.append(n)
+    p = os.path.join(ARGS.katalog, ".sync_kolejka")
+    with open(p + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(kol, f, ensure_ascii=False)
+    os.replace(p + ".tmp", p)
+    return len(kol)
+
+
 def lista_sesji():
     wyn = []
+    kolejka, stan_k = sync_plik(".sync_kolejka", []), sync_plik(".sync_stan.json", {})
     for n in sorted(os.listdir(ARGS.katalog), reverse=True):
         p = sesja_sciezka(n)
         if not p:
@@ -893,6 +968,9 @@ def lista_sesji():
                     "zn": sum(1 for z in znaczniki_stan(p) if not z["sys"]), "pom": len(pom),
                     "grz": sum(x["sztuk"] for x in grz), "okn": sum(x["sztuk"] for x in wiersze_okn(p)),
                     "opraw": sum(x["opraw"] for x in pom), "w": round(sum(x["moc_razem"] for x in pom)),
+                    "kopia": kopia_sesji(n, p, kolejka, stan_k),
+                    "d500": os.path.exists(os.path.join(p, "lidar.bin")) and os.path.getsize(os.path.join(p, "lidar.bin")) > 2000,
+                    "l2": os.path.exists(os.path.join(p, "l2.bin")) and os.path.getsize(os.path.join(p, "l2.bin")) > 2000,
                     "aktywna": STAN["nagrywa"] and os.path.abspath(p) == os.path.abspath(STAN["katalog"])})
     return wyn
 
@@ -1162,14 +1240,21 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 </section>
 
 <section id="t4">
+<h2>Kopia na serwer (Dell)</h2>
+<div class="w"><div class="k"><small>Kopia na serwer</small><b id="kop">–</b><small id="kop2"></small></div>
+ <div class="k"><small>Kopia na pendrive</small><b id="pen">–</b><small id="pen2"></small></div></div>
+<div class="w"><select id="wtryb" onchange="ustWys()"><option value="auto">Wysyłaj automatycznie (zawsze, także przez telefon)</option><option value="dom">Automatycznie tylko w sieci domowej</option><option value="reczny">Tylko ręcznie – sam wybieram nagrania</option></select></div>
+<div class="w" id="wdomw"><input id="wdom" placeholder="Wi-Fi domowe (SSID), kilka po przecinku" autocomplete="off" onchange="ustWys()"><button class="sz" style="flex:0 0 104px" onclick="domTu()">to ta sieć</button></div>
+<div class="et" id="wsiec"></div>
+<div class="w"><button class="nb" id="bwz" onclick="wyslijZazn()">Wyślij zaznaczone</button><button class="sz" style="flex:0 0 40%" onclick="zaznNiew()">Zaznacz niewysłane</button></div>
+<div class="w"><button class="sz" onclick="cmd('sprawdz_serwer',()=>{alert('Sprawdzam na serwerze (bez wysyłania). Stan nagrań odświeży się za chwilę.');setTimeout(sesje,8000)})">Sprawdź, co jest na serwerze</button></div>
+<div class="et">Nagrania zostają na karcie, dopóki sam ich nie usuniesz. Wysyłka zaznaczonych trwa w tle (także po zamknięciu strony), aż całe nagranie będzie na Dellu.</div>
+<h2>Nagrania na karcie</h2>
 <div class="w"><button class="sz" onclick="sesje()">Odśwież listę budynków</button></div>
 <div id="sl" class="lst"></div><div id="sd" class="lst"></div>
 <h2>Stan</h2>
 <div class="w"><div class="k"><small>Sesja</small><b id="roz">–</b><small id="zn"></small></div>
  <div class="k"><small>Karta – wolne</small><b id="dysk">–</b><small id="ses"></small></div></div>
-<div class="w"><div class="k"><small>Kopia na serwer</small><b id="kop">–</b><small id="kop2"></small>
-  <button class="btn" style="margin-top:6px;padding:6px 10px;font-size:13px" onclick="cmd('wyslij_teraz',()=>alert('Wysyłka ruszyła – wysyła wszystko, czego brakuje na serwerze (także sesje skasowane na Dellu). Stan zobaczysz w tym kafelku.'))">⟳ Wyślij teraz</button></div>
- <div class="k"><small>Kopia na pendrive</small><b id="pen">–</b><small id="pen2"></small></div></div>
 <div class="w"><div class="k"><small>LiDAR</small><b id="lid2">–</b></div>
  <div class="k"><small>Max przechył w sesji</small><b id="prz2">–</b><small id="wys2"></small></div></div>
 <div class="w" id="u2" style="display:none"><div class="k"><small>Unitree L2 (3D)</small><b id="u2s">–</b></div></div>
@@ -1269,20 +1354,40 @@ let podgl=null;
 let kopOK=false,ustW=false;
 function esc(t){return String(t).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))}
 let rozw={};
-function sesje(){fetch('/sesje').then(r=>r.json()).then(l=>{$('sd').innerHTML='';otw='';const g={};
- for(const x of l){const b=x.bud||'(bez nazwy budynku)';(g[b]=g[b]||[]).push(x)}
+const ZW=new Set();let _ses={};
+const KOP={ok:['✓ na serwerze','ok'],czesc:['','uw'],kolejka:['⏳ w kolejce','uw'],brak:['✗ tylko na karcie','zle']};
+function kopTxt(k){if(!k)return'';const t=k.k=='czesc'?'wysłano '+k.proc+' %':KOP[k.k][0];return '<b class="'+KOP[k.k][1]+'">'+t+'</b>'}
+function zazn(n,on){if(n)on?ZW.add(n):ZW.delete(n);$('bwz').textContent='Wyślij zaznaczone'+(ZW.size?' ('+ZW.size+')':'')}
+function zaznNiew(){Object.values(_ses).forEach(x=>{if(x.kopia.k!='ok'&&!x.aktywna)ZW.add(x.n)});Object.keys(rozw).forEach(b=>rozw[b]=true);Object.values(_ses).forEach(x=>{if(ZW.has(x.n))rozw[x.bud||'(bez nazwy budynku)']=true});sesje()}
+function wyslijZazn(){if(!ZW.size){alert('Zaznacz nagrania na liście poniżej (albo „Zaznacz niewysłane”).');return}
+ const l=[...ZW],mb=l.reduce((a,n)=>a+((_ses[n]||{}).mb||0),0);
+ if(!confirm('Wysłać na serwer '+l.length+' nagr. (ok. '+mb.toFixed(0)+' MB)? Wysyłka idzie w tle i wznawia się sama po zerwaniu połączenia.'))return;
+ cmd('wyslij?sesje='+encodeURIComponent(l.join(',')),()=>{ZW.clear();zazn('',false);setTimeout(sesje,1500)})}
+function ustWys(){cmd('wysylka_ustaw?tryb='+$('wtryb').value+'&dom='+encodeURIComponent($('wdom').value),()=>{wysW=false})}
+function domTu(){const n=(ostS&&ostS.wysylka&&ostS.wysylka.siec)||'';if(!n){alert('Malina nie jest teraz podłączona do żadnego Wi-Fi jako klient.');return}
+ const l=$('wdom').value.split(',').map(x=>x.trim()).filter(x=>x);if(!l.includes(n))l.push(n);$('wdom').value=l.join(', ');ustWys()}
+let wysW=false;
+function pokazWys(w){if(!w)return;if(!wysW&&document.activeElement!=$('wdom')&&document.activeElement!=$('wtryb')){$('wtryb').value=w.tryb;$('wdom').value=w.dom||'';wysW=true}
+ $('wdomw').style.display=$('wtryb').value=='dom'?'':'none';
+ const dom=(w.dom||'').split(',').map(x=>x.trim()).filter(x=>x);
+ $('wsiec').innerHTML=(w.skonf?'':'<b class="zle">Brak sync.conf – wysyłka nieskonfigurowana.</b><br>')+'Wi-Fi maliny: <b>'+esc(w.siec||'brak (własna sieć / kabel)')+'</b>'+(w.tryb=='dom'?(dom.includes(w.siec)?' – <b class="ok">dom, wysyła</b>':' – poza domem, wysyła tylko kolejkę'):'')+
+  (w.kolejka?' · w kolejce: <b>'+w.kolejka+'</b>':'')+(w.log?'<br><small>'+esc(w.log)+'</small>':'')}
+function sesje(){fetch('/sesje').then(r=>r.json()).then(l=>{$('sd').innerHTML='';otw='';const g={};_ses={};
+ for(const x of l){const b=x.bud||'(bez nazwy budynku)';(g[b]=g[b]||[]).push(x);_ses[x.n]=x}
  $('budl').innerHTML=Object.keys(g).filter(b=>b[0]!='(').map(b=>'<option value="'+esc(b).replace(/"/g,'&quot;')+'">').join('');
  const B=Object.keys(g);window._bud=B;
- $('sl').innerHTML=B.length?B.map((b,bi)=>{const w=g[b],sum=k=>w.reduce((a,x)=>a+x[k],0),o=rozw[b];
-  return '<div class="r" style="background:#1c2430;padding:8px;border-radius:8px;margin-top:6px"><span onclick="rozw[_bud['+bi+']]=!rozw[_bud['+bi+']];sesje()"><b>'+(o?'▾ ':'▸ ')+esc(b)+'</b><br>'+
+ $('sl').innerHTML=B.length?B.map((b,bi)=>{const w=g[b],sum=k=>w.reduce((a,x)=>a+x[k],0),o=rozw[b],okN=w.filter(x=>x.kopia.k=='ok').length;
+  return '<div class="r" style="background:#1c2430;padding:8px;border-radius:8px;margin-top:6px"><span onclick="rozw[_bud['+bi+']]=!rozw[_bud['+bi+']];sesje()"><b>'+(o?'▾ ':'▸ ')+esc(b)+'</b> · <b class="'+(okN==w.length?'ok':okN?'uw':'zle')+'">na serwerze '+okN+'/'+w.length+'</b><br>'+
    'nagrań: '+w.length+' · '+sum('mb').toFixed(1)+' MB · pomieszczeń: '+sum('pom')+' · grzejników: '+sum('grz')+' · okien/drzwi: '+sum('okn')+' · opraw: '+sum('opraw')+(sum('w')?' · '+sum('w')+' W':'')+'</span>'+
    (b[0]=='('?'':'<button style="background:#933" onclick="usunBud('+bi+')">Usuń budynek</button>')+'</div>'+
-   (o?w.slice().sort((a,c)=>(a.kond||'').localeCompare(c.kond||'')||a.n.localeCompare(c.n)).map(x=>
-   '<div class="r" style="padding-left:14px"><span><b>'+esc(x.kond||x.n)+'</b> · '+x.data+(x.aktywna?' · <b class="ok">NAGRYWA</b>':'')+'<br>'+x.mb+' MB · znaczniki: '+x.zn+' · pomieszczenia: '+x.pom+' · grzejniki: '+x.grz+' · okna: '+x.okn+(x.w?' · '+x.w+' W':'')+'</span>'+
+   (o?w.slice().sort((a,c)=>c.n.localeCompare(a.n)).map(x=>
+   '<div class="r" style="padding-left:6px">'+(x.aktywna?'<span style="flex:0 0 26px"></span>':'<input type="checkbox" style="flex:0 0 26px;width:26px;height:26px" '+(ZW.has(x.n)?'checked ':'')+'data-n="'+esc(x.n)+'" onchange="zazn(this.dataset.n,this.checked)">')+
+   '<span><b>'+esc(x.kond||x.n)+'</b> · '+x.data+(x.aktywna?' · <b class="ok">NAGRYWA</b>':'')+' · '+kopTxt(x.kopia)+'<br>'+x.mb+' MB'+(x.d500?' · D500':'')+(x.l2?' · L2':'')+' · znaczniki: '+x.zn+' · pomieszczenia: '+x.pom+' · grzejniki: '+x.grz+' · okna: '+x.okn+(x.w?' · '+x.w+' W':'')+'</span>'+
    '<button data-n="'+encodeURIComponent(x.n)+'" onclick="sesja(this.dataset.n)">Podgląd</button>'+
-   (x.aktywna?'':'<button data-n="'+encodeURIComponent(x.n)+'" style="background:#933" onclick="usun(this.dataset.n)">Usuń</button>')+'</div>').join(''):'')}).join(''):'brak zapisanych danych'})}
-function usunBud(bi){const b=_bud[bi];
- if(!confirm('Usunąć z karty WSZYSTKIE nagrania budynku\n'+b+' ?\n\n'+(kopOK?'Kopia na serwerze zostaje.':'UWAGA: brak potwierdzonej kopii na serwerze – dane mogą przepaść bezpowrotnie!')))return;
+   (x.aktywna?'':'<button data-n="'+encodeURIComponent(x.n)+'" style="background:#933" onclick="usun(this.dataset.n)">Usuń</button>')+'</div>').join(''):'')}).join(''):'brak zapisanych danych';
+ zazn('',false)})}
+function usunBud(bi){const b=_bud[bi],nie=Object.values(_ses).filter(x=>(x.bud||'(bez nazwy budynku)')==b&&!x.aktywna&&x.kopia.k!='ok').length;
+ if(!confirm('Usunąć z karty WSZYSTKIE nagrania budynku\n'+b+' ?\n\n'+(nie?'UWAGA: '+nie+' nagr. NIE MA w całości na serwerze – przepadną bezpowrotnie!':'Wszystkie nagrania są na serwerze – kopia zostaje.')))return;
  if(!confirm('Na pewno usunąć cały budynek „'+b+'”? Tego nie da się cofnąć.'))return;cmd('usun_budynek?b='+encodeURIComponent(b),sesje)}
 function sesja(n){fetch('/sesja?n='+n).then(r=>r.json()).then(t=>{if(t.blad){alert(t.blad);return}podgl=t;
  const prz='<button onclick="';
@@ -1299,8 +1404,8 @@ function sesja(n){fetch('/sesja?n='+n).then(r=>r.json()).then(t=>{if(t.blad){ale
  '<br><b>Znaczniki</b>'+(t.znaczniki.map((z,i)=>'<div class="r"><span'+(z.sys?' style="color:#888"':'')+'>'+z.godz+' '+esc(z.opis)+'</span>'+
   (z.sys?'':prz+'edZn('+i+')">Edytuj</button>'+prz+'usZn('+i+')" style="background:#933">Usuń</button>')+'</div>').join('')||'<div>brak</div>');
  if(otw!=t.n){otw=t.n;$('sd').scrollIntoView({behavior:'smooth'})}})}
-function usun(n){const nz=decodeURIComponent(n);
- if(!confirm('Usunąć z karty sesję\n'+nz+' ?\n\n'+(kopOK?'Kopia na serwerze zostaje.':'UWAGA: brak potwierdzonej kopii na serwerze – dane mogą przepaść bezpowrotnie!')))return;
+function usun(n){const nz=decodeURIComponent(n),x=_ses[nz],ok=x&&x.kopia.k=='ok';
+ if(!confirm('Usunąć z karty sesję\n'+nz+' ?\n\n'+(ok?'Całe nagranie jest na serwerze – kopia zostaje.':'UWAGA: tego nagrania NIE MA w całości na serwerze ('+(x?kopTxt(x.kopia).replace(/<[^>]+>/g,''):'?')+') – przepadnie bezpowrotnie!\nNajpierw „Wyślij zaznaczone”.')))return;
  if(!confirm('Na pewno? Tego nie da się cofnąć.'))return;cmd('usun?n='+n,sesje)}
 let sel=null,ostS=null;
 c.addEventListener('click',ev=>{if(!ostS||!ostS.nagrywa){return}const r=c.getBoundingClientRect(),R=+$('zas').value,sk=Math.min(r.width,r.height)/2/R;
@@ -1339,8 +1444,10 @@ function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);przekroj(s);
  $('roz').textContent=(s.rozmiar/1e6).toFixed(1)+' MB';$('zn').textContent='znaczniki: '+s.znaczniki+(s.prz_nr?' · przekroje: '+s.prz_nr:'');$('ses').textContent=(s.nazwa||'')+(s.nagrywa&&s.kondygnacja?' · kond. '+s.kondygnacja:'');
  kl($('dysk'),(s.wolne/1e9).toFixed(1)+' GB',s.wolne<1e9?'zle':'ok');
  if(!s.kopia){kl($('kop'),'wyłączona');$('kop2').textContent=''}else{const w=s.kopia.wiek,st=w>300;
+  if(s.kopia.wynik=='POMIN'){kl($('kop'),s.wysylka&&s.wysylka.tryb=='dom'?'poza domem':'ręcznie','');$('kop2').textContent='nic w kolejce · dane są na karcie'}else{
   kl($('kop'),s.kopia.ok?(st?'brak od '+Math.round(w/60)+' min':'OK'):'BŁĄD',s.kopia.ok&&!st?'ok':s.kopia.ok?'uw':'zle');
-  $('kop2').textContent=s.kopia.ok?'ostatnia '+(w<90?w+' s':Math.round(w/60)+' min')+' temu':'sprawdź zasięg i serwer – dane są na karcie'}
+  $('kop2').textContent=s.kopia.ok?'ostatnia '+(w<90?w+' s':Math.round(w/60)+' min')+' temu':'sprawdź zasięg i serwer – dane są na karcie'}}
+ pokazWys(s.wysylka);
  if(!s.pendrive){kl($('pen'),'wyłączona');$('pen2').textContent=''}else{const p=s.pendrive,st=p.wiek>300;
   kl($('pen'),p.wynik=='BRAK'?'BRAK PENDRIVE':!p.ok?'BŁĄD':st?'brak od '+Math.round(p.wiek/60)+' min':'OK',p.ok&&!st?'ok':'zle');
   $('pen2').textContent=p.ok?'ostatnia '+(p.wiek<90?p.wiek+' s':Math.round(p.wiek/60)+' min')+' temu':'dane są na karcie'}
@@ -1416,12 +1523,13 @@ class Handler(BaseHTTPRequestHandler):
             s["wolne"] = shutil.disk_usage(ARGS.katalog).free
             if not s["nagrywa"]:
                 s["ust"] = ustawienia()
+            s["wysylka"] = stan_wysylki()
             for klucz, plik in (("kopia", ".sync_status"), ("pendrive", ".sync_pendrive")):   # stan kopii (sync.sh)
                 s[klucz] = None
                 try:
                     with open(os.path.join(ARGS.katalog, plik)) as f:
                         t, wynik = f.read().split()[:2]
-                    s[klucz] = {"wiek": int(teraz - int(t)), "ok": wynik == "OK", "wynik": wynik}
+                    s[klucz] = {"wiek": int(teraz - int(t)), "ok": wynik in ("OK", "POMIN"), "wynik": wynik}
                 except (OSError, ValueError):
                     pass
             self._json(s)
@@ -1506,13 +1614,27 @@ class Handler(BaseHTTPRequestHandler):
         elif u.path == "/usun":
             blad = usun_sesje(q.get("n", [""])[0])
             self._json({"blad": blad} if blad else {"ok": True})
-        elif u.path == "/wyslij_teraz":
-            # reczna wysylka: sync.sh porownuje rozmiary plikow z serwerem i dosyla wszystko, czego tam brakuje
-            sk = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sync.sh")
-            if not os.path.exists(os.path.join(os.path.dirname(sk), "sync.conf")):
-                self._json({"blad": "Kopia na serwer nie jest skonfigurowana (brak sync.conf) – dane pobiera Dell sam, gdy malina jest w sieci"})
+        elif u.path in ("/wyslij_teraz", "/wyslij", "/sprawdz_serwer"):
+            # /wyslij?sesje=A,B - wybrane sesje do kolejki; /wyslij_teraz - wszystkie niewyslane; /sprawdz_serwer - tylko stan
+            if not stan_wysylki()["skonf"]:
+                self._json({"blad": "Kopia na serwer nie jest skonfigurowana (brak sync.conf)"})
+            elif u.path == "/sprawdz_serwer":
+                wyslij_w_tle(["--stan"])
+                self._json({"ok": True})
             else:
-                subprocess.Popen(["bash", sk], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                if u.path == "/wyslij":
+                    nazwy = [x for x in q.get("sesje", [""])[0].split(",") if x]
+                else:
+                    nazwy = [x["n"] for x in lista_sesji() if x["kopia"]["k"] != "ok"]
+                ile = do_kolejki(nazwy)
+                wyslij_w_tle()
+                self._json({"ok": True, "kolejka": ile, "dodano": len(nazwy)})
+        elif u.path == "/wysylka_ustaw":
+            tryb = q.get("tryb", [""])[0]
+            if tryb not in TRYBY_WYSYLKI:
+                self._json({"blad": "nieznany tryb"})
+            else:
+                ustawienia({"wysylka_tryb": tryb, "wysylka_dom": czysc(q.get("dom", [""])[0], 200)})
                 self._json({"ok": True})
         elif u.path == "/pauza":
             r = pauza()

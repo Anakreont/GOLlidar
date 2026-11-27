@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Przegladarka pomiarow LiDAR na serwerze (Dell) - tylko siec lokalna.
 
-Pokazuje nagrania z LIDAR_DIR pogrupowane budynek -> kondygnacja -> sesja: mape z warstwami (sciany, chmura punktow,
+Pokazuje nagrania z LIDAR_DIR pogrupowane budynek -> dzien (albo kondygnacja) -> sesja: mape z warstwami (sciany, chmura punktow,
 trasa, zdjecia, przekroje, punkty, notatki), zdjecia, znaczniki, inwentaryzacje (oprawy, grzejniki, okna) i pliki (DXF).
 Mapy licza sie same w tle po zakonczeniu sesji (mapa/przetworz.py), mozna tez wymusic przyciskiem.
 
@@ -20,7 +20,7 @@ import skan_web as SW          # tylko funkcje czytajace CSV inwentaryzacji
 
 ARGS = None
 SESJA_RE = re.compile(r'^[A-Za-z0-9_+\-]{1,100}$')
-PLIK_RE = re.compile(r'^((_wynik|_porownanie)/)?[A-Za-z0-9_\-]{1,60}\.(jpg|csv|txt|bin|dxf|png|json|obj|log)$')
+PLIK_RE = re.compile(r'^((_wynik|_porownanie|_wynik/l2)/)?[A-Za-z0-9_\-]{1,60}\.(jpg|csv|txt|bin|dxf|png|json|obj|log|pcd)$')
 KOLEJKA = queue.PriorityQueue()   # (0 = recznie z przycisku, 1 = automat, licznik, sesja)
 NR_ZLEC = __import__('itertools').count()
 W_TOKU = {}                    # sesja -> 'czeka' | 'liczy'
@@ -92,13 +92,43 @@ def info(k):
     return d
 
 
+def rozmiar(p):
+    try:
+        return os.path.getsize(p)
+    except OSError:
+        return 0
+
+
+MIN_DANE = 2000                # ponizej tylu bajtow czujnik uznajemy za niepodlaczony (D500 / L2)
+
+
+def usun_wynik_2d(k):
+    """Usuwa wyniki mapy 2D (D500); mapa L2 (_wynik/l2, liczona dlugo) zostaje."""
+    wy = os.path.join(k, '_wynik')
+    for p in os.listdir(wy) if os.path.isdir(wy) else []:
+        if p == 'l2':
+            continue
+        q = os.path.join(wy, p)
+        shutil.rmtree(q, ignore_errors=True) if os.path.isdir(q) else os.remove(q)
+
+
+def czujniki(k):
+    """Ktore LiDAR-y nagraly dane w tej sesji: D500 (lidar.bin) i/lub Unitree L2 (l2.bin)."""
+    return {'d500': rozmiar(os.path.join(k, 'lidar.bin')) >= MIN_DANE, 'l2': rozmiar(os.path.join(k, 'l2.bin')) >= MIN_DANE}
+
+
 def stan_wyniku(n, k):
+    """Stan mapy 2D (D500). Sesja tylko z L2 nie jest pusta - ma stan 'tylko L2' (mapa w zakladce L2)."""
     with BLOK:
         if n in W_TOKU:
             return W_TOKU[n]
     lid = os.path.join(k, 'lidar.bin'); mj = os.path.join(k, '_wynik', 'mapa.json')
-    if not os.path.exists(lid):
-        return 'brak danych'
+    cz = czujniki(k)
+    if not cz['d500']:
+        pliki = [p for p in (lid, os.path.join(k, 'l2.bin')) if os.path.exists(p)]
+        if pliki and 'koniec' not in info(k) and time.time() - max(os.path.getmtime(p) for p in pliki) < 600:
+            return 'nagrywanie'
+        return 'tylko L2' if cz['l2'] else 'brak danych'
     if 'koniec' not in info(k) and time.time() - os.path.getmtime(lid) < 600:
         return 'nagrywanie'
     if os.path.exists(os.path.join(k, '_wynik', 'blad.txt')) and not os.path.exists(mj):
@@ -150,9 +180,15 @@ def sesje():
                 czas = (datetime.fromisoformat(i['koniec']) - datetime.fromisoformat(i['start'])).total_seconds()
         except ValueError:
             pass
+        start = i.get('start', '')[:16].replace('T', ' ')
+        if not start and n[:8].isdigit():
+            start = f'{n[:4]}-{n[4:6]}-{n[6:8]} {n[9:11]}:{n[11:13]}'
+        cz = czujniki(k)
         out.append({'n': n, 'budynek': i.get('budynek') or '(bez nazwy)', 'kondygnacja': i.get('kondygnacja') or '–',
-                    'start': i.get('start', '')[:16].replace('T', ' '), 'czas_s': czas, 'mb': round(rozm / 1e6, 1),
-                    'foto': sum(p.startswith('foto_') for p in pliki), 'stan': stan_wyniku(n, k), 'postep': pp.get(n)})
+                    'start': start, 'dzien': start[:10], 'godz': start[11:16], 'czas_s': czas, 'mb': round(rozm / 1e6, 1),
+                    'foto': sum(p.startswith('foto_') for p in pliki), 'stan': stan_wyniku(n, k), 'postep': pp.get(n),
+                    'd500': cz['d500'], 'l2': cz['l2'], 'l2_stan': stan_l2(n, k)['stan'] if cz['l2'] else None,
+                    'odebrano': max((os.path.getmtime(os.path.join(k, p)) for p in pliki if p.endswith('.bin')), default=0)})
     return out
 
 
@@ -201,7 +237,7 @@ def zatrzymaj(n):
     import signal
     ile = 0
     with BLOK:
-        for rodz in ('mapa', 'por', 'cad', 'kaw'):
+        for rodz in ('mapa', 'por', 'cad', 'kaw', 'l2'):
             p = PROC.get((rodz, n))
             if p:
                 ZATRZ.add((rodz, n))
@@ -215,6 +251,8 @@ def zatrzymaj(n):
             W_POR.pop(n); ile += 1
         if W_CAD.get(n) == 'czeka':
             W_CAD.pop(n); ile += 1
+        if W_L2.get(n) == 'czeka':
+            W_L2.pop(n); ile += 1
     return ile
 
 def zatrzymaj_i_czekaj(n, limit=20.0):
@@ -224,7 +262,7 @@ def zatrzymaj_i_czekaj(n, limit=20.0):
     while time.time() < koniec:
         zatrzymaj(n)
         with BLOK:
-            zajeta = (n in W_TOKU or n in W_POR or n in W_CAD or n in W_KAW
+            zajeta = (n in W_TOKU or n in W_POR or n in W_CAD or n in W_KAW or n in W_L2
                       or any(kl[1] == n for kl in PROC))
         if not zajeta:
             return True
@@ -500,6 +538,77 @@ def stan_por(n, k):
     return {'stan': st, 'pliki': pliki, 'wynik': wyn, 'dostepne': bool(skrypt_por()), 'metody': list(METODY_POR)}
 
 
+KOLEJKA_L2 = queue.Queue()
+W_L2 = {}                      # sesja -> 'czeka' | 'liczy' (mapa 3D z Unitree L2: l2.bin -> rosbag -> Point-LIO -> rzut)
+W_START_L2 = {}
+
+
+def skrypt_l2():
+    """Polecenie l2_mapa z l2/instaluj_l2.sh (ROS 1 + Point-LIO w ~/ros1_l2)."""
+    for p in (os.environ.get('LIDAR_L2', ''), os.path.expanduser('~/bin/l2_mapa')):
+        if p and os.path.isfile(p) and os.access(p, os.X_OK):
+            return p
+    return None
+
+
+def pracownik_l2():
+    """Point-LIO odtwarza nagranie w czasie rzeczywistym, wiec liczenie trwa mniej wiecej tyle, co nagranie.
+    Jedno naraz (roscore na stalym porcie 11411), w tym samym limicie co mapy 2D (pamiec Della)."""
+    while True:
+        n = KOLEJKA_L2.get()
+        k = katalog(n); sk = skrypt_l2()
+        with BLOK:
+            if W_L2.get(n) != 'czeka':
+                continue
+            if not k or not sk:
+                W_L2.pop(n, None); continue
+        wy = os.path.join(k, '_wynik', 'l2'); os.makedirs(wy, exist_ok=True)
+        for p in ('blad.txt', 'zatrzymane.txt'):
+            if os.path.exists(os.path.join(wy, p)):
+                os.remove(os.path.join(wy, p))
+        log = os.path.join(wy, 'przebieg.log')
+        with LICZ:
+            with BLOK:
+                W_L2[n] = 'liczy'; W_START_L2[n] = time.time()
+            with open(log, 'w') as f:
+                r = uruchom(('l2', n), [sk, k], stdout=f, stderr=subprocess.STDOUT, env=ENV_DZIECI)
+        with BLOK:
+            W_START_L2.pop(n, None)
+            stop = ('l2', n) in ZATRZ; ZATRZ.discard(('l2', n))
+        if stop:
+            open(os.path.join(wy, 'zatrzymane.txt'), 'w').write(time.strftime('%Y-%m-%d %H:%M'))
+        elif r.returncode != 0:
+            with open(log, errors='replace') as f, open(os.path.join(wy, 'blad.txt'), 'w') as g:
+                g.write(f.read()[-3000:])
+        with BLOK:
+            W_L2.pop(n, None)
+
+
+def stan_l2(n, k):
+    wy = os.path.join(k, '_wynik', 'l2')
+    with BLOK:
+        st = W_L2.get(n); t0 = W_START_L2.get(n)
+    jest = (lambda p: os.path.exists(os.path.join(wy, p)))
+    pliki = sorted('_wynik/l2/' + p for p in os.listdir(wy)
+                   if p in ('rzut.png', 'rzut.dxf', 'wysokosci.txt', 'chmura.pcd', 'przebieg.log', 'blad.txt', 'pointlio.log')) if os.path.isdir(wy) else []
+    if not st:
+        st = 'błąd' if jest('blad.txt') else 'gotowe' if (jest('rzut.png') or jest('rzut.dxf')) else 'zatrzymane' if jest('zatrzymane.txt') else 'brak'
+    wys = {}
+    if jest('wysokosci.txt'):
+        for l in open(os.path.join(wy, 'wysokosci.txt'), encoding='utf-8', errors='replace'):
+            if '=' in l:
+                a, b = l.strip().split('=', 1); wys[a] = b
+    czas = None
+    i = info(k)
+    try:
+        from datetime import datetime
+        czas = (datetime.fromisoformat(i['koniec']) - datetime.fromisoformat(i['start'])).total_seconds()
+    except (KeyError, ValueError):
+        pass
+    return {'stan': st, 'pliki': pliki, 'wysokosci': wys, 'dostepne': bool(skrypt_l2()),
+            'liczy_s': round(time.time() - t0) if t0 else None, 'nagranie_s': czas, 'mb': round(rozmiar(os.path.join(k, 'l2.bin')) / 1e6, 1)}
+
+
 def zlec(n, pilne=False):
     with BLOK:
         if n in W_TOKU:
@@ -620,7 +729,7 @@ class H(BaseHTTPRequestHandler):
             pj = os.path.join(k, '_wynik', 'przekroje.json')
             prz = json.load(open(pj, encoding='utf-8')) if os.path.exists(pj) else []
             return self._json({'info': info(k), 'stan': stan_wyniku(q['n'], k), 'postep': postepy().get(q['n']), 'pliki': pliki, 'wyniki': wyn, 'przekroje': prz,
-                               'porownanie': stan_por(q['n'], k), 'cad': stan_cad(q['n'], k),
+                               'porownanie': stan_por(q['n'], k), 'cad': stan_cad(q['n'], k), 'czujniki': czujniki(k), 'l2': stan_l2(q['n'], k),
                                'kawalki': {'stan': W_KAW.get(q['n']) or ('gotowe' if os.path.exists(os.path.join(k, '_wynik', 'kawalki.dxf')) else
                                            ('brak danych' if not os.path.exists(os.path.join(k, '_wynik', 'kf.npz')) else 'brak'))},
                                'znaczniki': znaczniki(k), 'oprawy': SW.wiersze_pom(k), 'grzejniki': SW.wiersze_grz(k),
@@ -657,7 +766,7 @@ class H(BaseHTTPRequestHandler):
                 with open(p, 'rb') as fh:
                     dane = fh.read()
             nag = [('Content-Disposition', f'attachment; filename="{q["n"]}_{nazwa}"')] \
-                if f.endswith(('.dxf', '.bin', '.csv')) else []
+                if f.endswith(('.dxf', '.bin', '.csv', '.pcd')) else []
             return self._wyslij(200, typ, dane, nag)
         self.send_error(404)
 
@@ -675,7 +784,7 @@ class H(BaseHTTPRequestHandler):
                     with BLOK:
                         if W_TOKU.get(n) == 'liczy':
                             continue
-                    shutil.rmtree(os.path.join(kk, '_wynik'), ignore_errors=True); ile += 1
+                    usun_wynik_2d(kk); ile += 1
             return self._json({'ok': True, 'ile': ile})
         if u.path in ('/api/usun_budynek', '/api/usun_puste'):
             # takze sesje w trakcie liczenia: liczenie jest najpierw zatrzymywane
@@ -741,7 +850,7 @@ class H(BaseHTTPRequestHandler):
             return self._json({'ok': True, 'rzut': ust})
         if u.path == '/api/zatrzymaj_wszystko':
             with BLOK:
-                nazwy = set(W_TOKU) | set(W_POR) | set(W_CAD) | set(W_KAW) | {n_ for _, n_ in PROC}
+                nazwy = set(W_TOKU) | set(W_POR) | set(W_CAD) | set(W_KAW) | set(W_L2) | {n_ for _, n_ in PROC}
             ile = sum(zatrzymaj(n_) for n_ in nazwy)
             return self._json({'ok': True, 'ile': ile})
         if u.path == '/api/oproznij_kosz':
@@ -751,6 +860,8 @@ class H(BaseHTTPRequestHandler):
         if not k:
             return self._json({'blad': 'nie ma takiej sesji'}, 404)
         if u.path == '/api/przelicz':
+            if not czujniki(k)['d500']:
+                return self._json({'blad': 'w tej sesji nie nagrywal D500 - mape liczy sie w zakladce „Unitree L2”'}, 409)
             for b in ('blad.txt', 'zatrzymane.txt'):
                 b = os.path.join(k, '_wynik', b)
                 if os.path.exists(b):
@@ -759,6 +870,17 @@ class H(BaseHTTPRequestHandler):
                 if W_TOKU.get(q['n']) == 'czeka':
                     W_TOKU.pop(q['n'])
             zlec(q['n'], pilne=True)
+            return self._json({'ok': True})
+        if u.path == '/api/l2_licz':
+            if not czujniki(k)['l2']:
+                return self._json({'blad': 'w tej sesji nie ma danych z L2 (l2.bin)'}, 409)
+            if not skrypt_l2():
+                return self._json({'blad': 'Brak programu l2_mapa - uruchom na Dellu: bash ~/GOLlidar/l2/instaluj_l2.sh'}, 409)
+            with BLOK:
+                if q['n'] in W_L2:
+                    return self._json({'blad': 'mapa L2 tej sesji juz jest w kolejce'}, 409)
+                W_L2[q['n']] = 'czeka'
+            KOLEJKA_L2.put(q['n'])
             return self._json({'ok': True})
         if u.path == '/api/porownaj':
             if not skrypt_por():
@@ -802,7 +924,7 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/api/usun_mape':
             if not zatrzymaj_i_czekaj(q['n']):
                 return self._json({'blad': 'nie udalo sie zatrzymac liczenia - sprobuj za chwile'}, 409)
-            shutil.rmtree(os.path.join(k, '_wynik'), ignore_errors=True)
+            usun_wynik_2d(k)
             return self._json({'ok': True})
         if u.path == '/api/usun_sesje':
             b_ = do_kosza(q['n'])
@@ -849,6 +971,7 @@ def main():
     threading.Thread(target=automat, daemon=True).start()
     threading.Thread(target=pracownik_por, daemon=True).start()
     threading.Thread(target=pracownik_cad, daemon=True).start()
+    threading.Thread(target=pracownik_l2, daemon=True).start()
     print(f'Przegladarka: http://<adres-serwera>:{ARGS.port}  katalog: {ARGS.katalog}')
     ThreadingHTTPServer(('0.0.0.0', ARGS.port), H).serve_forever()
 

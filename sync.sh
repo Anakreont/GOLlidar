@@ -25,9 +25,15 @@ if [ -n "$PENDRIVE" ]; then
 fi
 [ -n "$CEL" ] || [ -n "$URL" ] || exit 0
 # tryb HTTPS (BMS API) ma pierwszenstwo przed rsync
+# tryb wysylki (auto / dom / reczny) i kolejke obsluguje sync_http.py; argumenty (np. --sesje A,B) przekazywane dalej
 if [ -n "$URL" ]; then
-    if python3 "$(dirname "$0")/sync_http.py"; then echo "$(date +%s) OK" > "$STATUS"; exit 0
-    else echo "$(date +%s) BLAD" > "$STATUS"; exit 1; fi
+    python3 "$(dirname "$0")/sync_http.py" "$@" > "$ZRODLO/.sync_log" 2>&1; rc=$?
+    case $rc in
+        0) echo "$(date +%s) OK" > "$STATUS" ;;
+        3) echo "$(date +%s) POMIN" > "$STATUS"; exit 0 ;;   # tryb reczny / poza domem i pusta kolejka
+        *) echo "$(date +%s) BLAD" > "$STATUS"; exit 1 ;;
+    esac
+    exit 0
 fi
 if [ -n "$CEL_LOKALNY" ]; then
     RSH=()                                   # tryb testowy: kopia do katalogu lokalnego

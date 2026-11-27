@@ -198,6 +198,20 @@ Godzina nagrania to ok. 80 MB. Zestaw pobiera ok. 4–4,5 W; powerbank 10 000 mA
 (ok. 80 MB na godzinę nagrania). Stan kopii widać na stronie w sekcji „Stan". Dane zawsze najpierw trafiają na kartę SD;
 kopia jest dodatkowym zabezpieczeniem i przy braku zasięgu sama nadrabia zaległości.
 
+### Tryb wysyłki i wybór nagrań (od 27.11.2026)
+
+Na stronie skanera, zakładka **Dane → Kopia na serwer**:
+- **Wysyłaj automatycznie** – jak dotąd, co minutę wszystko, czego brakuje na serwerze (także przez hotspot telefonu).
+- **Automatycznie tylko w sieci domowej** – wpisz nazwę domowego Wi-Fi (przycisk „to ta sieć”, gdy malina jest w domu).
+  Poza domem wysyłane są tylko nagrania dodane ręcznie.
+- **Tylko ręcznie** – zaznaczasz nagrania na liście i „Wyślij zaznaczone” (albo „Zaznacz niewysłane”).
+
+Wybrane nagrania trafiają do kolejki (`~/skany/.sync_kolejka`). Wysyłka idzie w tle co minutę, wznawia się po zerwaniu
+połączenia i po restarcie maliny, aż całe nagranie będzie na Dellu. Przy każdym nagraniu widać stan: „✓ na serwerze”,
+„wysłano N %”, „w kolejce” albo „tylko na karcie”. Usuwanie z karty ostrzega, jeśli nagrania nie ma w całości na serwerze.
+„Sprawdź, co jest na serwerze” porównuje rozmiary bez wysyłania (np. po skasowaniu czegoś na Dellu).
+Malina sama niczego nie kasuje. Wysyłka idzie kawałkami po 2 MB (L2 daje ok. 15 MB na minutę nagrania).
+
 ### Kopia na pendrive (bez sieci, zalecana zawsze)
 
 Zwykły pendrive (FAT32 lub exFAT) wpięty w Raspberry Pi; co minutę dopisywane są na niego nowe dane. Chroni przed

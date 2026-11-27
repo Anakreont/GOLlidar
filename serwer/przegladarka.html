@@ -8,7 +8,7 @@
 <style>
 :root{--bg:#f3f4f6;--karta:#fff;--tekst:#1f2933;--szary:#6b7280;--linia:#e5e7eb;--akcent:#2563eb;--akcent2:#dbeafe;--czerw:#dc2626;--ziel:#16a34a;--zolty:#d97706}
 *{box-sizing:border-box}
-body{margin:0;font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--tekst);height:100vh;display:grid;grid-template-rows:52px 1fr;grid-template-columns:320px 1fr}
+body{margin:0;font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--tekst);height:100vh;display:grid;grid-template-rows:52px 1fr;grid-template-columns:360px 1fr}
 header{grid-column:1/3;background:#111827;color:#fff;display:flex;align-items:center;gap:14px;padding:0 16px}
 header h1{font-size:17px;margin:0;font-weight:600;letter-spacing:.2px}
 header .spacer{flex:1}
@@ -35,6 +35,21 @@ aside{overflow:auto;background:#fff;border-right:1px solid var(--linia);padding:
 .ses input.wyb{margin:0 6px 0 0;width:16px;height:16px;flex:none}.gl .wybb{font-size:11px;color:var(--szary);cursor:pointer;margin-left:6px;text-decoration:underline}
 .pill.gotowe{background:#dcfce7;color:#166534}.pill.liczy,.pill.czeka{background:#fef3c7;color:#92400e}.pill.błąd{background:#fee2e2;color:#991b1b}.pill.nagrywanie{background:#dbeafe;color:#1e40af}
 .puste{color:var(--szary);font-size:13px;padding:6px 4px}
+.pasek{position:sticky;top:-10px;z-index:3;background:#fff;margin:-10px -10px 8px;padding:10px 10px 8px;border-bottom:1px solid var(--linia);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.seg{display:inline-flex;border:1px solid var(--linia);border-radius:8px;overflow:hidden}.seg button{border:0;background:#fff;padding:5px 10px;font:inherit;font-size:12px;cursor:pointer;color:var(--szary)}
+.seg button.akt{background:var(--akcent);color:#fff}.pasek .mala{margin-left:auto}
+.bud>.gl{flex-wrap:wrap}.bud>.gl .opis{flex-basis:100%;color:var(--szary);font-size:12px;padding-left:18px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.bud.otw>.gl{border-bottom:1px solid var(--linia)}
+.dz{border-top:1px solid #f1f3f5}.dz:first-child{border-top:0}
+.dz>.dg{display:grid;grid-template-columns:14px 1fr auto;column-gap:6px;align-items:baseline;padding:7px 12px;cursor:pointer;font-size:12px;color:#374151;background:#fff}
+.dz>.dg .kd{grid-column:2/4;color:var(--szary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dz>.dg:hover{background:#f9fafb}.dz>.dg b{font-size:13px}.dz>.dg .ile{color:var(--szary);white-space:nowrap}
+.dz .lst{padding:0 8px 6px 14px}
+.ses .t b{font-weight:600}.ses .t .k{color:var(--akcent);font-weight:600}
+.tag{font-size:10px;padding:1px 6px;border-radius:6px;background:#f3f4f6;color:#4b5563;border:1px solid #e5e7eb;margin-left:4px;vertical-align:1px}
+.tag.l2{background:#ecfeff;color:#155e75;border-color:#a5f3fc}.tag.l2.ok{background:#cffafe}
+.pill.tylko{background:#ecfeff;color:#155e75}.pill.brak{background:#f3f4f6;color:#6b7280}
+.mini{font-size:11px;padding:1px 7px;border-radius:9px}.mini.e{background:#fee2e2;color:#991b1b}.mini.w{background:#fef3c7;color:#92400e}.mini.n{background:#dbeafe;color:#1e40af}
 main{display:flex;flex-direction:column;min-width:0;min-height:0}
 .nag{background:#fff;border-bottom:1px solid var(--linia);padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .nag .tyt{flex:1;min-width:220px}.nag .tyt b{font-size:16px}.nag .tyt div{color:var(--szary);font-size:12px}
@@ -76,7 +91,7 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
 #modal .opis b{font-size:15px}#modal .opis .sp{flex:1}
 #w3d .plotno{background:linear-gradient(#e8eef7,#fff)}
 #info3d{position:absolute;right:12px;top:12px;background:rgba(255,255,255,.9);padding:8px 12px;border-radius:10px;font-size:12px;max-width:260px}
-@media(max-width:900px){body{grid-template-columns:1fr;grid-template-rows:52px auto 1fr}aside{max-height:30vh}header input{display:none}.panel{display:none}}
+@media(max-width:900px){body{grid-template-columns:1fr;grid-template-rows:52px auto 1fr;height:auto;min-height:100vh}header{grid-column:1}aside{max-height:45vh;border-right:0;border-bottom:1px solid var(--linia)}main{min-height:70vh}header input{display:none}.panel{display:none}}
 </style>
 </head>
 <body>
@@ -92,15 +107,15 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
    <div class="mala" style="padding:6px 10px">Mapy liczą się same tylko dla nowych nagrań. Nieaktualne (stara wersja programu) przeliczasz sam: zaznacz je na liście i „Przelicz zaznaczone”.</div>
    <button onclick="przywrocKosz()">♻️ Przywróć wszystko z kosza</button>
    <button onclick="oproznijKosz()">🗑 Opróżnij kosz (nieodwracalne)</button>
-   <div class="mala" style="padding:6px 10px">Usunięte sesje i budynki trafiają do kosza. Usuń je też na skanerze – inaczej kopia z maliny wyśle je ponownie.</div>
+   <div class="mala" style="padding:6px 10px">Usunięte sesje i budynki trafiają do kosza. Usuń je też na skanerze – inaczej malina może je wysłać ponownie (po „Sprawdź, co jest na serwerze”).</div>
   </div></div>
 </header>
 <aside id="lista"><div class="pusto">wczytuję…</div></aside>
 <main>
- <div class="nag" id="nag"><div class="tyt"><b>Wybierz nagranie z listy</b><div>budynek → kondygnacja → sesja</div></div></div>
+ <div class="nag" id="nag"><div class="tyt"><b>Wybierz nagranie z listy</b><div>budynek → dzień → nagranie</div></div></div>
  <div class="zakl" id="zakl">
   <button data-w="w2d" class="akt">Rzut</button><button data-w="w3d">Model 3D</button><button data-w="wfoto">Zdjęcia</button>
-  <button data-w="wprz">Przekroje</button><button data-w="wzn">Znaczniki i notatki</button><button data-w="winw">Inwentaryzacja</button><button data-w="wpl">Pliki</button><button data-w="wpor">Porównanie SLAM</button><button data-w="wcad">Rzut CAD</button>
+  <button data-w="wprz">Przekroje</button><button data-w="wzn">Znaczniki i notatki</button><button data-w="winw">Inwentaryzacja</button><button data-w="wpl">Pliki</button><button data-w="wpor">Porównanie SLAM</button><button data-w="wcad">Rzut CAD</button><button data-w="wl2">Unitree L2 (3D)</button>
  </div>
  <div class="tresc">
   <section class="widok akt" id="w2d">
@@ -116,6 +131,7 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
   <section class="widok" id="wpl"><div class="tabela" id="tpl"></div></section>
   <section class="widok" id="wpor"><div class="tabela" id="tpor"></div></section>
   <section class="widok" id="wcad"><div class="tabela" id="tcad"></div></section>
+  <section class="widok" id="wl2"><div class="tabela" id="tl2"></div></section>
  </div>
 </main>
 <div id="modal" onclick="if(event.target===this)zamknij()"><div class="okno" id="mokno"></div></div>
@@ -145,14 +161,44 @@ function wybierzNieakt(b){L.filter(s=>s.budynek==b&&(s.stan=='nieaktualna'||s.st
 async function przeliczZazn(){const l=L.filter(s=>ZAZN.has(s.n)).sort((a,b)=>a.mb-b.mb);if(!l.length)return;
  if(!confirm('Przeliczyć '+l.length+' map? Liczą się po kolei w tle (najpierw najmniejsze).'))return;
  for(const s of l)await fetch('api/przelicz?n='+s.n,{method:'POST'});ZAZN.clear();lista()}
+let GRUP='dzien';try{GRUP=localStorage.getItem('lidar_grup')||'dzien'}catch(e){}
+const rozwD={};
+const DNI=['niedz.','pon.','wt.','śr.','czw.','pt','sob.'];
+function dzienTxt(d){if(!d)return'bez daty';const t=new Date(d+'T12:00:00');if(isNaN(t))return d;const dzis=new Date().toISOString().slice(0,10),wcz=new Date(Date.now()-864e5).toISOString().slice(0,10);
+ return (d==dzis?'dziś, ':d==wcz?'wczoraj, ':DNI[t.getDay()]+' ')+d.slice(8,10)+'.'+d.slice(5,7)+'.'+d.slice(0,4)}
+function ustGrup(g){GRUP=g;try{localStorage.setItem('lidar_grup',g)}catch(e){}rysujListe()}
+function zwinWsz(){L.forEach(s=>{rozwin[s.budynek]=false});rysujListe()}
+const q_=t=>esc(t).replace(/'/g,"\\'");
+function minTxt(sek){return sek?(sek<3600?Math.round(sek/60)+' min':Math.floor(sek/3600)+' h '+Math.round(sek%3600/60)+' min'):'–'}
+function wierszSes(s,zData){const l2=s.l2?'<span class="tag l2'+(s.l2_stan=='gotowe'?' ok':'')+'" title="Unitree L2 – mapa 3D: '+esc(s.l2_stan||'')+'">L2'+(s.l2_stan=='gotowe'?' ✓':'')+'</span>':'',d5=s.d500?'<span class="tag" title="D500 – mapa 2D">D500</span>':'';
+ return '<div class="ses'+(S&&S.n==s.n?' akt':'')+'" onclick="otworz(\''+s.n+'\')"><input type="checkbox" class="wyb" title="Zaznacz do przeliczenia" '+(ZAZN.has(s.n)?'checked ':'')+'onclick="event.stopPropagation();wybierz(\''+s.n+'\',this.checked)">'+
+  '<div class="t"><b>'+esc(zData?s.start.slice(8,10)+'.'+s.start.slice(5,7)+' '+s.godz:s.godz)+'</b>'+(zData?'':' · <span class="k">'+esc(s.kondygnacja)+'</span>')+d5+l2+
+  '<br><small>'+minTxt(s.czas_s)+' · '+s.foto+' zdj. · '+s.mb+' MB</small></div><span class="pill '+esc(s.stan)+'" title="mapa 2D (D500); szacunek z tempa liczenia na Dellu">'+stanTxt(s.stan,s.postep)+'</span>'+
+  '<button class="x" title="Usuń to nagranie (do kosza)" onclick="event.stopPropagation();usunSesjeN(\''+s.n+'\',\''+esc(s.start)+'\')">🗑</button></div>'}
 function rysujListe(){const f=$('szukaj').value.toLowerCase(),B={};let puste=0;
- L.forEach(s=>{if(s.stan=='brak danych'){puste++;return}if(f&&!s.budynek.toLowerCase().includes(f))return;((B[s.budynek]??={})[s.kondygnacja]??=[]).push(s)});
- const naz=Object.keys(B).sort((a,b)=>Math.max(...Object.values(B[b]).flat().map(s=>+s.n.slice(0,8)))-Math.max(...Object.values(B[a]).flat().map(s=>+s.n.slice(0,8)))||a.localeCompare(b));
- $('lista').innerHTML=(ZAZN.size?'<div class="zazn">Zaznaczone: <b>'+ZAZN.size+'</b><button class="btn gl" onclick="przeliczZazn()">🔄 Przelicz zaznaczone</button><button class="btn" onclick="ZAZN.clear();rysujListe()">Odznacz</button></div>':'')+(naz.map(b=>{const ses=Object.values(B[b]).flat(),otw=rozwin[b]??(S?ses.some(s=>s.n==S.n):naz.indexOf(b)<2);
-  return '<div class="bud"><div class="gl" onclick="rozwin[\''+esc(b).replace(/'/g,"\\'")+'\']='+!otw+';rysujListe()"><span>'+(otw?'▾':'▸')+'</span><b>'+esc(b)+'</b><span class="ile">'+ses.length+' nagr.</span>'+(otw?'<span class="wybb" onclick="event.stopPropagation();wybierzNieakt(\''+esc(b).replace(/'/g,"\\'")+'\')" title="Zaznacz mapy nieaktualne i z błędem">zaznacz nieaktualne</span>':'')+'<button class="x" title="Usuń cały budynek" onclick="event.stopPropagation();usunBudynek(\''+esc(b).replace(/'/g,"\\'")+'\')">🗑</button></div>'+
-  (otw?Object.keys(B[b]).sort().map(k=>'<div class="kond"><h4>'+esc(k)+'</h4>'+B[b][k].map(s=>
-   '<div class="ses'+(S&&S.n==s.n?' akt':'')+'" onclick="otworz(\''+s.n+'\')"><input type="checkbox" class="wyb" title="Zaznacz do przeliczenia" '+(ZAZN.has(s.n)?'checked ':'')+'onclick="event.stopPropagation();wybierz(\''+s.n+'\',this.checked)"><div class="t">'+esc(s.start.slice(5))+'<br><small>'+(s.czas_s?Math.round(s.czas_s/60)+' min':'–')+' · '+s.foto+' zdj. · '+s.mb+' MB</small></div><span class="pill '+esc(s.stan)+'" title="szacunek z tempa liczenia na Dellu">'+stanTxt(s.stan,s.postep)+'</span><button class="x" title="Usuń to nagranie (do kosza)" onclick="event.stopPropagation();usunSesjeN(\''+s.n+'\',\''+esc(s.start.slice(5))+'\')">🗑</button></div>').join('')+'</div>').join(''):'')+'</div>'}).join('')||'<div class="pusto">Brak nagrań</div>')+
-  (puste?'<div class="puste">+ '+puste+' pustych nagrań bez danych · <a href="#" onclick="usunPuste();return false">usuń</a></div>':'')}
+ L.forEach(s=>{if(s.stan=='brak danych'){puste++;return}if(f&&!(s.budynek+' '+s.kondygnacja).toLowerCase().includes(f))return;(B[s.budynek]??=[]).push(s)});
+ const ost=b=>B[b].reduce((m,s)=>s.start>m?s.start:m,'');
+ const naz=Object.keys(B).sort((a,b)=>ost(b).localeCompare(ost(a))||a.localeCompare(b));
+ let h='<div class="pasek"><span class="seg"><button class="'+(GRUP=='dzien'?'akt':'')+'" onclick="ustGrup(\'dzien\')">wg dni</button><button class="'+(GRUP=='kond'?'akt':'')+'" onclick="ustGrup(\'kond\')">wg kondygnacji</button></span>'+
+  '<button class="btn" style="padding:4px 8px;font-size:12px" onclick="zwinWsz()">zwiń</button><span class="mala">'+naz.length+' bud. · '+L.filter(s=>s.stan!='brak danych').length+' nagr.</span></div>';
+ if(ZAZN.size)h+='<div class="zazn">Zaznaczone: <b>'+ZAZN.size+'</b><button class="btn gl" onclick="przeliczZazn()">🔄 Przelicz zaznaczone</button><button class="btn" onclick="ZAZN.clear();rysujListe()">Odznacz</button></div>';
+ h+=naz.map((b,bi)=>{const ses=B[b].slice().sort((x,y)=>y.start.localeCompare(x.start)),otw=rozwin[b]??(S?ses.some(s=>s.n==S.n)||bi<1:bi<2);
+  const dni=[...new Set(ses.map(s=>s.dzien))],mb=ses.reduce((a,s)=>a+s.mb,0),
+   bl=ses.filter(s=>s.stan=='błąd'||s.l2_stan=='błąd').length,lc=ses.filter(s=>['liczy','czeka'].includes(s.stan)||['liczy','czeka'].includes(s.l2_stan)).length,ng=ses.filter(s=>s.stan=='nagrywanie').length,
+   kond=[...new Set(ses.map(s=>s.kondygnacja))].length;
+  let w='<div class="bud'+(otw?' otw':'')+'"><div class="gl" onclick="rozwin[\''+q_(b)+'\']='+!otw+';rysujListe()"><span>'+(otw?'▾':'▸')+'</span><b>'+esc(b)+'</b>'+
+   (otw?'<span class="wybb" onclick="event.stopPropagation();wybierzNieakt(\''+q_(b)+'\')" title="Zaznacz mapy nieaktualne i z błędem">zaznacz nieaktualne</span>':'')+
+   '<button class="x" title="Usuń cały budynek" onclick="event.stopPropagation();usunBudynek(\''+q_(b)+'\')">🗑</button>'+
+   '<div class="opis"><span>'+ses.length+' nagr. · '+dni.length+(dni.length==1?' dzień':' dni')+' · '+kond+' kond. · '+mb.toFixed(0)+' MB · ost. '+esc(dzienTxt(dni[0]))+'</span>'+
+   (ng?'<span class="mini n">'+ng+' nagrywa</span>':'')+(lc?'<span class="mini w">'+lc+' liczy</span>':'')+(bl?'<span class="mini e">'+bl+' błąd</span>':'')+'</div></div>';
+  if(otw){if(GRUP=='dzien'){w+=dni.map((d,di)=>{const sd=ses.filter(s=>s.dzien==d).sort((x,y)=>x.start.localeCompare(y.start)),kl=b+'|'+d,o=rozwD[kl]??(S?sd.some(s=>s.n==S.n)||(di==0&&!ses.some(s=>s.n==S.n)):di==0);
+     return '<div class="dz"><div class="dg" onclick="rozwD[\''+q_(kl)+'\']='+!o+';rysujListe()"><span>'+(o?'▾':'▸')+'</span><b>'+esc(dzienTxt(d))+'</b><span class="ile">'+sd.length+' nagr. · '+minTxt(sd.reduce((a,s)=>a+(s.czas_s||0),0))+'</span><span class="kd">'+esc([...new Set(sd.map(s=>s.kondygnacja))].join(', '))+'</span></div>'+
+      (o?'<div class="lst">'+sd.map(s=>wierszSes(s,false)).join('')+'</div>':'')+'</div>'}).join('')}
+   else{const K={};ses.forEach(s=>(K[s.kondygnacja]??=[]).push(s));
+    w+=Object.keys(K).sort((a,b)=>a.localeCompare(b,'pl',{numeric:true})).map(k=>'<div class="kond"><h4>'+esc(k)+' <span class="ile">· '+K[k].length+'</span></h4>'+K[k].sort((x,y)=>x.start.localeCompare(y.start)).map(s=>wierszSes(s,true)).join('')+'</div>').join('')}}
+  return w+'</div>'}).join('')||'<div class="pusto">Brak nagrań</div>';
+ if(puste)h+='<div class="puste">+ '+puste+' pustych nagrań bez danych · <a href="#" onclick="usunPuste();return false">usuń</a></div>';
+ $('lista').innerHTML=h}
 function usunBudynek(b){if(confirm('Przenieść do kosza CAŁY budynek „'+b+'” – wszystkie jego nagrania, zdjęcia i mapy? Trwające liczenie zostanie zatrzymane.'))post('api/usun_budynek?b='+encodeURIComponent(b),j=>{if(j.nie)alert('Nie udało się usunąć '+j.nie+' nagrań – spróbuj za chwilę');if(S&&S.info.budynek==b){S=null;M=null;czysc()}lista()})}
 function usunSesjeN(n,opis){if(confirm('Przenieść do kosza nagranie '+opis+'? Jeśli się liczy, liczenie zostanie zatrzymane.'))post('api/usun_sesje?n='+n,()=>{if(S&&S.n==n){S=null;M=null;czysc()}ZAZN.delete(n);lista()})}
 function usunPuste(){post('api/usun_puste',j=>{alert('Przeniesiono do kosza '+j.ile+' pustych nagrań');lista()})}
@@ -161,30 +207,33 @@ function przywrocKosz(){post('api/przywroc_kosz',j=>{alert('Przywrócono '+j.ile
 function oproznijKosz(){if(confirm('Opróżnić kosz? Tego nie da się cofnąć.'))post('api/oproznij_kosz',()=>alert('Kosz opróżniony'))}
 function czysc(){$('nag').innerHTML='<div class="tyt"><b>Wybierz nagranie z listy</b></div>';$('panel').innerHTML='';rys()}
 // ---------------------------------------------------------------- sesja
-function otworz(n){fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{S=d;S.n=n;M=null;wyb=null;rysujListe();naglowek();galeria();przekroje();znaczniki();inwent();pliki();porownanie();cad();
+function otworz(n){fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{S=d;S.n=n;M=null;wyb=null;rysujListe();naglowek();galeria();przekroje();znaczniki();inwent();pliki();porownanie();cad();l2();
+ if(S.czujniki&&!S.czujniki.d500&&S.czujniki.l2&&$('w2d').classList.contains('akt'))pokazWidok('wl2');
  fetch('api/mapa?n='+n).then(r=>r.ok?r.json():null).then(j=>{if(j){M=j.mapa;NZ=j.nazwy||{};KO=j.kontrola||[];seg=0;
  (M.kondygnacje||[]).forEach(k=>{k.znaczniki.forEach(z=>{if((z.opis||'').startsWith('POMIAR '))z.rodzaj='pomiar'});grupujPom(k.znaczniki)});}else{M=null;KO=[]}panel();warstwy();dopasuj();rys();if($('w3d').classList.contains('akt'))tryb3d()})})}
 function kawTxt(){const K=S.kawalki||{};if(K.stan=='gotowe')return'<a class="btn" title="Mapa pocięta na przekrojach i przerwach – każdy kawałek jako blok do przesuwania/obracania w CAD" href="'+plik('_wynik/kawalki.dxf')+'">⬇ Kawałki DXF</a><a class="btn" href="'+plik('_wynik/kawalki.png')+'" target="_blank">podgląd</a>';
  if(K.stan=='liczy'||K.stan=='czeka')return'<span class="btn">✂ tnę na kawałki…</span>';
  if(K.stan=='brak')return'<button class="btn" title="Potnij mapę na kawałki w miejscach przekrojów i przerw – do ręcznego sklejania w CAD" onclick="kawLicz()">✂ Kawałki</button>';return''}
 function kawLicz(){post('api/kawalki?n='+S.n,()=>{S.kawalki={stan:'liczy'};naglowek();const n=S.n;const f=()=>fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(!S||S.n!=n)return;S.kawalki=d.kawalki;S.wyniki=d.wyniki;naglowek();if(d.kawalki.stan!='gotowe')setTimeout(f,10000)});setTimeout(f,10000)})}
-function zajeta(){const z=x=>x=='liczy'||x=='czeka';return z(S.stan)||z((S.porownanie||{}).stan)||z((S.cad||{}).stan)||z((S.kawalki||{}).stan)}
+function zajeta(){const z=x=>x=='liczy'||x=='czeka';return z(S.stan)||z((S.porownanie||{}).stan)||z((S.cad||{}).stan)||z((S.kawalki||{}).stan)||z((S.l2||{}).stan)}
 function zatrzymaj(){if(confirm('Zatrzymać liczenie tej sesji (mapa, porównanie, CAD, kawałki) i usunąć ją z kolejki?'))post('api/zatrzymaj?n='+S.n,()=>{setTimeout(()=>{lista();otworz(S.n)},1500)})}
 function zatrzymajWszystko(){if(confirm('Zatrzymać WSZYSTKIE liczenia i wyczyścić kolejkę?'))post('api/zatrzymaj_wszystko',j=>{alert('Zatrzymano: '+j.ile);setTimeout(()=>{lista();if(S)otworz(S.n)},1500)})}
-function naglowek(){const i=S.info,ma=S.wyniki.includes('_wynik/rzut.dxf');
- $('nag').innerHTML='<div class="tyt"><b>'+esc(i.budynek||'?')+' › '+esc(i.kondygnacja||'?')+'</b><div>'+esc((i.start||'').replace('T',' ').slice(0,16))+' · '+esc(S.n)+' · <span class="pill '+esc(S.stan)+'">'+stanTxt(S.stan,S.postep)+'</span></div></div>'+
+function naglowek(){const i=S.info,ma=S.wyniki.includes('_wynik/rzut.dxf'),cz=S.czujniki||{d500:true},L2=S.l2||{};
+ $('nag').innerHTML='<div class="tyt"><b>'+esc(i.budynek||'?')+' › '+esc(i.kondygnacja||'?')+'</b><div>'+esc((i.start||'').replace('T',' ').slice(0,16))+' · '+esc(S.n)+' · '+(cz.d500?'D500 <span class="pill '+esc(S.stan)+'">'+stanTxt(S.stan,S.postep)+'</span>':'bez D500')+(cz.l2?' · L2 <span class="pill '+esc(L2.stan)+'">'+esc(L2.stan)+'</span>':'')+'</div></div>'+
+ (cz.l2&&L2.pliki&&L2.pliki.includes('_wynik/l2/rzut.dxf')?'<a class="btn'+(ma?'':' gl')+'" href="'+plik('_wynik/l2/rzut.dxf')+'">⬇ Rzut L2 DXF</a>':'')+
  (ma?'<a class="btn gl" href="'+plik('_wynik/rzut.dxf')+'">⬇ Rzut DXF</a>':'')+
  (S.wyniki.includes('_wynik/przekroje.dxf')?'<a class="btn" href="'+plik('_wynik/przekroje.dxf')+'">⬇ Przekroje DXF</a>':'')+
  (S.wyniki.includes('_wynik/model3d.dxf')?'<a class="btn" href="'+plik('_wynik/model3d.dxf')+'">⬇ Model 3D DXF</a><a class="btn" href="'+plik('_wynik/model3d.obj')+'">OBJ</a>':'')+
  (zajeta()?'<button class="btn" style="color:var(--czerw)" onclick="zatrzymaj()">⏹ Zatrzymaj</button>':'')+kawTxt()+'<select class="btn" title="Jednostka plików DXF (rysunek 1:1)" onchange="ustawJedn(this.value)">'+['m','cm','mm'].map(j=>'<option value="'+j+'"'+(j==JEDN?' selected':'')+'>DXF w '+j+'</option>').join('')+'</select>'+
- '<button class="btn" onclick="przelicz()">🔄 Przelicz</button><div class="menu"><button class="btn" onclick="this.parentNode.classList.toggle(\'otw\')">⋯</button><div class="lista">'+
+ (cz.d500?'<button class="btn" onclick="przelicz()">🔄 Przelicz</button>':'')+(cz.l2?'<button class="btn" onclick="pokazWidok(\'wl2\')">🧊 Mapa L2</button>':'')+'<div class="menu"><button class="btn" onclick="this.parentNode.classList.toggle(\'otw\')">⋯</button><div class="lista">'+
  '<button onclick="usunMape()">Usuń mapę tej sesji (policzy się od nowa)</button><button style="color:var(--czerw)" onclick="usunSesje()">Przenieś całą sesję do kosza</button></div></div>'}
 function przelicz(){post('api/przelicz?n='+S.n,()=>{alert('Zlecone – mapa liczy się ok. 1 min na każde 8 min nagrania.');lista()})}
 function usunMape(){if(confirm('Usunąć mapę tej sesji? Policzy się od nowa (trwające liczenie zostanie zatrzymane).'))post('api/usun_mape?n='+S.n,()=>{lista();otworz(S.n)})}
 function usunSesje(){if(confirm('Przenieść całą sesję do kosza? Trwające liczenie zostanie zatrzymane.'))post('api/usun_sesje?n='+S.n,()=>{S=null;M=null;czysc();lista()})}
 // ---------------------------------------------------------------- panel i warstwy
 function obr(){const k=M&&M.kondygnacje[seg];return k?((NZ[k.nr]||{}).obrot||0):0}
-function panel(){if(!M){$('panel').innerHTML='<h3>Mapa</h3><p class="mala">Stan: '+esc(S.stan)+'</p><button class="btn gl" onclick="przelicz()">Policz teraz</button>';return}
+function panel(){if(!M){const cz=S.czujniki||{d500:true};$('panel').innerHTML='<h3>Mapa 2D (D500)</h3><p class="mala">Stan: '+esc(S.stan)+'</p>'+(cz.d500?'<button class="btn gl" onclick="przelicz()">Policz teraz</button>':'<p class="mala">W tej sesji D500 nie nagrywał.</p>')+
+  (cz.l2?'<h3>Unitree L2</h3><button class="btn gl" onclick="pokazWidok(\'wl2\')">🧊 Zakładka L2</button>':'');return}
  const k=M.kondygnacje[seg],z=NZ[k.nr]||{},zn=k.znaczniki.filter(r=>r.rodzaj!='system');
  $('panel').innerHTML='<h3>Kondygnacja</h3><select id="seg" onchange="seg=+this.value;wyb=null;panel();dopasuj();rys()">'+M.kondygnacje.map((q,i)=>'<option value="'+i+'"'+(i==seg?' selected':'')+'>'+esc((NZ[q.nr]||{}).nazwa||('Odcinek '+q.nr))+' · '+q.od.toFixed(0)+'–'+q.do.toFixed(0)+' s'+((NZ[q.nr]||{}).ukryj?' (pominięty)':'')+'</option>').join('')+'</select>'+
  '<div class="rzad"><input type="text" id="nz" placeholder="nazwa, np. PARTER" value="'+esc(z.nazwa||'')+'"></div>'+
@@ -221,7 +270,7 @@ function dopasuj(){if(!M||!M.kondygnacje[seg])return;const k=M.kondygnacje[seg],
  const C=[R(0,0),R(k.szer,0),R(0,k.wys),R(k.szer,k.wys)],xs=C.map(p=>p[0]),ys=C.map(p=>p[1]),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
  wid.s=Math.min(r.width/(x1-x0+1.5),(r.height-60)/(y1-y0+1.5));wid.x=r.width/2-(x0+x1)/2*wid.s;wid.y=r.height/2+(y0+y1)/2*wid.s+10}
 function rys(){const r=c.getBoundingClientRect(),d=devicePixelRatio||1;if(!r.width)return;c.width=r.width*d;c.height=r.height*d;g.setTransform(d,0,0,d,0,0);g.clearRect(0,0,r.width,r.height);
- if(!M||!M.kondygnacje[seg]){g.fillStyle='#9ca3af';g.font='16px system-ui';g.textAlign='center';g.fillText(S?'Mapa: '+S.stan:'Wybierz nagranie z listy',r.width/2,r.height/2);g.textAlign='left';return}
+ if(!M||!M.kondygnacje[seg]){g.fillStyle='#9ca3af';g.font='16px system-ui';g.textAlign='center';g.fillText(S?(S.stan=='tylko L2'?'Nagranie tylko z L2 – mapa w zakładce „Unitree L2 (3D)”':'Mapa: '+S.stan):'Wybierz nagranie z listy',r.width/2,r.height/2);g.textAlign='left';return}
  const k=M.kondygnacje[seg];
  const m=wid.s>=80?.5:wid.s>=25?1:2;g.strokeStyle='#f1f3f5';g.lineWidth=1;
  for(let x=-2;x<=k.szer+2;x+=m){const[a,b]=P(x,-2),[a2,b2]=P(x,k.wys+2);g.beginPath();g.moveTo(a,b);g.lineTo(a2,b2);g.stroke()}
@@ -374,6 +423,22 @@ function cadWgraj(){const f=$('cadPlik').files[0];if(!f){alert('Wybierz plik DXF
 function cadUstaw(){post('api/cad_ustaw?b='+encodeURIComponent(S.cad.budynek)+'&warstwa='+encodeURIComponent($('cadW').value)+'&jedn='+$('cadJ').value,()=>cadOdswiez())}
 function cadLicz(z,kl){post('api/dopasuj?n='+S.n+'&zrodlo='+z+(kl!==undefined?'&klaster='+kl:''),()=>cadOdswiez())}
 function porLicz(m){post('api/porownaj?n='+S.n+'&metody='+m,()=>fetch('api/sesja?n='+S.n).then(r=>r.json()).then(d=>{S.porownanie=d.porownanie;porownanie()}))}
+// ---------------------------------------------------------------- Unitree L2 (l2/l2_mapa.sh: l2.bin -> rosbag -> Point-LIO -> rzut)
+let l2T=null;
+function l2(){const X=S.l2||{stan:'brak',pliki:[]},cz=S.czujniki||{};clearTimeout(l2T);const zaj=X.stan=='czeka'||X.stan=='liczy',ma=f=>X.pliki.includes('_wynik/l2/'+f);
+ let h='<h3>Mapa 3D z Unitree L2</h3>';
+ if(!cz.l2){$('tl2').innerHTML=h+'<div class="pusto">W tym nagraniu nie ma danych z L2.</div>';return}
+ h+='<p class="mala">Point-LIO odtwarza nagranie w czasie rzeczywistym – liczenie trwa mniej więcej tyle, co nagranie'+(X.nagranie_s?' (tu ok. '+minTxt(X.nagranie_s)+')':'')+'. Dane L2: '+X.mb+' MB. Rzut: ściany z pasa pod sufitem, przekrój 1,0–1,2 m nad podłogą, wysokość w świetle.</p>';
+ if(!X.dostepne)h+='<p class="mala" style="color:var(--czerw)">Brak programu na Dellu – uruchom: <code>bash ~/GOLlidar/l2/instaluj_l2.sh</code></p>';
+ h+='<p><button class="btn gl" '+(zaj||!X.dostepne?'disabled ':'')+'onclick="l2Licz()">▶ '+(X.stan=='gotowe'?'Policz mapę L2 od nowa':'Policz mapę L2')+'</button> '+(zaj?'<button class="btn cz" onclick="zatrzymaj()">⏹ Zatrzymaj</button> ':'')+
+  'Stan: <span class="pill '+esc(X.stan)+'">'+esc(X.stan)+(X.liczy_s!=null?' · '+minTxt(X.liczy_s)+(X.nagranie_s?' z ok. '+minTxt(X.nagranie_s+60):''):'')+'</span>'+(zaj?' <span class="mala">(odświeża się samo)</span>':'')+'</p>';
+ const w=X.wysokosci||{};if(w.wysokosc_w_swietle_m)h+='<div class="stat" style="max-width:520px"><div><b>'+liczba(w.wysokosc_w_swietle_m)+' m</b>wysokość w świetle</div><div><b>'+(+w.punktow||0).toLocaleString('pl')+'</b>punktów chmury</div></div>';
+ h+='<p>'+(ma('rzut.dxf')?'<a class="btn gl" href="'+plik('_wynik/l2/rzut.dxf')+'">⬇ Rzut L2 DXF</a> ':'')+(ma('chmura.pcd')?'<a class="btn" href="'+plik('_wynik/l2/chmura.pcd')+'" title="chmura punktów 3D – CloudCompare">⬇ Chmura 3D (PCD)</a> ':'')+
+  (ma('przebieg.log')?'<a class="btn" href="'+plik('_wynik/l2/przebieg.log')+'" target="_blank">dziennik</a> ':'')+(ma('blad.txt')?'<a class="btn cz" href="'+plik('_wynik/l2/blad.txt')+'" target="_blank">błąd</a> ':'')+'</p>';
+ if(ma('rzut.png'))h+='<a href="'+plik('_wynik/l2/rzut.png')+'" target="_blank"><img src="'+plik('_wynik/l2/rzut.png')+'&v='+Date.now()+'" style="max-width:100%;border:1px solid var(--linia);border-radius:8px;background:#fff"></a>';
+ $('tl2').innerHTML=h;
+ if(zaj){const n=S.n;l2T=setTimeout(()=>{if(S&&S.n==n)fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(S&&S.n==n){const by=S.l2.stan;S.l2=d.l2;l2();if(by!=d.l2.stan)naglowek()}})},15000)}}
+function l2Licz(){post('api/l2_licz?n='+S.n,()=>fetch('api/sesja?n='+S.n).then(r=>r.json()).then(d=>{S.l2=d.l2;l2();naglowek();lista()}))}
 // ---------------------------------------------------------------- model 3D
 const R3={};
 async function tryb3d(){if(!M){$('info3d').textContent='Model 3D pojawi się po policzeniu mapy.';return}
