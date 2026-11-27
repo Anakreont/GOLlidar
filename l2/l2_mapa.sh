@@ -25,4 +25,6 @@ kill -INT $RC; wait $RC || true
 [ -f "$PCD" ] || { echo "brak $PCD - zobacz $WY/pointlio.log"; exit 1; }
 cp "$PCD" "$WY/chmura.pcd"
 python "$TU/l2_rzut.py" "$WY/chmura.pcd" "$WY"
+# rosbag zrobiony z l2.bin jest tak duzy jak nagranie i da sie go odtworzyc w kazdej chwili - kasujemy (miejsce na dysku)
+[ -d "$WE" ] && [ "${L2_ZOSTAW_BAG:-0}" != 1 ] && rm -f "$BAG"
 echo "== wynik: $WY (rzut.png, rzut.dxf, wysokosci.txt)"
