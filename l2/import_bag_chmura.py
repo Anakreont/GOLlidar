@@ -36,6 +36,9 @@ def main():
     ap.add_argument('--chmura'); ap.add_argument('--odom')
     ap.add_argument('--budynek', default='Przykład'); ap.add_argument('--kondygnacja', default='')
     ap.add_argument('--voxel', type=float, default=0.02)
+    ap.add_argument('--pozycje', help='pozycje skanow z SLAM (np. KISS-ICP, format TUM: t x y z qx qy qz qw) - '
+                    'wtedy chmury traktowane jako w ukladzie czujnika, a odometria z bagu pomijana')
+    ap.add_argument('--co', type=int, default=1, help='co ktory skan brac')
     a = ap.parse_args()
     import rosbag
     b = rosbag.Bag(a.bag)
@@ -47,17 +50,30 @@ def main():
         for _, m, ts in b.read_messages(topics=[to]):
             p, q = m.pose.pose.position, m.pose.pose.orientation
             T.append(m.header.stamp.to_sec() or ts.to_sec()); poz.append((p.x, p.y, p.z, q.x, q.y, q.z, q.w))
-    T = np.array(T); poz = np.array(poz)
+    MP = None                                    # macierze 4x4 pozycji skanow wg kolejnosci (KITTI z KISS-ICP)
+    if a.pozycje:
+        A = np.loadtxt(a.pozycje, ndmin=2)
+        if A.shape[1] == 12:                     # KITTI: 3x4 na wiersz, kolejnosc = kolejnosc skanow
+            MP = np.tile(np.eye(4), (len(A), 1, 1)); MP[:, :3, :] = A.reshape(-1, 3, 4)
+            T, poz = list(range(len(A))), [tuple(M[:3, 3]) + (0, 0, 0, 1) for M in MP]
+        else:                                    # TUM: t x y z qx qy qz qw
+            T, poz = list(A[:, 0]), [tuple(x) for x in A[:, 1:8]]
+    T = np.array(T, float); poz = np.array(poz)
     chm = []; n_sk = 0; uklad_mapy = None
-    for _, m, ts in b.read_messages(topics=[tc]):
+    for nr, (_, m, ts) in enumerate(b.read_messages(topics=[tc])):
+        if nr % a.co:
+            continue
         P = xyz_z_pc2(m); n_sk += 1
         if uklad_mapy is None:
-            uklad_mapy = m.header.frame_id.lstrip('/') in ('world', 'map', 'odom', 'camera_init')
+            uklad_mapy = (not a.pozycje) and m.header.frame_id.lstrip('/') in ('world', 'map', 'odom', 'camera_init')
         if not uklad_mapy:
             if not len(T):
                 raise SystemExit('chmura w ukladzie czujnika, a brak odometrii')
-            i = int(np.clip(np.searchsorted(T, m.header.stamp.to_sec()), 0, len(T) - 1))
-            P = P @ quat_R(poz[i, 3:]).T + poz[i, :3]
+            if MP is not None:                   # KITTI: pozycja wg numeru skanu
+                M = MP[min(nr, len(MP) - 1)]; P = P @ M[:3, :3].T + M[:3, 3]
+            else:
+                i = int(np.clip(np.searchsorted(T, m.header.stamp.to_sec()), 0, len(T) - 1))
+                P = P @ quat_R(poz[i, 3:]).T + poz[i, :3]
         # przerzedzenie na biezaco (pamiec)
         k = np.unique(np.floor(P / a.voxel).astype(np.int64), axis=0, return_index=True)[1]
         chm.append(P[k].astype(np.float32))
