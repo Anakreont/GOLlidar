@@ -20,8 +20,9 @@ PAR = dict(imu_w=200.0, promien=8.0, kf_dl=0.25, kf_kat=8.0, co_ktory=2, przechy
            # a blad jest rozkladany wstecz na odcinek, na ktorym powstal.
            deskew_v=1.0,                   # 28.11: deskew takze przesuniecia (ruch glowicy w czasie obrotu, ~5 cm przy 0,5 m/s); 0 = tylko obrot.
                                            # A/B na 6 sesjach: grubosc scian (mediana) 22->18, 21->14, 28->22, 22->18 mm; znak -1 pogarsza (29-33 mm)
-           przechyl_sledz=25.0,            # 28.11: skany przechylone 12-25 st. nie sa odrzucane - po rzutowaniu na poziom sluza do samego
-                                           # sledzenia (nie trafiaja do mapy); mniej luk i fragmentow (SP162 2 pietro: 3 -> 2). 0 = wylaczone
+           przechyl_sledz=0.0,             # 25 = skany przechylone 12-25 st. po rzutowaniu na poziom sluza do samego sledzenia (nie trafiaja do mapy).
+                                           # WYLACZONE: SP162 2 pietro lepiej (3 -> 2 fragmenty, mapa ciagla), ale Test dom 4 'zewnatrz' duzo gorzej
+                                           # (fragment z zewnatrz nalozony na wnetrze). Z bramka jakosci (skos_frac=0.7) 'zewnatrz' dobrze, 2 pietro gorzej (5 fragm.)
            kotwica=True, kotw_wiek=20.0, kotw_inl=0.45, kotw_max=0.6, kotw_max_kat=10.0, kotw_ile=3)                 # odch. std |przysp.| w 0,5 s ponizej progu = operator stoi -> przewidywany ruch zerowy                  # IMU SHTP: kurs z calki zyroskopu; wylaczone - przy zanikach zasilania (USB) gubi skoki, ktore kwaternion zachowuje
 STAT = {}
 import os as _os, json as _json
@@ -365,6 +366,9 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segme
                     dodaj_kf(); poses.append((tm, *T, w)); yaw_ost = ym; t_ok = tm; continue
             if wyn is None: info.append((tm, 'icp')); continue
             Tn, rms, ev, frac = wyn
+            if skos and PAR.get('skos_frac', 0) > 0 and (frac < PAR['skos_frac'] or rms > PAR.get('skos_rms', 0.03) or ev[0] < PAR['deg_prog']):
+                # przechylony skan sluzy do sledzenia tylko, gdy pewnie pasuje do mapy; inaczej jak dawniej - odrzucony
+                STAT['skos_sledzone'] -= 1; info.append((tm, 'przechyl')); STAT['przechyl'] += 1; continue
             if frac < 0.3 or np.linalg.norm(Tn[:2] - T0[:2]) > 0.4: info.append((tm, 'skok')); Tn = T0
         v = 0.5 * v + 0.5 * (Tn[:2] - T[:2]); T = Tn; yaw_ost = ym; t_ok = tm
         poses.append((tm, *T, w))

@@ -12,7 +12,7 @@ sys.path.insert(0, TU); sys.path.insert(0, os.path.join(TU, '..'))
 import slam, sprawdz as S
 from eksport_dxf import kierunek, kondygnacja, szkielet, lica, domknij, KOM, MIN_KF
 
-WERSJA = 11  # 11: sledzenie przy przechyle 12-25 st., domykanie naroznikow lic; 10: deskew przesuniecia; 9: drugi przebieg (dopracowanie); 8: kotwica do starej mapy (dryf po ciasnym pomieszczeniu); 7: degeneracja w korytarzach, pas wysokosci, szukanie kursu po luce, IMU SHTP
+WERSJA = 12  # 12: sledzenie przy przechyle wylaczone (psulo nagranie z wyjsciem na zewnatrz); 11: domykanie naroznikow lic (+ sledzenie przy przechyle); 10: deskew przesuniecia; 9: drugi przebieg (dopracowanie); 8: kotwica do starej mapy (dryf po ciasnym pomieszczeniu); 7: degeneracja w korytarzach, pas wysokosci, szukanie kursu po luce, IMU SHTP
 DZIEL_BARO = False   # True: dawny podzial sesji na kondygnacje wg barometru
 PETLE = False          # zamykanie petli (posegraf.graf) - do dopracowania wag, na razie gorzej niz bez
 RZUTUJ = False
