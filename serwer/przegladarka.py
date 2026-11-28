@@ -650,7 +650,7 @@ def licz_nakladke(n, k):
 
 
 # wyniki narzedzi L2 na zadanie (l2/l2_ciecia.py) i plan.json (l2_rzut.py)
-L2_WYNIKI_NARZ = r'(plan\.json|rzut_przekroje\.dxf|ciecie_\d{3}(_przekroje)?\.dxf|przekroj_[A-Z0-9]{1,4}\.(dxf|png)|przekroje\.json|model3d\.(obj|stl|dxf)|chmura3d\.dxf|chmura\.ply)'
+L2_WYNIKI_NARZ = r'(plan\.json|rzut_przekroje\.dxf|ciecie_\d{3}(_przekroje)?\.dxf|przekroj_[A-Z0-9]{1,4}\.(dxf|png)|przekroje\.json|model3d\.(obj|stl|dxf)|chmura3d\.dxf|chmura\.ply|pomieszczenia_poprawione\.(csv|json)|rzut_poprawiony\.dxf)'
 W_L2N = {}                     # (sesja, wersja) -> opis trwajacego narzedzia L2 (przeliczenie rzutu, model 3D)
 KOLEJKA_L2 = queue.Queue()
 PODGLAD3D = threading.Lock()   # jedno przerzedzanie chmury naraz (pamiec)
@@ -976,6 +976,8 @@ class H(BaseHTTPRequestHandler):
             pl['przekroje'] = json.load(open(pj, encoding='utf-8')) if os.path.isfile(pj) else []
             pl['znaczniki'] = znaczniki_na_trasie(k, pl.get('trasa') or [])
             pl['liczy'] = W_L2N.get((q['n'], q.get('w') or 'bez'))
+            pr = os.path.join(wy, 'pomieszczenia_poprawione.json')     # reczne poprawki pomieszczen (l2_pom_edycja.py)
+            pl['pom_reczne'] = json.load(open(pr, encoding='utf-8')) if os.path.isfile(pr) else None
             return self._json(pl)
         if u.path == '/api/l2_chmura':
             # lekka chmura do podgladu 3D w przegladarce (l2/l2_podglad3d.py), robiona przy pierwszym otwarciu i po przeliczeniu
@@ -1128,6 +1130,38 @@ class H(BaseHTTPRequestHandler):
                     return self._json({'blad': 'mapa L2 tej sesji juz jest w kolejce'}, 409)
                 W_L2[q['n']] = 'czeka'
             KOLEJKA_L2.put(q['n'])
+            return self._json({'ok': True})
+        if u.path == '/api/l2_pom':
+            # reczne poprawianie pomieszczen: wskazanie, sciana/domkniecie, podzial, laczenie, usuwanie, nazwa
+            w = 'petle' if q.get('w') == 'petle' else 'bez'; wy = l2_wy(k, w)
+            op = q.get('op', '')
+            if op not in ('start', 'dodaj', 'sciana', 'podziel', 'polacz', 'usun', 'usun_sciane', 'nazwa', 'drzwi', 'reset'):
+                return self._json({'blad': 'zla operacja'}, 400)
+            if not os.path.isfile(os.path.join(wy, 'plan.json')):
+                return self._json({'blad': 'brak plan.json - przelicz rzut z chmury'}, 409)
+            arg = [sys.executable, os.path.join(REPO, 'l2', 'l2_pom_edycja.py'), wy, op]
+            try:
+                for x in ('k', 'id', 'id2'):
+                    if q.get(x, '') != '':
+                        arg += ['--' + x, str(int(q[x]))]
+                for x in ('x', 'y', 'x2', 'y2', 'r'):
+                    if q.get(x, '') != '':
+                        arg += ['--' + x, str(float(q[x]))]
+            except ValueError:
+                return self._json({'blad': 'zle parametry'}, 400)
+            if q.get('nazwa'):
+                arg += ['--nazwa', q['nazwa'][:60]]
+            with BLOK:
+                if (q['n'], w) in W_L2N:
+                    return self._json({'blad': 'chwila - trwa: ' + W_L2N[(q['n'], w)]}, 409)
+                W_L2N[(q['n'], w)] = 'pomieszczenia'
+            try:
+                r = subprocess.run(arg, capture_output=True, text=True, env=ENV_DZIECI, timeout=900)
+            finally:
+                with BLOK:
+                    W_L2N.pop((q['n'], w), None)
+            if r.returncode != 0:
+                return self._json({'blad': (r.stderr or r.stdout).strip()[-500:]}, 500)
             return self._json({'ok': True})
         if u.path in ('/api/l2_przekroj', '/api/l2_przekroj_usun', '/api/l2_poziomy', '/api/l2_model3d', '/api/l2_rzut'):
             w = 'petle' if q.get('w') == 'petle' else 'bez'; wy = l2_wy(k, w)

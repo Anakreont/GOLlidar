@@ -190,6 +190,13 @@ def rzut_z_przekrojami(wy, PL, L):
                                    dxfattribs={'layer': 'PRZEKROJE'})
                 msp.add_text(p['nazwa'], height=0.3, dxfattribs={'layer': 'PRZEKROJE'}).set_placement(tuple(q + n * 0.75 + t * s_ * 0.1))
         d.saveas(src[:-4] + '_przekroje.dxf')
+    # rzut z recznie poprawionymi pomieszczeniami bierze rzut_przekroje.dxf - odswiezyc po zmianie przekrojow
+    if os.path.exists(os.path.join(wy, 'pomieszczenia_poprawione.json')):
+        try:
+            from l2_pom_edycja import zapisz_wyniki
+            zapisz_wyniki(wy, PL, json.load(open(os.path.join(wy, 'pomieszczenia_poprawione.json'), encoding='utf-8')))
+        except Exception as e:
+            print('rzut_poprawiony pominiety:', e)
 
 
 def usun(wy, nazwa):
