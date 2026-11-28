@@ -20,7 +20,7 @@ import skan_web as SW          # tylko funkcje czytajace CSV inwentaryzacji
 
 ARGS = None
 SESJA_RE = re.compile(r'^[A-Za-z0-9_+\-]{1,100}$')
-PLIK_RE = re.compile(r'^((_wynik|_porownanie|_wynik/l2|_wynik/l2/petle)/)?[A-Za-z0-9_\-]{1,60}\.(jpg|csv|txt|bin|dxf|png|json|obj|log|pcd)$')
+PLIK_RE = re.compile(r'^((_wynik|_porownanie|_wynik/l2|_wynik/l2/petle)/)?[A-Za-z0-9_\-]{1,60}\.(jpg|csv|txt|bin|dxf|png|json|obj|log|pcd|npz)$')
 KOLEJKA = queue.PriorityQueue()   # (0 = recznie z przycisku, 1 = automat, licznik, sesja)
 NR_ZLEC = __import__('itertools').count()
 W_TOKU = {}                    # sesja -> 'czeka' | 'liczy'
@@ -864,7 +864,8 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/api/sesja':
             pliki = sorted(p for p in os.listdir(k) if os.path.isfile(os.path.join(k, p)))
             wyn = sorted('_wynik/' + p for p in os.listdir(os.path.join(k, '_wynik'))
-                         if p in ('rzut.dxf', 'podglad.png', 'przekroje.dxf', 'model3d.dxf', 'model3d.obj', 'log.txt', 'blad.txt', 'pomieszczenia.csv', 'pomieszczenia.png')
+                         if p in ('rzut.dxf', 'podglad.png', 'przekroje.dxf', 'model3d.dxf', 'model3d.obj', 'log.txt', 'blad.txt', 'pomieszczenia.csv', 'pomieszczenia.png',
+                                   'kf.npz', 'kawalki_zlozone_log.txt', 'kawalki_cad_log.txt')
                          or (p.startswith('przekroj_') and p.endswith('.jpg'))
                          or (p.startswith('porownanie_') and p.endswith('.png'))) if os.path.isdir(os.path.join(k, '_wynik')) else []
             pj = os.path.join(k, '_wynik', 'przekroje.json')
