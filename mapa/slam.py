@@ -177,7 +177,7 @@ def icp(src, tgt, ntg, tree, T0, iters=15, huber=0.05, max_d=0.5, prior=None, de
     ev = np.linalg.eigvalsh(((J * w[:, None]).T @ J)[:2, :2])     # bez sztucznego wiezu - do oceny degeneracji
     return np.array([x, y, th]), np.sqrt(np.mean(r ** 2 * w)), ev, m.mean()
 
-def icp_widok(src, tgt, ntg, tree, T0, iters=25, huber=0.03, max_d=0.5, prior=None):
+def icp_widok(src, tgt, ntg, tree, T0, iters=25, huber=0.03, max_d=0.5, prior=None, deg=None):
     """ICP do starej mapy z kontrola widocznosci: normalne celu sa skierowane do czujnika, ktory je widzial;
     punkt celu liczy sie tylko, gdy to lico jest zwrocone takze do obecnej pozycji (inaczej skan z pokoju A
     dociagalby sie do drugiej strony tej samej sciany, widzianej kiedys z pokoju B).
@@ -201,6 +201,12 @@ def icp_widok(src, tgt, ntg, tree, T0, iters=25, huber=0.03, max_d=0.5, prior=No
         J = np.stack([nm[:, 0], nm[:, 1], np.sum(nm * dq, 1)], 1)
         H = (J * w[:, None]).T @ J; g = (J * w[:, None]).T @ r
         ev = np.linalg.eigvalsh(H[:2, :2])
+        if deg is not None:                       # slaby kierunek: pozycja trzymana przy (x0, y0)
+            ew, ev_ = np.linalg.eigh(H[:2, :2])
+            for k in range(2):
+                if ew[k] < deg[2]:
+                    vv = ev_[:, k]; lam = deg[2] - ew[k]
+                    H[:2, :2] += lam * np.outer(vv, vv); g[:2] += lam * vv * (vv @ (np.array([x, y]) - np.asarray(deg[:2])))
         if prior is not None:
             H[2, 2] += prior[1]; g[2] += prior[1] * (th - prior[0])
         try: dx = -np.linalg.solve(H + 1e-6 * np.eye(3), g)

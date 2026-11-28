@@ -44,6 +44,11 @@ for kat in sys.argv[1:]:
             finally: sys.stdout = so
             kt = [P[np.argmin(np.abs(P[:, 1:4] - Tk).sum(1)), 0] for Tk, _, _ in kf]
             s = spojnosc(kf, kt); K = slam.STAT.get('kotwice') or []
+            if kot:
+                import posegraf
+                Xd = posegraf.dopracuj(kf, kt, log=lambda *a: None); kfd = [(Xd[i], kf[i][1], kf[i][2]) for i in range(len(kf))]
+                sd = spojnosc(kfd, kt); dd = np.hypot(*(Xd[:, :2] - np.array([k[0][:2] for k in kf])).T)
+                print(f"  + dopracowanie: mediana {sd['mediana_mm']:.0f} mm, 90% {sd['p90_mm']:.0f} mm, podwojne {sd['podwojne_proc']:.1f}%, ruszono {int((dd > 0.005).sum())} skanow, najw. {dd.max()*100:.0f} cm", flush=True)
             print(f"  kotwica={'tak' if kot else 'nie'}: skanow {len(P)}, kluczowych {len(kf)}, fragmentow {len(set(map(tuple, slam.mapa.frag.tolist())))}, "
                   + (f"te same lica po >25 s: mediana {s['mediana_mm']:.0f} mm, 90% {s['p90_mm']:.0f} mm, podwojne {s['podwojne_proc']:.1f}% ({s['pkt']} pkt)" if s else 'brak powrotow')
                   + f", poprawek {len(K)}" + (f" (najw. {max(k[2] for k in K)*100:.0f} cm, {max(abs(k[3]) for k in K):.1f} st)" if K else '')

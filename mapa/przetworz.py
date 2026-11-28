@@ -12,10 +12,11 @@ sys.path.insert(0, TU); sys.path.insert(0, os.path.join(TU, '..'))
 import slam, sprawdz as S
 from eksport_dxf import kierunek, kondygnacja, szkielet, lica, KOM, MIN_KF
 
-WERSJA = 8   # 8: kotwica do starej mapy (dryf po ciasnym pomieszczeniu); 7: degeneracja w korytarzach, pas wysokosci, szukanie kursu po luce, IMU SHTP
+WERSJA = 9   # 9: drugi przebieg (dopracowanie); 8: kotwica do starej mapy (dryf po ciasnym pomieszczeniu); 7: degeneracja w korytarzach, pas wysokosci, szukanie kursu po luce, IMU SHTP
 DZIEL_BARO = False   # True: dawny podzial sesji na kondygnacje wg barometru
 PETLE = False          # zamykanie petli (posegraf.graf) - do dopracowania wag, na razie gorzej niz bez
 RZUTUJ = False
+DOPRACUJ = True      # drugi przebieg: posegraf.dopracuj (28.11, podwojne sciany po ciasnym pomieszczeniu)
 ZSZYJ = True         # zszywanie fragmentow po lukach w sledzeniu (posegraf.zszyj)
 
 
@@ -117,6 +118,10 @@ def przetworz(kat):
         print('POSTEP etap zszywanie', flush=True)
         Xz = posegraf.zszyj(kf, slam.mapa.frag, slam.mapa.frag_luka)
         kf = [(Xz[i], kf[i][1], kf[i][2]) for i in range(len(kf))]
+    if DOPRACUJ and len(kf) > 20:             # skany dociagane do scian widzianych w innym czasie (podwojne sciany)
+        print('POSTEP etap dopracowanie', flush=True)
+        Xd = posegraf.dopracuj(kf, kt)
+        kf = [(Xd[i], kf[i][1], kf[i][2]) for i in range(len(kf))]
     X0 = np.array([k[0] for k in kf], float); X = X0.copy()
     granice = [(a - t0) / 1e9 for a, b, h in pozi] + [1e12]
     for s_ in range(len(pozi)):

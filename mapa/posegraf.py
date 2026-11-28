@@ -212,6 +212,37 @@ def doszlifuj(kf, rund=2, promien=6.0, log=print):
     return X
 
 
+def dopracuj(kf, kt, rund=3, promien=8.0, odstep=8.0, log=print):
+    """Po pierwszym przebiegu: kazdy kluczowy skan dopasowany do scian widzianych w INNYM czasie (o > odstep s
+    wczesniej lub pozniej), z kontrola widocznosci lica. Sasiednie w czasie skany sa pomijane, bo niosa ten sam
+    blad. Usuwa podwojne sciany po odjezdzie trasy w ciasnym pomieszczeniu (skany stamtad widza hol przez drzwi).
+    W kierunku slabo okreslonym pozycja zostaje (wiez jak przy degeneracji). Zmiana przyjmowana do 0,35 m / 8 st."""
+    import slam
+    X = np.array([k[0] for k in kf], float); kt = np.asarray(kt, float)
+    for r_ in range(rund):
+        W = []; Nw = []
+        for (T, p, n), x in zip(kf, X):
+            mk = np.isfinite(n[:, 0]); c, s = np.cos(x[2]), np.sin(x[2])
+            Pw = swiat(x, p[mk]); W.append(Pw); Nw.append(slam._do_czujnika(Pw, n[mk] @ np.array([[c, s], [-s, c]]), x))
+        zm = []; Xn = X.copy()
+        for i, (T, p, n) in enumerate(kf):
+            o = np.where((np.abs(kt - kt[i]) > odstep) & (np.hypot(*(X[:, :2] - X[i, :2]).T) < promien))[0]
+            if len(o) < 3: continue
+            if len(o) > 80: o = o[np.argsort(np.hypot(*(X[o, :2] - X[i, :2]).T))[:80]]
+            Pt = np.vstack([W[j] for j in o]); Nt = np.vstack([Nw[j] for j in o])
+            if len(Pt) < 300: continue
+            r = slam.icp_widok(p[::2], Pt, Nt, cKDTree(Pt), X[i].copy(), max_d=0.4 if r_ == 0 else 0.2,
+                               prior=(X[i, 2], 5.0), deg=(X[i, 0], X[i, 1], slam.PAR['deg_prog']))
+            if r is None: continue
+            Tn, rms, ev, inl = r
+            d = Tn - X[i]
+            if inl >= 0.35 and rms <= 0.03 and np.hypot(d[0], d[1]) < 0.35 and abs(d[2]) < np.radians(8):
+                Xn[i] = Tn; zm.append(np.hypot(d[0], d[1]))
+        X = Xn
+        log(f'  dopracowanie {r_ + 1}: poprawiono {len(zm)} skanow, srednio {1000 * np.mean(zm) if zm else 0:.1f} mm, najw. {1000 * max(zm) if zm else 0:.0f} mm')
+    return X
+
+
 def _chmura(kf, idx, co=3):
     P = [swiat(kf[i][0], kf[i][1][::co]) for i in idx]
     N = []
