@@ -12,7 +12,7 @@ sys.path.insert(0, TU); sys.path.insert(0, os.path.join(TU, '..'))
 import slam, sprawdz as S
 from eksport_dxf import kierunek, kondygnacja, szkielet, lica, KOM, MIN_KF
 
-WERSJA = 7   # 7: degeneracja w korytarzach, pas wysokosci, szukanie kursu po luce, IMU SHTP
+WERSJA = 8   # 8: kotwica do starej mapy (dryf po ciasnym pomieszczeniu); 7: degeneracja w korytarzach, pas wysokosci, szukanie kursu po luce, IMU SHTP
 DZIEL_BARO = False   # True: dawny podzial sesji na kondygnacje wg barometru
 PETLE = False          # zamykanie petli (posegraf.graf) - do dopracowania wag, na razie gorzej niz bez
 RZUTUJ = False
