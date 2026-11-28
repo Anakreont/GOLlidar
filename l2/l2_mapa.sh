@@ -2,10 +2,14 @@
 # Wywolywane przez ~/bin/l2_mapa wewnatrz srodowiska ~/ros1_l2.  Argumenty: <ws> <bag> [wynik]
 set -eo pipefail
 WS="$1"; WE="$(realpath "$2")"; TU="$(cd "$(dirname "$0")" && pwd)"
-if [ -d "$WE" ]; then                     # katalog sesji skanera z l2.bin -> najpierw rosbag
+BAG_TYMCZ=0
+if [ -d "$WE" ] && [ ! -s "$WE/l2.bin" ] && [ -s "$WE/l2.bag" ]; then   # sesja z gotowym rosbagiem (np. przyklad Unitree) - bez dekodowania
+  WY="$(realpath -m "${3:-$WE/_wynik/l2}")"; mkdir -p "$WY"
+  BAG="$WE/l2.bag"
+elif [ -d "$WE" ]; then                   # katalog sesji skanera z l2.bin -> najpierw rosbag
   [ -f "$WE/l2.bin" ] || { echo "brak $WE/l2.bin"; exit 1; }
   WY="$(realpath -m "${3:-$WE/_wynik/l2}")"; mkdir -p "$WY"
-  BAG="$WY/l2.bag"
+  BAG="$WY/l2.bag"; BAG_TYMCZ=1
   python "$TU/l2_bag.py" "$WE" "$BAG"
 else
   BAG="$WE"; WY="$(realpath -m "${3:-$(dirname "$BAG")/l2_wynik}")"; mkdir -p "$WY"
@@ -50,5 +54,8 @@ if [ -n "$RB" ] && [ -f "$WY/pointlio_wynik.bag" ]; then
   if [ "${L2_ZOSTAW_BAG:-0}" != 1 ]; then rm -f "$WY/pointlio_wynik.bag"; fi
 fi
 # rosbag zrobiony z l2.bin jest tak duzy jak nagranie i da sie go odtworzyc w kazdej chwili - kasujemy (miejsce na dysku)
-if [ -d "$WE" ] && [ "${L2_ZOSTAW_BAG:-0}" != 1 ]; then rm -f "$BAG"; fi
+if [ "$BAG_TYMCZ" = 1 ] && [ "${L2_ZOSTAW_BAG:-0}" != 1 ]; then rm -f "$BAG"; fi
+# lekki podglad chmury do strony (zakladka L2 -> Chmura 3D); przegladarka zrobi go sama, gdy go nie ma
+python "$TU/l2_podglad3d.py" "$WY/chmura.pcd" "$WY/podglad3d.bin" || echo "podglad 3D nieudany"
+[ -f "$WY/petle/chmura.pcd" ] && { python "$TU/l2_podglad3d.py" "$WY/petle/chmura.pcd" "$WY/petle/podglad3d.bin" || echo "podglad 3D (petle) nieudany"; }
 echo "== wynik: $WY (rzut.png, rzut.dxf, wysokosci.txt)"

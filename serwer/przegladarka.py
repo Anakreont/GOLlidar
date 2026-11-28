@@ -114,7 +114,12 @@ def usun_wynik_2d(k):
 
 def czujniki(k):
     """Ktore LiDAR-y nagraly dane w tej sesji: D500 (lidar.bin) i/lub Unitree L2 (l2.bin)."""
-    return {'d500': rozmiar(os.path.join(k, 'lidar.bin')) >= MIN_DANE, 'l2': rozmiar(os.path.join(k, 'l2.bin')) >= MIN_DANE}
+    return {'d500': rozmiar(os.path.join(k, 'lidar.bin')) >= MIN_DANE, 'l2': rozmiar_l2(k) >= MIN_DANE}
+
+
+def rozmiar_l2(k):
+    """Dane L2: surowe l2.bin z rejestratora albo gotowy rosbag l2.bag (np. przykladowe nagranie Unitree)."""
+    return max(rozmiar(os.path.join(k, 'l2.bin')), rozmiar(os.path.join(k, 'l2.bag')))
 
 
 def stan_wyniku(n, k):
@@ -645,6 +650,7 @@ def licz_nakladke(n, k):
 
 
 KOLEJKA_L2 = queue.Queue()
+PODGLAD3D = threading.Lock()   # jedno przerzedzanie chmury naraz (pamiec)
 W_L2 = {}                      # sesja -> 'czeka' | 'liczy' (mapa 3D z Unitree L2: l2.bin -> rosbag -> Point-LIO -> rzut)
 W_START_L2 = {}
 
@@ -755,7 +761,9 @@ def stan_l2(n, k):
             pass
     return {'stan': st, 'pliki': pliki, 'wysokosci': wys, 'otwory': otw, 'pomieszczenia': pom, 'dostepne': bool(skrypt_l2()), 'petle': petle, 'kontrola': kontrola,
             'wybor': wybor if (wybor == 'bez' or (petle and '_wynik/l2/petle/rzut.dxf' in petle['pliki'])) else 'bez',
-            'liczy_s': round(time.time() - t0) if t0 else None, 'nagranie_s': czas, 'mb': round(rozmiar(os.path.join(k, 'l2.bin')) / 1e6, 1)}
+            'liczy_s': round(time.time() - t0) if t0 else None, 'nagranie_s': czas, 'mb': round(rozmiar_l2(k) / 1e6, 1),
+            'zrodlo': 'bin' if rozmiar(os.path.join(k, 'l2.bin')) >= MIN_DANE else 'bag',
+            'chmura3d': {'bez': jest('chmura.pcd'), 'petle': os.path.exists(os.path.join(wy, 'petle', 'chmura.pcd'))}}
 
 
 def zlec(n, pilne=False):
@@ -901,6 +909,21 @@ class H(BaseHTTPRequestHandler):
             po = open(pp, 'rb').read() if os.path.exists(pp) else b'null'
             return self._wyslij(200, 'application/json; charset=utf-8', b'{"mapa":' + dane + b',"nazwy":' + nz.encode() + b',"kontrola":' + ko +
                                 b',"pomieszczenia":' + po + b'}')
+        if u.path == '/api/l2_chmura':
+            # lekka chmura do podgladu 3D w przegladarce (l2/l2_podglad3d.py), robiona przy pierwszym otwarciu i po przeliczeniu
+            wy = os.path.join(k, '_wynik', 'l2', 'petle' if q.get('w') == 'petle' else '')
+            pcd, pod = os.path.join(wy, 'chmura.pcd'), os.path.join(wy, 'podglad3d.bin')
+            if not os.path.isfile(pcd):
+                return self._json({'blad': 'brak chmury - policz mape L2'}, 404)
+            with PODGLAD3D:
+                if not os.path.isfile(pod) or os.path.getmtime(pod) < os.path.getmtime(pcd):
+                    r = subprocess.run([sys.executable, os.path.join(REPO, 'l2', 'l2_podglad3d.py'), pcd, pod],
+                                       capture_output=True, text=True, env=ENV_DZIECI, timeout=600)
+                    if r.returncode != 0 or not os.path.isfile(pod):
+                        return self._json({'blad': 'podglad 3D nieudany: ' + (r.stderr or r.stdout)[-400:]}, 500)
+            with open(pod, 'rb') as fh:
+                dane = fh.read()
+            return self._wyslij(200, 'application/octet-stream', dane, [('Cache-Control', 'no-cache')])
         if u.path == '/plik':
             f = q.get('f', '')
             if not k or not PLIK_RE.match(f):

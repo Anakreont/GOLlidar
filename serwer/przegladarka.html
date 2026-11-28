@@ -58,7 +58,12 @@ main{display:flex;flex-direction:column;min-width:0;min-height:0}
 .zakl button.akt{color:var(--akcent);border-color:var(--akcent);font-weight:600}
 .tresc{flex:1;min-height:0;position:relative;overflow:auto}
 .widok{display:none;height:100%}.widok.akt{display:block}
-#w2d.akt,#w3d.akt,#wkaw.akt{display:flex}
+#w2d.akt,#w3d.akt,#wkaw.akt,#wl3.akt{display:flex}
+#wl3 .plotno{background:radial-gradient(#1e293b,#0b1120)}#pl3 canvas{display:block;touch-action:none}
+.l3pas{position:absolute;left:8px;top:8px;right:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;z-index:2;font-size:12px;color:#e2e8f0}
+.l3pas .btn,.l3pas select{padding:4px 9px;font-size:12px}.l3pas label{background:rgba(15,23,42,.75);padding:3px 8px;border-radius:14px;display:flex;gap:5px;align-items:center}
+.l3pas input[type=range]{width:110px}#l3info{background:rgba(15,23,42,.8);color:#e2e8f0}
+#l3skala{position:absolute;right:10px;bottom:10px;width:14px;height:140px;border-radius:7px;z-index:2}#l3sk{position:absolute;right:30px;bottom:6px;height:150px;display:flex;flex-direction:column;justify-content:space-between;font-size:11px;color:#cbd5e1;z-index:2;text-align:right}
 .plotno{flex:1;position:relative;min-width:0}
 canvas#c{width:100%;height:100%;display:block;background:#fff;touch-action:none;cursor:grab}
 .warstwy{position:absolute;left:12px;top:12px;display:flex;flex-wrap:wrap;gap:6px;max-width:70%}
@@ -115,7 +120,7 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
  <div class="nag" id="nag"><div class="tyt"><b>Wybierz nagranie z listy</b><div>budynek → dzień → nagranie</div></div></div>
  <div class="zakl" id="zakl">
   <button data-w="w2d" class="akt">Rzut</button><button data-w="w3d">Model 3D</button><button data-w="wfoto">Zdjęcia</button>
-  <button data-w="wprz">Przekroje</button><button data-w="wzn">Znaczniki i notatki</button><button data-w="winw">Inwentaryzacja</button><button data-w="wpl">Pliki</button><button data-w="wpor">Porównanie SLAM</button><button data-w="wkaw">Kawałki</button><button data-w="wcad">Rzut CAD</button><button data-w="wl2">Unitree L2 (3D)</button>
+  <button data-w="wprz">Przekroje</button><button data-w="wzn">Znaczniki i notatki</button><button data-w="winw">Inwentaryzacja</button><button data-w="wpl">Pliki</button><button data-w="wpor">Porównanie SLAM</button><button data-w="wkaw">Kawałki</button><button data-w="wcad">Rzut CAD</button><button data-w="wl2">Unitree L2 (3D)</button><button data-w="wl3">Chmura 3D</button>
  </div>
  <div class="tresc">
   <section class="widok akt" id="w2d">
@@ -137,6 +142,16 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
   </section>
   <section class="widok" id="wcad"><div class="tabela" id="tcad"></div></section>
   <section class="widok" id="wl2"><div class="tabela" id="tl2"></div></section>
+  <section class="widok" id="wl3"><div class="plotno" id="pl3">
+   <div class="l3pas"><select class="btn" id="l3wer" onchange="l3Wczytaj()"><option value="bez">mapa bez pętli</option><option value="petle">mapa z pętlami</option></select>
+    <select class="btn" id="l3kol" onchange="l3Kolory()"><option value="z">kolor: wysokość</option><option value="pas">kolor: pas pod sufitem</option><option value="szary">kolor: szary</option></select>
+    <label title="Ukryj sufit i wszystko powyżej – widać wnętrze pomieszczeń">obetnij powyżej <input type="range" id="l3gora" min="0" max="1000" value="1000" oninput="l3Ciecie()"><span id="l3gv"></span></label>
+    <label title="Ukryj podłogę i niższe kondygnacje">poniżej <input type="range" id="l3dol" min="0" max="1000" value="0" oninput="l3Ciecie()"><span id="l3dv"></span></label>
+    <label>punkt <input type="range" id="l3pkt" min="1" max="8" value="2" oninput="l3Pkt()"></label>
+    <label><input type="checkbox" id="l3tr" checked onchange="l3Trasa()">trasa</label>
+    <button class="btn" onclick="l3Kamera('gora')">z góry</button><button class="btn" onclick="l3Kamera('skos')">ukośnie</button></div>
+   <div id="l3skala"></div><div id="l3sk"><span id="l3zmax"></span><span id="l3zmin"></span></div>
+   <div class="podp" id="l3info">Wybierz nagranie z L2.</div></div></section>
  </div>
 </main>
 <div id="modal" onclick="if(event.target===this)zamknij()"><div class="okno" id="mokno"></div></div>
@@ -164,7 +179,7 @@ function post(u,ok,body){const co=(u.match(/api\/([a-z_0-9]+)/)||[])[1];dymek('W
  return fetch(u,{method:'POST',body}).then(r=>r.json()).then(j=>{if(j.blad)dymek(j.blad,1);else{dymek(POST_OPIS[co]||'Wykonano');ok&&ok(j)}}).catch(e=>dymek('Brak połączenia z serwerem – nie wykonano',1))}
 document.addEventListener('click',e=>{if(!e.target.closest('.menu'))document.querySelectorAll('.menu').forEach(m=>m.classList.remove('otw'))});
 document.querySelectorAll('#zakl button').forEach(b=>b.onclick=()=>pokazWidok(b.dataset.w));
-function pokazWidok(w){document.querySelectorAll('#zakl button').forEach(x=>x.classList.toggle('akt',x.dataset.w==w));document.querySelectorAll('.widok').forEach(x=>x.classList.toggle('akt',x.id==w));if(w=='w2d')rys();if(w=='w3d')tryb3d();if(w=='wkaw')kawEd()}
+function pokazWidok(w){document.querySelectorAll('#zakl button').forEach(x=>x.classList.toggle('akt',x.dataset.w==w));document.querySelectorAll('.widok').forEach(x=>x.classList.toggle('akt',x.id==w));if(w=='w2d')rys();if(w=='w3d')tryb3d();if(w=='wkaw')kawEd();if(w=='wl3')l3Wczytaj()}
 // ---------------------------------------------------------------- lista
 function lista(){fetch('api/sesje').then(r=>r.json()).then(d=>{L=d;rysujListe()})}
 const ZAZN=new Set();
@@ -220,7 +235,7 @@ function przywrocKosz(){post('api/przywroc_kosz',j=>{alert('Przywrócono '+j.ile
 function oproznijKosz(){if(confirm('Opróżnić kosz? Tego nie da się cofnąć.'))post('api/oproznij_kosz',()=>alert('Kosz opróżniony'))}
 function czysc(){$('nag').innerHTML='<div class="tyt"><b>Wybierz nagranie z listy</b></div>';$('panel').innerHTML='';rys()}
 // ---------------------------------------------------------------- sesja
-function otworz(n){fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(!S||S.n!=n){MIARY=[];if(tryb=='miara'){tryb=null;pA=null}}S=d;S.n=n;M=null;wyb=null;KE.n=null;KE.P=[];if($('wkaw').classList.contains('akt'))setTimeout(kawEd,0);rysujListe();naglowek();galeria();przekroje();znaczniki();inwent();pliki();porownanie();cad();l2();
+function otworz(n){fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(!S||S.n!=n){MIARY=[];if(tryb=='miara'){tryb=null;pA=null}}S=d;S.n=n;M=null;wyb=null;KE.n=null;KE.P=[];if($('wkaw').classList.contains('akt'))setTimeout(kawEd,0);rysujListe();naglowek();galeria();przekroje();znaczniki();inwent();pliki();porownanie();cad();l2();if($('wl3').classList.contains('akt'))l3Wczytaj();
  if(S.czujniki&&!S.czujniki.d500&&S.czujniki.l2&&$('w2d').classList.contains('akt'))pokazWidok('wl2');
  fetch('api/mapa?n='+n).then(r=>r.ok?r.json():null).then(j=>{POM=j?j.pomieszczenia:null;if(j){M=j.mapa;NZ=j.nazwy||{};KO=j.kontrola||[];seg=0;
  (M.kondygnacje||[]).forEach(k=>{k.znaczniki.forEach(z=>{if((z.opis||'').startsWith('POMIAR '))z.rodzaj='pomiar'});grupujPom(k.znaczniki)});}else{M=null;KO=[]}panel();warstwy();dopasuj();rys();inwent();if($('w3d').classList.contains('akt'))tryb3d()})})}
@@ -253,7 +268,7 @@ function naglowek(){const i=S.info,ma=S.wyniki.includes('_wynik/rzut.dxf'),cz=S.
  (S.wyniki.includes('_wynik/przekroje.dxf')?'<a class="btn" href="'+plik('_wynik/przekroje.dxf')+'">⬇ Przekroje DXF</a>':'')+
  (S.wyniki.includes('_wynik/model3d.dxf')?'<a class="btn" href="'+plik('_wynik/model3d.dxf')+'">⬇ Model 3D DXF</a><a class="btn" href="'+plik('_wynik/model3d.obj')+'">OBJ</a>':'')+
  (zajeta()?'<button class="btn" style="color:var(--czerw)" onclick="zatrzymaj()">⏹ Zatrzymaj</button>':'')+pomTxt()+kawTxt()+'<select class="btn" title="Jednostka plików DXF (rysunek 1:1)" onchange="ustawJedn(this.value)">'+['m','cm','mm'].map(j=>'<option value="'+j+'"'+(j==JEDN?' selected':'')+'>DXF w '+j+'</option>').join('')+'</select>'+
- (cz.d500?'<button class="btn" onclick="przelicz()">🔄 Przelicz</button>':'')+(cz.l2?'<button class="btn" onclick="pokazWidok(\'wl2\')">🧊 Mapa L2</button>':'')+'<div class="menu"><button class="btn" onclick="this.parentNode.classList.toggle(\'otw\')">⋯</button><div class="lista">'+
+ (cz.d500?'<button class="btn" onclick="przelicz()">🔄 Przelicz</button>':'')+(cz.l2?'<button class="btn" onclick="pokazWidok(\'wl2\')">🧊 Mapa L2</button>':'')+(cz.l2&&L2.chmura3d&&L2.chmura3d.bez?'<button class="btn" onclick="pokazWidok(\'wl3\')">☁ Chmura 3D</button>':'')+'<div class="menu"><button class="btn" onclick="this.parentNode.classList.toggle(\'otw\')">⋯</button><div class="lista">'+
  '<button onclick="usunMape()">Usuń mapę tej sesji (policzy się od nowa)</button><button style="color:var(--czerw)" onclick="usunSesje()">Przenieś całą sesję do kosza</button></div></div>'}
 function przelicz(){post('api/przelicz?n='+S.n,()=>{alert('Zlecone – mapa liczy się ok. 1 min na każde 8 min nagrania.');lista()})}
 function usunMape(){if(confirm('Usunąć mapę tej sesji? Policzy się od nowa (trwające liczenie zostanie zatrzymane).'))post('api/usun_mape?n='+S.n,()=>{lista();otworz(S.n)})}
@@ -556,7 +571,8 @@ function l2(){const X=S.l2||{stan:'brak',pliki:[]},cz=S.czujniki||{};clearTimeou
  h+='<p><button class="btn gl" '+(zaj||!X.dostepne?'disabled ':'')+'onclick="l2Licz()">▶ '+(X.stan=='gotowe'?'Policz mapę L2 od nowa':'Policz mapę L2')+'</button> '+(zaj?'<button class="btn cz" onclick="zatrzymaj()">⏹ Zatrzymaj</button> ':'')+
   'Stan: <span class="pill '+esc(X.stan)+'">'+esc(X.stan)+(X.liczy_s!=null?' · '+minTxt(X.liczy_s)+(X.nagranie_s?' z ok. '+minTxt(X.nagranie_s+60):''):'')+'</span>'+(zaj?' <span class="mala">(odświeża się samo)</span>':'')+'</p>';
  const w=X.wysokosci||{};if(w.wysokosc_w_swietle_m)h+='<div class="stat" style="max-width:520px"><div><b>'+liczba(w.wysokosc_w_swietle_m)+' m</b>wysokość w świetle</div><div><b>'+(+w.punktow||0).toLocaleString('pl')+'</b>punktów chmury</div></div>';
- h+='<p>'+(ma('rzut.dxf')?'<a class="btn gl" href="'+plik('_wynik/l2/rzut.dxf')+'">⬇ Rzut L2 DXF</a> ':'')+(ma('chmura.pcd')?'<a class="btn" href="'+plik('_wynik/l2/chmura.pcd')+'" title="chmura punktów 3D – CloudCompare">⬇ Chmura 3D (PCD)</a> ':'')+
+ if(X.zrodlo=='bag')h+='<p class="mala">Źródło: gotowy rosbag <code>l2.bag</code> (przykład / nagranie spoza rejestratora) – bez dekodowania l2.bin.</p>';
+ h+='<p>'+(ma('chmura.pcd')?'<button class="btn gl" onclick="pokazWidok(\'wl3\')">☁ Chmura 3D w przeglądarce</button> ':'')+(ma('rzut.dxf')?'<a class="btn gl" href="'+plik('_wynik/l2/rzut.dxf')+'">⬇ Rzut L2 DXF</a> ':'')+(ma('chmura.pcd')?'<a class="btn" href="'+plik('_wynik/l2/chmura.pcd')+'" title="chmura punktów 3D – CloudCompare">⬇ Chmura 3D (PCD)</a> ':'')+
   (ma('otwory.csv')?'<a class="btn" href="'+plik('_wynik/l2/otwory.csv')+'">⬇ Okna i drzwi (CSV)</a> ':'')+(ma('przebieg.log')?'<a class="btn" href="'+plik('_wynik/l2/przebieg.log')+'" target="_blank">dziennik</a> ':'')+(ma('blad.txt')?'<a class="btn cz" href="'+plik('_wynik/l2/blad.txt')+'" target="_blank">błąd</a> ':'')+'</p>';
  const K=X.kontrola;if(K){const u=K.uwagi||[];h+='<h3>Kontrola jakości mapy L2 '+(u.length?'<span class="pill błąd">uwagi: '+u.length+'</span>':'<span class="pill gotowe">OK</span>')+'</h3><p class="mala">Przed strojeniem: zamknięcie trasy (gdy wracasz na start), postoje, płaskość podłogi, ostrość ścian, log Point-LIO. Progi wstępne.</p><table><tr><th>kondygnacja</th><th>podłoga: grubość</th><th>falowanie</th><th>ściany: mediana</th><th>p90</th></tr>'+
   (K.kondygnacje||[]).map(k=>'<tr><td>'+k.nr+'</td><td>'+(k.podloga?liczba(k.podloga.grubosc_mad_cm,1)+' cm':'–')+'</td><td>'+(k.podloga&&k.podloga.falowanie_cm!=null?liczba(k.podloga.falowanie_cm,1)+' cm':'–')+'</td><td>'+(k.sciany?liczba(k.sciany.grubosc_p50_cm,1)+' cm':'–')+'</td><td>'+(k.sciany?liczba(k.sciany.grubosc_p90_cm,1)+' cm':'–')+'</td></tr>').join('')+'</table>'+
@@ -578,6 +594,60 @@ function l2(){const X=S.l2||{stan:'brak',pliki:[]},cz=S.czujniki||{};clearTimeou
    (mp('rzut.png')?'<a href="'+pp('rzut.png')+'" target="_blank"><img src="'+pp('rzut.png')+'&v='+Date.now()+'" style="width:100%;border:1px solid var(--linia);border-radius:8px;background:#fff"></a>':'')+'</div>'}
  $('tl2').innerHTML=h;
  if(zaj){const n=S.n;l2T=setTimeout(()=>{if(S&&S.n==n)fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(S&&S.n==n){const by=S.l2.stan;S.l2=d.l2;l2();if(by!=d.l2.stan)naglowek()}})},15000)}}
+// ---------------------------------------------------------------- Chmura 3D z L2 (api/l2_chmura -> podglad3d.bin z l2/l2_podglad3d.py)
+const L3={};
+async function l3Init(){if(L3.ren)return;const THREE=await import('three'),{OrbitControls}=await import('./static/OrbitControls.js');L3.T=THREE;
+ const box=$('pl3');L3.ren=new THREE.WebGLRenderer({antialias:false});L3.ren.setPixelRatio(Math.min(devicePixelRatio,2));L3.ren.localClippingEnabled=true;box.appendChild(L3.ren.domElement);
+ L3.cam=new THREE.PerspectiveCamera(55,1,0.05,2000);L3.cam.up.set(0,0,1);L3.ctl=new OrbitControls(L3.cam,L3.ren.domElement);L3.ctl.enableDamping=true;L3.ctl.screenSpacePanning=true;
+ L3.sc=new THREE.Scene();L3.gora=new THREE.Plane(new THREE.Vector3(0,0,-1),1e9);L3.dol=new THREE.Plane(new THREE.Vector3(0,0,1),1e9);
+ L3.mat=new THREE.PointsMaterial({size:0.02,vertexColors:true,sizeAttenuation:true,clippingPlanes:[L3.gora,L3.dol]});
+ L3.rozm=()=>{const r=box.getBoundingClientRect();if(!r.width)return;L3.ren.setSize(r.width,r.height);L3.cam.aspect=r.width/r.height;L3.cam.updateProjectionMatrix()};
+ new ResizeObserver(L3.rozm).observe(box);
+ (function petla(){requestAnimationFrame(petla);if($('wl3').classList.contains('akt')&&L3.pkt){L3.ctl.update();L3.ren.render(L3.sc,L3.cam)}})()}
+async function l3Wczytaj(){await l3Init();const T=L3.T,inf=$('l3info');
+ if(!S||!(S.czujniki||{}).l2){inf.textContent='W tym nagraniu nie ma danych z L2.';l3Czysc();return}
+ const C=(S.l2||{}).chmura3d||{},sel=$('l3wer');sel.options[1].disabled=!C.petle;if(!C.petle)sel.value='bez';
+ if(!C.bez&&!C.petle){inf.textContent='Chmury jeszcze nie ma – zakładka „Unitree L2 (3D)” → Policz mapę L2.';l3Czysc();return}
+ const w=sel.value,klucz=S.n+'|'+w;if(L3.klucz==klucz&&L3.pkt){L3.rozm();return}
+ inf.textContent='Wczytuję chmurę… (przy pierwszym otwarciu serwer robi lekki podgląd – do minuty)';
+ let b;try{const r=await fetch('api/l2_chmura?n='+encodeURIComponent(S.n)+'&w='+w);if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.blad||r.status)}b=await r.arrayBuffer()}
+ catch(e){inf.textContent='Nie udało się wczytać chmury: '+e.message;return}
+ if(!S||S.n+'|'+$('l3wer').value!=klucz)return;
+ const dv=new DataView(b);if(String.fromCharCode(...new Uint8Array(b,0,4))!='L2P1'){inf.textContent='Zły format podglądu';return}
+ const n=dv.getUint32(4,true),o=[dv.getFloat32(8,true),dv.getFloat32(12,true),dv.getFloat32(16,true)],Q=new Uint16Array(b,20,n*3);
+ let mx=[0,0,0];for(let i=0;i<n*3;i++){const v=Q[i];if(v>mx[i%3])mx[i%3]=v}
+ const c=[o[0]+mx[0]/200,o[1]+mx[1]/200,o[2]];L3.c=c;L3.o=o;            // srodek w XY, podstawa w Z (z=0 to najnizszy punkt)
+ const P=new Float32Array(n*3);for(let i=0;i<n;i++){P[3*i]=Q[3*i]/100+o[0]-c[0];P[3*i+1]=Q[3*i+1]/100+o[1]-c[1];P[3*i+2]=Q[3*i+2]/100}
+ const zs=new Float32Array(n);for(let i=0;i<n;i++)zs[i]=P[3*i+2];const zz=Float32Array.from(zs).sort();
+ L3.zlo=zz[Math.floor(n*.01)]||0;L3.zhi=zz[Math.floor(n*.99)]||1;L3.zmax=zz[n-1]||1;L3.ext=[mx[0]/100,mx[1]/100,mx[2]/100];
+ l3Czysc();const g=new T.BufferGeometry();g.setAttribute('position',new T.BufferAttribute(P,3));g.setAttribute('color',new T.BufferAttribute(new Float32Array(n*3),3));
+ L3.pkt=new T.Points(g,L3.mat);L3.sc.add(L3.pkt);L3.klucz=klucz;L3.n=n;
+ $('l3gora').value=1000;$('l3dol').value=0;l3Kolory();l3Ciecie();l3Pkt();L3.rozm();l3Kamera('skos');await l3Trasa();
+ const wys=(S.l2.wysokosci||{});inf.innerHTML=n.toLocaleString('pl')+' pkt (podgląd, siatka 3 cm) · '+liczba(L3.ext[0],1)+' × '+liczba(L3.ext[1],1)+' × '+liczba(L3.ext[2],1)+' m'+
+  (Object.keys(wys).length?' · '+esc(Object.entries(wys).slice(0,3).map(([a,b])=>a+' '+b).join(' · ')):'')+' · lewy – obrót, prawy/dwa palce – przesuń, kółko – zoom';}
+function l3Czysc(){if(L3.pkt){L3.sc.remove(L3.pkt);L3.pkt.geometry.dispose();L3.pkt=null}if(L3.tr){L3.sc.remove(L3.tr);L3.tr.geometry.dispose();L3.tr=null}L3.klucz=null}
+function l3Paleta(t){t=Math.max(0,Math.min(1,t));const s=[[.19,.07,.46],[.11,.47,.93],[.1,.8,.75],[.55,.9,.25],[.98,.75,.15],[.9,.2,.1]],x=t*(s.length-1),i=Math.min(s.length-2,Math.floor(x)),f=x-i;
+ return [0,1,2].map(j=>s[i][j]+(s[i+1][j]-s[i][j])*f)}
+function l3Kolory(){if(!L3.pkt)return;const tr=$('l3kol').value,P=L3.pkt.geometry.attributes.position.array,C=L3.pkt.geometry.attributes.color,K=C.array,lo=L3.zlo,hi=L3.zhi;
+ for(let i=0;i<L3.n;i++){const z=P[3*i+2];let k;
+  if(tr=='szary'){const v=.55+.4*((z-lo)/(hi-lo));k=[v,v,v]}
+  else if(tr=='pas'){const d=hi-z;k=d<0.6&&d>0.05?[.98,.45,.1]:[.55,.6,.68]}      // pas tuz pod sufitem - z niego liczone sciany rzutu
+  else k=l3Paleta((z-lo)/(hi-lo));
+  K[3*i]=k[0];K[3*i+1]=k[1];K[3*i+2]=k[2]}
+ C.needsUpdate=true;
+ $('l3skala').style.background=tr=='z'?'linear-gradient(to top,'+[0,.2,.4,.6,.8,1].map(t=>'rgb('+l3Paleta(t).map(v=>Math.round(v*255))+')').join(',')+')':'none';
+ $('l3zmax').textContent=tr=='z'?liczba(hi,1)+' m':'';$('l3zmin').textContent=tr=='z'?liczba(lo,1)+' m':''}
+function l3Ciecie(){if(!L3.pkt)return;const zm=L3.zmax,g=$('l3gora').value/1000*zm,d=$('l3dol').value/1000*zm;
+ L3.gora.constant=$('l3gora').value>=1000?1e9:g;L3.dol.constant=$('l3dol').value<=0?1e9:-d;$('l3gv').textContent=liczba(g,1)+' m';$('l3dv').textContent=liczba(d,1)+' m'}
+function l3Pkt(){L3.mat.size=0.008*$('l3pkt').value+0.004;L3.mat.needsUpdate=true}
+function l3Kamera(j){if(!L3.pkt)return;const e=L3.ext,R=Math.max(e[0],e[1],4),t=new L3.T.Vector3(0,0,Math.min(e[2],3)/2);L3.ctl.target.copy(t);
+ if(j=='gora')L3.cam.position.set(0,-0.001,R*1.15+e[2]);else L3.cam.position.set(-R*.55,-R*.85,R*.6+e[2]);L3.cam.lookAt(t);L3.ctl.update()}
+async function l3Trasa(){if(L3.tr){L3.sc.remove(L3.tr);L3.tr.geometry.dispose();L3.tr=null}
+ if(!L3.pkt||!$('l3tr').checked||$('l3wer').value!='bez'||!(S.l2.pliki||[]).includes('_wynik/l2/trasa.csv'))return;const n=S.n;
+ let t;try{t=await (await fetch(plik('_wynik/l2/trasa.csv'))).text()}catch(e){return}if(!S||S.n!=n||!L3.pkt)return;
+ const pts=[];t.split('\n').forEach((l,i)=>{const a=l.split(/[;,]/).map(Number);if(a.length>=4&&a.every(isFinite)&&i%3==0)pts.push(a[1]-L3.c[0],a[2]-L3.c[1],a[3]-L3.c[2])});
+ if(pts.length<6)return;const g=new L3.T.BufferGeometry();g.setAttribute('position',new L3.T.BufferAttribute(new Float32Array(pts),3));
+ L3.tr=new L3.T.Line(g,new L3.T.LineBasicMaterial({color:0xff3d7f}));L3.sc.add(L3.tr)}
 function l2Wybor(w){post('api/l2_wybor?n='+S.n+'&w='+w,()=>fetch('api/sesja?n='+S.n).then(r=>r.json()).then(d=>{S.l2=d.l2;l2();naglowek()}))}
 function l2Licz(){post('api/l2_licz?n='+S.n,()=>fetch('api/sesja?n='+S.n).then(r=>r.json()).then(d=>{S.l2=d.l2;l2();naglowek();lista()}))}
 // ---------------------------------------------------------------- model 3D
