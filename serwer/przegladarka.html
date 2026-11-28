@@ -356,7 +356,7 @@ c.addEventListener('pointermove',e=>{if(!drag){const z=trafiony(e),t=$('tip');if
  if(pinch)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.mv=Math.max(drag.mv,Math.abs(dx)+Math.abs(dy));
  if(drag.rot&&M){const k=M.kondygnacje[seg];(NZ[k.nr]??={}).obrot=(((drag.o0+dx*0.2)%360)+360)%360;if($('ob'))$('ob').value=obr().toFixed(1)}else{wid.x=drag.ox+dx;wid.y=drag.oy+dy}rys()});
 c.addEventListener('pointerup',e=>{if(drag&&drag.mv<5){
- if(tryb=='miara'&&M){const q=przyciagnij(e);if(!pA){pA=q;panel();rys()}else{MIARY.push({seg:M.kondygnacje[seg].nr,a:pA,b:q});pA=null;panel();rys()}}
+ if(tryb=='miara'&&M){const q=przyciagnij(e);if(!pA){pA=q;panel();rys()}else{MIARY.push({seg:M.kondygnacje[seg].nr,a:pA,b:q});pA=null;tryb=null;c.style.cursor='grab';panel();rys()}}
  else if(tryb=='kontrola'&&M){const q=przyciagnij(e);if(!pA){pA=q;panel();rys()}else{const k=M.kondygnacje[seg],d=Math.hypot(q[0]-pA[0],q[1]-pA[1]);
   const v=prompt('Skan: '+d.toFixed(3)+' m. Wpisz wymiar z dalmierza (w cm albo m):','');const opis=v?prompt('Opis (np. sala 12 długość):',''):null;
   if(v){let L_=parseFloat(String(v).replace(',','.'));if(L_>30)L_/=100;KO.push({seg:k.nr,a:pA,b:q,laser_m:L_,opis:opis||'',kiedy:new Date().toISOString().slice(0,16)});zapiszKontrola()}
@@ -397,7 +397,7 @@ function kawPanel(){const i=KE.wyb,s=i>=0?KE.S[i]:null,ile={};KE.S.forEach(x=>il
  (s?'<h3>Wybrany: K'+s.nr+' ('+(KE_NAZ[s.stan]||s.stan)+')</h3><div class="rzad"><button class="btn" onclick="kawObr(-90)">⟲90°</button><button class="btn" onclick="kawObr(-5)">⟲5°</button><button class="btn" onclick="kawObr(-1)">⟲1°</button><button class="btn" onclick="kawObr(1)">⟳1°</button><button class="btn" onclick="kawObr(5)">⟳5°</button><button class="btn" onclick="kawObr(90)">⟳90°</button></div>'+
   '<div class="rzad"><button class="btn gl" onclick="kawDociagnij()" title="Dopasuj dokładnie do ścian sąsiednich odcinków (ustaw najpierw na oko, z dokładnością do ok. 30 cm i kilku stopni)">🧲 Dociągnij</button><button class="btn" onclick="kawCofnij()">↶ jak było</button><button class="btn" onclick="KE.wyb=-1;kawPanel();kawRys()">odznacz</button></div><p class="mala" id="kawInfo"></p>'
   :'<p class="mala">Kliknij odcinek na rysunku (najlepiej czerwony – niepewny), przeciągnij go na oko na właściwe miejsce, obróć przyciskami albo Shift+przeciąganiem, potem „🧲 Dociągnij”.</p>')+
- '<h3>Zmierz</h3><div class="rzad"><button class="btn'+(KE.tryb=='miara'?' gl':'')+'" onclick="kawMiara()">📐 '+(KE.tryb=='miara'?(KE.pA?'kliknij drugi punkt…':'kliknij pierwszy punkt…'):'Zmierz odległość')+'</button>'+(KE.miary.length?'<button class="btn" onclick="KE.miary=[];kawPanel();kawRys()">✕ wyczyść</button>':'')+'</div>'+
+ '<h3>Zmierz</h3><div class="rzad"><button class="btn'+(KE.tryb=='miara'?' gl':'')+'" onclick="kawMiara()">📐 '+(KE.tryb=='miara'?(KE.pA?'kliknij drugi punkt… (Esc – przerwij)':'kliknij pierwszy punkt… (Esc – przerwij)'):'Zmierz odległość')+'</button>'+(KE.miary.length?'<button class="btn" onclick="KE.miary=[];kawPanel();kawRys()">✕ wyczyść</button>':'')+'</div>'+
  '<h3>Zapis</h3><div class="rzad"><button class="btn gl" onclick="kawZapisz()" '+(KE.zm?'':'disabled')+'>💾 Zapisz poprawki ('+KE.zm+')</button></div><p class="mala">Zapis tworzy na nowo „⬇ złożone” (DXF) i podgląd przed/po. Poprawione odcinki mają warstwę KAWALEK_NN_reczny.</p>'}
 function kawMiara(){KE.tryb=KE.tryb=='miara'?null:'miara';KE.pA=null;kawPanel();kawRys()}
 function kawObr(d){const s=KE.S[KE.wyb];s.a+=d*Math.PI/180;kawZmiana();kawRys()}
@@ -415,9 +415,10 @@ ck.addEventListener('pointerdown',e=>{const h=KE.wyb>=0&&KE.tryb!='miara'?kawTra
 ck.addEventListener('pointermove',e=>{if(!kd)return;const dx=e.clientX-kd.x,dy=e.clientY-kd.y;kd.mv=Math.max(kd.mv,Math.abs(dx)+Math.abs(dy));if(kd.mv<4)return;
  if(kd.kaw){const s=KE.S[KE.wyb];if(kd.rot){s.a=kd.s0.a+dx*0.004}else{s.t=[kd.s0.t[0]+dx/KE.w.s,kd.s0.t[1]-dy/KE.w.s]}if(s.stan!='reczny')kawZmiana()}else{KE.w.x=kd.ox+dx;KE.w.y=kd.oy+dy}kawRys()});
 ck.addEventListener('pointerup',e=>{if(kd&&kd.mv<4){const h=kawTraf(e);
- if(KE.tryb=='miara'){const q=h.pt||h.sw;if(!KE.pA){KE.pA=q}else{KE.miary.push({a:KE.pA,b:q});KE.pA=null}kawPanel();kawRys()}
+ if(KE.tryb=='miara'){const q=h.pt||h.sw;if(!KE.pA){KE.pA=q}else{KE.miary.push({a:KE.pA,b:q});KE.pA=null;KE.tryb=null}kawPanel();kawRys()}
  else{KE.wyb=h.i;kawPanel();kawRys()}}kd=null});
 ck.addEventListener('wheel',e=>{e.preventDefault();const r=ck.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,f=e.deltaY<0?1.2:1/1.2;KE.w.x=mx-(mx-KE.w.x)*f;KE.w.y=my-(my-KE.w.y)*f;KE.w.s*=f;kawRys()},{passive:false});
+addEventListener('keydown',e=>{if(e.key!='Escape')return;if(KE.tryb){KE.tryb=null;KE.pA=null;kawPanel();kawRys()}if(tryb){tryb=null;pA=null;if(M)panel();rys();c.style.cursor='grab'}});
 ck.addEventListener('dblclick',()=>{kawCalosc();kawRys()});addEventListener('resize',()=>{if($('wkaw').classList.contains('akt'))kawRys()});
 // ---------------------------------------------------------------- okno ze szczegolami
 function pokaz(z){let h='';const prz=z.rodzaj=='przekroj'?(S.przekroje||[]).find(p=>String(p.nr)==String(z.nr)):null;
