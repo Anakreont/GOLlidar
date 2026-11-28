@@ -237,7 +237,7 @@ def zatrzymaj(n):
     import signal
     ile = 0
     with BLOK:
-        for rodz in ('mapa', 'por', 'cad', 'kaw', 'l2', 'pom'):
+        for rodz in ('mapa', 'por', 'cad', 'kaw', 'l2', 'pom', 'uloz'):
             p = PROC.get((rodz, n))
             if p:
                 ZATRZ.add((rodz, n))
@@ -517,6 +517,40 @@ def licz_kawalki(n, k):
     finally:
         with BLOK:
             W_KAW.pop(n, None)
+
+
+W_ULOZ = {}                    # sesja -> 'liczy' (ukladanie kawalkow na rysunku CAD, mapa/uloz_kawalki.py)
+
+
+def licz_uloz(n, k):
+    wy = os.path.join(k, '_wynik')
+    try:
+        with LICZ_RECZNE:
+            with BLOK:
+                W_ULOZ[n] = 'liczy'
+            r = uruchom(('uloz', n), [sys.executable, os.path.join(REPO, 'mapa', 'uloz_kawalki.py'), k,
+                                      katalog_cad(info(k).get('budynek', ''))], capture_output=True, text=True, env=ENV_DZIECI)
+        with open(os.path.join(wy, 'kawalki_cad_log.txt'), 'w') as f:
+            f.write((r.stdout or '') + (r.stderr or ''))
+        with BLOK:
+            ZATRZ.discard(('uloz', n))
+    finally:
+        with BLOK:
+            W_ULOZ.pop(n, None)
+
+
+def stan_uloz(n, k):
+    wy = os.path.join(k, '_wynik')
+    st = W_ULOZ.get(n)
+    if not st:
+        st = 'gotowe' if os.path.exists(os.path.join(wy, 'kawalki_cad.dxf')) else \
+             ('brak cad' if not os.path.exists(os.path.join(katalog_cad(info(k).get('budynek', '')), 'cad.json')) else 'brak')
+    met = None
+    try:
+        met = json.load(open(os.path.join(wy, 'kawalki_cad.json'), encoding='utf-8')).get('metryki')
+    except (OSError, ValueError):
+        pass
+    return {'stan': st, 'metryki': met}
 
 
 def stan_cad(n, k):
@@ -806,7 +840,8 @@ class H(BaseHTTPRequestHandler):
             return self._json({'info': info(k), 'stan': stan_wyniku(q['n'], k), 'postep': postepy().get(q['n']), 'pliki': pliki, 'wyniki': wyn, 'przekroje': prz,
                                'porownanie': stan_por(q['n'], k), 'cad': stan_cad(q['n'], k), 'czujniki': czujniki(k), 'l2': stan_l2(q['n'], k),
                                'kawalki': {'stan': W_KAW.get(q['n']) or ('gotowe' if os.path.exists(os.path.join(k, '_wynik', 'kawalki.dxf')) else
-                                           ('brak danych' if not os.path.exists(os.path.join(k, '_wynik', 'kf.npz')) else 'brak'))},
+                                           ('brak danych' if not os.path.exists(os.path.join(k, '_wynik', 'kf.npz')) else 'brak')),
+                                           'uloz': stan_uloz(q['n'], k)},
                                'pomieszczenia': {'stan': W_POM.get(q['n']) or ('gotowe' if os.path.exists(os.path.join(k, '_wynik', 'pomieszczenia.json')) else
                                                  ('brak danych' if not os.path.exists(os.path.join(k, '_wynik', 'mapa.json')) else 'brak'))},
                                'znaczniki': znaczniki(k), 'oprawy': SW.wiersze_pom(k), 'grzejniki': SW.wiersze_grz(k),
@@ -1002,6 +1037,17 @@ class H(BaseHTTPRequestHandler):
                     return self._json({'blad': 'juz sie liczy'}, 409)
                 W_KAW[q['n']] = 'czeka'
             threading.Thread(target=licz_kawalki, args=(q['n'], k), daemon=True).start()
+            return self._json({'ok': True})
+        if u.path == '/api/uloz_kawalki':
+            if not os.path.exists(os.path.join(k, '_wynik', 'kf.npz')):
+                return self._json({'blad': 'najpierw przelicz mape ta wersja programu (brak kf.npz)'}, 409)
+            if not os.path.exists(os.path.join(katalog_cad(info(k).get('budynek', '')), 'cad.json')):
+                return self._json({'blad': 'najpierw wgraj rysunek CAD budynku (zakladka Rzut CAD)'}, 409)
+            with BLOK:
+                if q['n'] in W_ULOZ:
+                    return self._json({'blad': 'juz sie liczy'}, 409)
+                W_ULOZ[q['n']] = 'czeka'
+            threading.Thread(target=licz_uloz, args=(q['n'], k), daemon=True).start()
             return self._json({'ok': True})
         if u.path == '/api/pomieszczenia':
             if not os.path.exists(os.path.join(k, '_wynik', 'mapa.json')):
