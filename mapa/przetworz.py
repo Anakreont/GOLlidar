@@ -116,6 +116,9 @@ def przetworz(kat):
     kt = np.array(kt); Xorig = np.array([k[0] for k in kf], float)
     if ZSZYJ:                                 # fragmenty po lukach w sledzeniu dopasowane po wspolnych scianach
         print('POSTEP etap zszywanie', flush=True)
+        if slam.PAR.get('obroc_frag', False) and len(slam.mapa.frag) == len(kf):
+            Xo = posegraf.obroc_fragmenty(kf, slam.mapa.frag)
+            kf = [(Xo[i], kf[i][1], kf[i][2]) for i in range(len(kf))]
         Xz = posegraf.zszyj(kf, slam.mapa.frag, slam.mapa.frag_luka)
         kf = [(Xz[i], kf[i][1], kf[i][2]) for i in range(len(kf))]
     if DOPRACUJ and slam.PAR.get('dopracuj', True) and len(kf) > 20:             # skany dociagane do scian widzianych w innym czasie (podwojne sciany)

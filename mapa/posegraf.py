@@ -170,6 +170,37 @@ def prostuj(kf, sigma_st=1.5, log=print):
     return X
 
 
+def obroc_fragmenty(kf, frag, min_skanow=8, min_zgodnosc=0.5, min_kat=1.5, log=print):
+    """Fragment po luce w sledzeniu (przechyl, glowica polozona na bok) bywa doklejony pod zlym katem (10-30 st.),
+    bo kurs IMU po takiej przerwie jest niepewny. Budynek ma katy proste: kierunek scian fragmentu (modulo 90 st.)
+    powinien byc taki sam jak w dotychczasowej mapie. Fragment i wszystkie nastepne obracane sa wokol pierwszego
+    skanu fragmentu o roznice kierunkow (do +-45 st.). Tylko gdy oba kierunki sa wyrazne."""
+    X = np.array([k[0] for k in kf], float)
+    fi, sila = [], []
+    for T, p, n in kf:
+        f, s = kierunek_skanu(n)
+        fi.append(np.nan if f is None else f); sila.append(s)
+    fi, sila = np.array(fi), np.array(sila)
+    ok = np.isfinite(fi) & (sila > 0.35)
+    def kier(idx):
+        idx = idx[ok[idx]]
+        if len(idx) < min_skanow: return None
+        z = np.exp(4j * (fi[idx] + X[idx, 2])) @ sila[idx]
+        return (np.angle(z) / 4) % (np.pi / 2), abs(z) / sila[idx].sum()
+    for seg in np.unique(frag[:, 0]):
+        fr_s = list(dict.fromkeys(frag[frag[:, 0] == seg, 1].tolist()))
+        for f in fr_s[1:]:
+            A_idx = np.where((frag[:, 0] == seg) & (frag[:, 1] < f))[0]; B_idx = np.where((frag[:, 0] == seg) & (frag[:, 1] == f))[0]
+            ka, kb = kier(A_idx), kier(B_idx)
+            if ka is None or kb is None or ka[1] < min_zgodnosc or kb[1] < min_zgodnosc: continue
+            d = (ka[0] - kb[0] + np.pi / 4) % (np.pi / 2) - np.pi / 4
+            if abs(d) < np.radians(min_kat): continue
+            nast = np.where((frag[:, 0] == seg) & (frag[:, 1] >= f))[0]; c = X[B_idx[0], :2].copy()
+            X[nast, :2] = (X[nast, :2] - c) @ _R(d).T + c; X[nast, 2] += d
+            log(f'  fragment {f}: obrot do kierunku scian o {np.degrees(d):+.1f} st. ({len(B_idx)} skanow, zgodnosc {kb[1]:.2f})')
+    return X
+
+
 def przenies(P, kt, X0, X):
     """Poprawka kluczowych skanow przeniesiona na wszystkie pozycje trasy (wg poprzedzajacego kluczowego)."""
     P = P.copy()
@@ -346,7 +377,8 @@ def zszyj(kf, frag, luki=None, v_max=1.2, katy=6.0, poczatek=40, log=print):
                 t = t + dx[:2]; th += dx[2]
                 if np.abs(dx).max() < 1e-5: break
             s1 = ulamek(th, t, Bc, True)
-            ok_ = (s1 > s0 + 0.10) and (s1 > 0.15) and (best[0] - drugi > 0.15)
+            import slam as _sl
+            ok_ = (s1 > s0 + 0.10) and (s1 > 0.15) and (best[0] - drugi > _sl.PAR.get('zszyj_margines', 0.15))
             raport.append((int(seg), f, f'luka {luki.get(f, 0):.1f} s, zasieg {zas:.1f} m: {s0*100:.0f}% -> {s1*100:.0f}% (drugie {drugi*100:.0f}%), '
                            f'popr {100*t[0]:+.0f},{100*t[1]:+.0f} cm {np.degrees(th):+.1f} st. ' + ('PRZYJETA' if ok_ else 'odrzucona')))
             if not ok_: continue
