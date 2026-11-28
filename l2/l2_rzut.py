@@ -189,29 +189,57 @@ def kondygnacje(P, trasa=None):
     return wyn or [(*poziomy(z), None)]
 
 
+def mapa_sufitu(P, podl, kom=0.15):
+    """Wysokosc stropu/dachu nad kazda komorka: najwyzsza warstwa punktow (mediana punktow do 15 cm pod drugim najwyzszym
+    komorki), wiec gorna plyta szafy pod widocznym sufitem nie jest brana za sufit. Luki - najblizsza znana komorka.
+    Zwraca (siatka z [m n.p.m. ukladu], poczatek, kom, maska znanych)."""
+    Q = P[P[:, 2] > podl + 1.0]
+    o = P[:, :2].min(0) - 0.5
+    sh = tuple(((P[:, :2].max(0) - o) / kom).astype(int) + 2)
+    ij = ((Q[:, :2] - o) / kom).astype(int)
+    idk = ij[:, 0] * sh[1] + ij[:, 1]; zz = Q[:, 2]
+    k_ = np.lexsort((zz, idk)); idk, zz = idk[k_], zz[k_]
+    u, st, n_ = np.unique(idk, return_index=True, return_counts=True)
+    S = np.full(sh, np.nan); ile = np.zeros(sh, int)
+    g = zz[st + np.maximum(n_ - 2, 0)]                                # drugi najwyzszy punkt (pojedynczy odstajacy nie wystarczy);
+    # sufitu nad szafa jest w komorce malo (1-2 punkty na 5 cm) wobec setek z boku szafy - percentyl trafialby w szafe
+    gg = np.repeat(g, n_)
+    m = np.add.reduceat((zz > gg - 0.15).astype(int), st)           # ile punktow w gornej warstwie (na koncu - posortowane)
+    S.flat[u] = zz[st + n_ - m + (m - 1) // 2]; ile.flat[u] = n_    # mediana gornej warstwy
+    znane = ile >= 2
+    _, (ii, jj) = ndimage.distance_transform_edt(~znane, return_indices=True)
+    return np.where(znane, S, S[ii, jj]), o, kom, znane
+
+
+def punkty_scian(P, podl, M):
+    """Punkty scian: pionowa powierzchnia od ~1 m nad podloga do samego sufitu/dachu nad nia (pas 5-25 cm pod lokalnym
+    sufitem + ciaglosc w dol). Szafy, regaly i komody maja nad soba szczeline (widac sufit) - nie sa scianami; lampy i
+    kanaly pod sufitem nie maja ciaglosci w dol."""
+    S, o, kom, _ = M
+    ij = np.clip(((P[:, :2] - o) / kom).astype(int), 0, np.array(S.shape) - 1)
+    c = S[ij[:, 0], ij[:, 1]]
+    pas = (P[:, 2] > c - 0.25) & (P[:, 2] < c - 0.05) & (P[:, 2] > podl + 0.3)
+    dol = (P[:, 2] > np.maximum(podl + 0.3, c - 0.7)) & (P[:, 2] < c - 0.3)   # ta sama pionowa powierzchnia 30-70 cm pod
+    # sufitem (scianka kolankowa tez); mebel ponizej ma tam pusta szczeline;
+    # sam skos dachu w komorce nie ma punktow 30 cm pod soba - nie jest sciana
+    G = np.zeros(S.shape, bool); G[ij[dol, 0], ij[dol, 1]] = True
+    G = ndimage.binary_dilation(G)                                  # sciana moze byc lekko nachylona / szum
+    return P[pas & G[ij[:, 0], ij[:, 1]], :2]
+
+
 def skosy(P, podl, suf, kom=0.10):
     """Mapa wysokosci pod stropem/dachem kondygnacji. Gdy czesc pomieszczen jest nizsza niz plaski sufit (poddasze),
     zwraca slownik: powierzchnie wg PN-ISO 9836 (>= 2,20 m w 100 %, 1,40-2,20 m w 50 %, < 1,40 m pomijana),
     kubature, kontury 1,40 i 2,20 m. Bez skosow - None."""
     Q = P[(P[:, 2] > podl - 0.1) & (P[:, 2] < suf + 0.6)]
-    o = Q[:, :2].min(0) - 0.5
-    ij = ((Q[:, :2] - o) / kom).astype(int); sh = tuple(ij.max(0) + 2)
-    gora = np.full(sh, -np.inf); ile = np.zeros(sh, int)
-    g = Q[:, 2] > podl + 1.0
-    # wysokosc stropu/dachu w komorce: 75. percentyl punktow powyzej 1 m (maksimum zawyza o szum)
-    idk = ij[g, 0] * sh[1] + ij[g, 1]; zz = Q[g, 2]
-    o_ = np.lexsort((zz, idk)); idk, zz = idk[o_], zz[o_]
-    u, st, n_ = np.unique(idk, return_index=True, return_counts=True)
-    gora.ravel()[u] = zz[st + (0.75 * (n_ - 1)).astype(int)]; ile.ravel()[u] = n_
+    Sm, o, _, znane = mapa_sufitu(Q, podl, kom)
+    sh = Sm.shape
+    ij = ((Q[:, :2] - o) / kom).astype(int)
     pod = np.zeros(sh, bool); f = np.abs(Q[:, 2] - podl) < 0.06; pod[ij[f, 0], ij[f, 1]] = True
     wnetrze = ndimage.binary_fill_holes(ndimage.binary_closing(pod, iterations=3))
-    znane = wnetrze & (ile >= 3)
-    if znane.sum() < 50:
+    if (wnetrze & znane).sum() < 50:
         return None
-    H = np.where(znane, gora - podl, np.nan)
-    # luki w mapie wysokosci: najblizsza znana komorka
-    _, (ii, jj) = ndimage.distance_transform_edt(~znane, return_indices=True)
-    Hf = np.where(wnetrze, H[ii, jj], np.nan)
+    Hf = np.where(wnetrze, Sm - podl, np.nan)
     plaski = suf - podl
     nisko = np.nanmean(Hf[wnetrze] < plaski - 0.3)
     if nisko < 0.08:
@@ -233,10 +261,12 @@ def skosy(P, podl, suf, kom=0.10):
 
 def rzut_kondygnacji(P, podl, suf, siatka, bez_otworow=False, sk=None):
     """Sciany, ciecie 1 m i otwory jednej kondygnacji (P - punkty tej kondygnacji)."""
-    if sk is not None:                                            # poddasze: pas pod skosem nie jest sciana
-        A = P[(P[:, 2] > podl + 1.0) & (P[:, 2] < podl + 1.4), :2]
-    else:
-        A = P[(P[:, 2] > suf - 0.45) & (P[:, 2] < suf - 0.15), :2]      # sciany pod sufitem
+    try:
+        A = punkty_scian(P, podl, mapa_sufitu(P, podl))           # sciany dochodzace do sufitu/dachu (bez szaf, lamp)
+    except Exception as e:
+        print('sciany wg mapy sufitu pominiete:', e); A = np.zeros((0, 2))
+    if len(A) < 100:
+        A = P[(P[:, 2] > suf - 0.45) & (P[:, 2] < suf - 0.15), :2]      # zapas: pas pod plaskim sufitem
     B = P[(P[:, 2] > podl + 1.0) & (P[:, 2] < podl + 1.2), :2]       # ciecie 1 m
     if len(A) < 100:
         A = P[(P[:, 2] > podl + 1.6) & (P[:, 2] < podl + 2.0), :2]  # niski sufit / brak sufitu - pas 1,6-2,0 m

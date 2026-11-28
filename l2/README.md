@@ -86,3 +86,21 @@ Można przejść cały dom (parter → schody → poddasze) **jednym nagraniem**
   - schody powoli, bez obracania się na stopniu;
   - głowica z dala od stropu nad schodami i od dachu pod skosem;
   - w każdym pokoju „Jestem tu”.
+
+## Szafy i meble (od 28.11.2026)
+
+- **Ściany** w rzucie L2 to pionowe powierzchnie, które dochodzą do sufitu albo dachu nad nimi:
+  - mają punkty w pasie 5–25 cm pod lokalnym sufitem;
+  - mają ciągłość w dół: punkty 30–70 cm pod sufitem.
+  - Szafy, regały i komody mają u góry szczelinę, nad którą skaner widzi sufit, więc nie są ścianami. Zostają tylko na warstwie CIECIE_1M jako meble.
+  - Lampy i kanały pod sufitem nie mają ciągłości w dół, więc też nie są ścianami.
+  - Ścianka kolankowa dochodzi do dachu, więc jest ścianą.
+  - Mebel zabudowany do 5 cm pod sufit będzie wyglądał jak ściana.
+- **Wysokość pod sufitem lub dachem** (`mapa_sufitu`):
+  - komórki 15 cm; mediana najwyższej warstwy punktów (15 cm pod drugim najwyższym punktem);
+  - góra szafy pod widocznym sufitem nie jest brana za sufit;
+  - na tym liczą się też skosy.
+- Test (ten sam sztuczny dom; szafa 2,35 m w pokoju 2,70 m, regał 2,0 m, szafa 1,9 m na poddaszu, komoda 0,9 m pod skosem):
+  - ściany bez mebli;
+  - powierzchnia PN-ISO 9836 61,11 m² z meblami i bez (wzorzec 60,93);
+  - kubatura 178,0 m³ (wzorzec 177,5).
