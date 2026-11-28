@@ -697,7 +697,7 @@ def stan_l2(n, k):
     jest = (lambda p: os.path.exists(os.path.join(wy, p)))
     pliki = sorted('_wynik/l2/' + p for p in os.listdir(wy)
                    if p in ('rzut.png', 'rzut.dxf', 'wysokosci.txt', 'chmura.pcd', 'przebieg.log', 'blad.txt', 'pointlio.log', 'otwory.csv',
-                            'kontrola_l2.txt', 'skosy.json', 'trasa.csv')) if os.path.isdir(wy) else []
+                            'kontrola_l2.txt', 'skosy.json', 'trasa.csv', 'pomieszczenia.csv', 'pomieszczenia.png')) if os.path.isdir(wy) else []
     if not st:
         st = 'błąd' if jest('blad.txt') else 'gotowe' if (jest('rzut.png') or jest('rzut.dxf')) else 'zatrzymane' if jest('zatrzymane.txt') else 'brak'
     wys = {}
@@ -745,7 +745,15 @@ def stan_l2(n, k):
             kontrola = json.load(open(os.path.join(wy, 'kontrola_l2.json'), encoding='utf-8'))
         except ValueError:
             pass
-    return {'stan': st, 'pliki': pliki, 'wysokosci': wys, 'otwory': otw, 'dostepne': bool(skrypt_l2()), 'petle': petle, 'kontrola': kontrola,
+    pom = []                                    # pomieszczenia z chmury L2 (l2_rzut.py -> pomieszczenia.json)
+    if jest('pomieszczenia.json'):
+        try:
+            for kd in json.load(open(os.path.join(wy, 'pomieszczenia.json'), encoding='utf-8')).get('kondygnacje', []):
+                for p in kd.get('pomieszczenia', []):
+                    pom.append({x: p.get(x) for x in ('nr', 'nazwa', 'typ', 'pow_m2', 'wys_m', 'kub_m3', 'dl_m', 'szer_m', 'ocena', 'pow_pn_iso_9836')} | {'kond': kd.get('nr')})
+        except (ValueError, AttributeError):
+            pass
+    return {'stan': st, 'pliki': pliki, 'wysokosci': wys, 'otwory': otw, 'pomieszczenia': pom, 'dostepne': bool(skrypt_l2()), 'petle': petle, 'kontrola': kontrola,
             'wybor': wybor if (wybor == 'bez' or (petle and '_wynik/l2/petle/rzut.dxf' in petle['pliki'])) else 'bez',
             'liczy_s': round(time.time() - t0) if t0 else None, 'nagranie_s': czas, 'mb': round(rozmiar(os.path.join(k, 'l2.bin')) / 1e6, 1)}
 
