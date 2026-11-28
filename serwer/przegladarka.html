@@ -667,7 +667,7 @@ function l2(){const X=S.l2||{stan:'brak',pliki:[]},cz=S.czujniki||{};clearTimeou
  $('tl2').innerHTML=h;
  if(zaj){const n=S.n;l2T=setTimeout(()=>{if(S&&S.n==n)fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(S&&S.n==n){const by=S.l2.stan;S.l2=d.l2;l2();if(by!=d.l2.stan)naglowek()}})},15000)}}
 // ---------------------------------------------------------------- Plan L2 (interaktywny): api/l2_plan -> plan.json z l2_rzut.py + przekroje + znaczniki na trasie
-const P2={d:null,n:null,klucz:null,k:0,w:{x:0,y:0,s:40},nar:'reka',A:null,kur:null,grub:10,
+const P2={d:null,n:null,klucz:null,k:0,w:{x:0,y:0,s:40},nar:'reka',A:null,kur:null,grub:10,poly:[],pomiary:[],shift:false,
  war:{sciany:1,pkt:1,ciecie:1,otwory:1,pom:1,skosy:1,trasa:1,zn:1,przek:1,siatka:1}};
 const P2NAZ={sciany:'Ściany (auto)',pkt:'Punkty ścian',ciecie:'Cięcie 1,0 m',otwory:'Okna i drzwi',pom:'Pomieszczenia',skosy:'Skosy',trasa:'Trasa',zn:'Zdjęcia i znaczniki',przek:'Przekroje',siatka:'Siatka 1 m'};
 const P2KOL={sciany:'#1e3a8a',pkt:'#6b7280',ciecie:'#dc2626',otwory:'#0891b2',pom:'#16a34a',skosy:'#d97706',trasa:'#db2777',zn:'#2563eb',przek:'#9333ea',siatka:'#cbd5e1'};
@@ -675,7 +675,7 @@ function p2W(){return (S&&S.l2&&S.l2.wybor=='petle')?'petle':'bez'}
 async function p2Wczytaj(wymus){if(!S){return}const pan=$('p2pan');
  if(!(S.czujniki||{}).l2){P2.d=null;pan.innerHTML='<div class="pusto">W tym nagraniu nie ma danych z L2.</div>';p2Rys();return}
  const w=p2W(),kl=S.n+'|'+w;if(!wymus&&P2.klucz==kl&&P2.d){p2Narzedzia();p2Panel();p2Rys();return}
- if(P2.n!=S.n){P2.k=0;P2.A=null;P2.nar='reka'}P2.n=S.n;
+ if(P2.n!=S.n){P2.k=0;P2.A=null;P2.nar='reka';P2.poly=[];P2.pomiary=[]}P2.n=S.n;
  let r,j;try{r=await fetch('api/l2_plan?n='+encodeURIComponent(S.n)+'&w='+w);j=await r.json()}catch(e){pan.innerHTML='Brak połączenia z serwerem';return}
  if(!S||S.n+'|'+p2W()!=kl)return;
  if(!r.ok){P2.d=null;P2.klucz=null;p2Rys();clearTimeout(P2.t);
@@ -689,10 +689,25 @@ P2.zw=matchMedia('(max-width:1200px)').matches;
 function p2Warstwy(){$('p2war').classList.toggle('zw',P2.zw);$('p2war').innerHTML='<span class="chip wb" onclick="P2.zw=!P2.zw;p2Warstwy()">'+(P2.zw?'Warstwy ▸':'Warstwy ◂')+'</span>'+Object.keys(P2NAZ).map(k=>'<span class="chip'+(P2.war[k]?'':' wyl')+'" onclick="P2.war.'+k+'^=1;p2Warstwy();p2Rys()"><i style="background:'+P2KOL[k]+'"></i>'+P2NAZ[k]+'</span>').join('')}
 function p2Narzedzia(){const d=P2.d;let h='';
  if(d&&d.kondygnacje.length>1)h+='<span class="seg">'+d.kondygnacje.map((k,i)=>'<button class="'+(i==P2.k?'akt':'')+'" onclick="P2.k='+i+';P2.A=null;p2Narzedzia();p2Dopasuj();p2Panel();p2Rys()">kond. '+k.nr+'</button>').join('')+'</span>';
- h+=[['reka','✋ Przesuń'],['miara','📏 Zmierz'],['przekroj','✂ Przekrój']].map(([k,t])=>'<button class="btn'+(P2.nar==k?' akt':'')+'" onclick="p2Narz(\''+k+'\')">'+t+'</button>').join('')+'<button class="btn" onclick="p2Dopasuj();p2Rys()">⤢ Całość</button>';
+ h+=[['reka','✋ Przesuń'],['miara','📏 Linia'],['pole','⬠ Powierzchnia'],['przekroj','✂ Przekrój']].map(([k,t])=>'<button class="btn'+(P2.nar==k?' akt':'')+'" onclick="p2Narz(\''+k+'\')">'+t+'</button>').join('')+'<button class="btn" onclick="p2Dopasuj();p2Rys()">⤢ Całość</button>';
  $('p2nar').innerHTML=h;
- $('p2podp').textContent=P2.nar=='przekroj'?(P2.A?'kliknij koniec linii przekroju (Esc – anuluj)':'✂ kliknij początek linii przekroju'):P2.nar=='miara'?(P2.A?'kliknij drugi punkt':'📏 kliknij pierwszy punkt'):'przeciągnij – przesuń · kółko / dwa palce – powiększ · dwuklik – całość · kliknij 📷 lub literę przekroju'}
-function p2Narz(n){P2.nar=n;P2.A=null;if(n!='miara')P2.miara=null;p2Narzedzia();p2Rys()}
+ const sh=' · Shift – prosto (wzdłuż / w poprzek ścian) · Esc – anuluj';
+ $('p2podp').textContent=P2.nar=='przekroj'?(P2.A?'kliknij koniec linii przekroju'+sh:'✂ kliknij początek linii przekroju'):P2.nar=='miara'?(P2.A?'kliknij drugi punkt'+sh:'📏 kliknij pierwszy punkt'):
+  P2.nar=='pole'?(P2.poly.length?'kliknij kolejne narożniki; zakończ: klik w pierwszy punkt, dwuklik albo Enter'+sh:'⬠ kliknij pierwszy narożnik powierzchni'):'przeciągnij – przesuń · kółko / dwa palce – powiększ · dwuklik – całość · kliknij 📷 lub literę przekroju';
+ $('cp2').style.cursor=P2.nar=='reka'?'grab':'crosshair'}
+function p2Narz(n){P2.nar=n;P2.A=null;P2.poly=[];P2.miara=null;p2Narzedzia();p2Rys()}
+// glowny kierunek scian kondygnacji (srednia katow mod 90 st. wazona dlugoscia) - Shift prostuje linie do niego
+function p2Kat(){const k=p2K();if(!k)return 0;if(k._kat!=null)return k._kat;let sx=0,sy=0;
+ (k.sciany||[]).forEach(pl=>{for(let i=1;i<pl.length;i++){const dx=pl[i][0]-pl[i-1][0],dy=pl[i][1]-pl[i-1][1],L_=Math.hypot(dx,dy),a=Math.atan2(dy,dx)*4;sx+=L_*Math.cos(a);sy+=L_*Math.sin(a)}});
+ return k._kat=(sx||sy)?Math.atan2(sy,sx)/4:0}
+function p2Prosto(a,p){if(!a||!P2.shift)return p;const b=p2Kat(),v=[p[0]-a[0],p[1]-a[1]],t=Math.atan2(v[1],v[0]),ts=b+Math.round((t-b)/(Math.PI/2))*Math.PI/2,L_=Math.hypot(...v)*Math.cos(t-ts);
+ return[a[0]+L_*Math.cos(ts),a[1]+L_*Math.sin(ts)]}
+function p2Pole(pts){let A=0,O=0;for(let i=0;i<pts.length;i++){const p=pts[i],q=pts[(i+1)%pts.length];A+=p[0]*q[1]-q[0]*p[1];O+=Math.hypot(q[0]-p[0],q[1]-p[1])}return[Math.abs(A)/2,O]}
+function p2Zamknij(){if(P2.poly.length>=3){const[A,O]=p2Pole(P2.poly);P2.pomiary.push({typ:'pole',k:P2.k,pts:P2.poly.slice(),pole:A,obw:O});dymek('Powierzchnia '+liczba(A)+' m², obwód '+liczba(O)+' m')}
+ P2.poly=[];p2Narzedzia();p2Panel();p2Rys()}
+function p2PomCSV(){const w=['typ;kondygnacja;dlugosc_m;powierzchnia_m2;obwod_m;punkty'];P2.pomiary.forEach(m=>{const kn=(P2.d.kondygnacje[m.k]||{}).nr;
+  w.push(m.typ=='linia'?'linia;'+kn+';'+m.dl.toFixed(3)+';;;'+m.pts.map(p=>p[0].toFixed(3)+' '+p[1].toFixed(3)).join(' | '):'powierzchnia;'+kn+';;'+m.pole.toFixed(3)+';'+m.obw.toFixed(3)+';'+m.pts.map(p=>p[0].toFixed(3)+' '+p[1].toFixed(3)).join(' | '))});
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+w.join('\n').replace(/\./g,',')],{type:'text/csv'}));a.download=S.n+'_pomiary.csv';a.click()}
 function p2Dopasuj(){const k=p2K(),c=$('cp2'),r=c.getBoundingClientRect();if(!k||!r.width)return;
  // zakres wg scian (2.-98. percentyl punktow scian), nie wg calej chmury - pojedyncze dalekie odczyty nie zmniejszaja planu
  let mn=k.min,mx=k.max;const P=(k.sciany_pkt||[]);if(P.length>50){const q=(a,f)=>{const s_=a.slice().sort((x,y)=>x-y);return s_[Math.floor(f*(s_.length-1))]},X=P.map(p=>p[0]),Y=P.map(p=>p[1]);
@@ -722,8 +737,15 @@ function p2Rys(){const c=$('cp2');if(!c||!$('wpl2').classList.contains('akt'))re
  if(V.zn)(P2.d.znaczniki||[]).filter(z=>(z.k||0)==P2.k).forEach(z=>{const[x,y]=E(z.x,z.y);
   if(z.rodzaj=='sala'){g.fillStyle='#1e3a8a';g.font='600 12px system-ui';g.textAlign='center';g.fillText('⌖ '+z.opis,x,y-6);return}
   g.fillStyle=z.rodzaj=='foto'?'#2563eb':'#16a34a';g.beginPath();g.arc(x,y,9,0,7);g.fill();g.fillStyle='#fff';g.font='11px system-ui';g.textAlign='center';g.fillText(z.rodzaj=='foto'?'📷':'✎',x,y+4)});
- if(P2.A&&P2.kur){linia([P2.A,P2.kur],P2.nar=='przekroj'?P2KOL.przek:'#ea580c',2,[6,4]);const d=Math.hypot(P2.kur[0]-P2.A[0],P2.kur[1]-P2.A[1]),[x,y]=E(P2.kur[0],P2.kur[1]);g.fillStyle='#111827';g.font='600 13px system-ui';g.textAlign='left';g.fillText(liczba(d)+' m',x+10,y-8)}
- if(P2.miara){const[m0,m1]=P2.miara;linia([m0,m1],'#ea580c',2.5);const[x,y]=E((m0[0]+m1[0])/2,(m0[1]+m1[1])/2);g.fillStyle='#ea580c';g.font='700 14px system-ui';g.textAlign='center';g.fillText(liczba(Math.hypot(m1[0]-m0[0],m1[1]-m0[1]))+' m',x,y-8)}
+ const napis=(t,x,y,kol)=>{g.font='700 13px system-ui';g.textAlign='center';const w_=g.measureText(t).width+10;g.fillStyle='rgba(255,255,255,.9)';g.fillRect(x-w_/2,y-15,w_,19);g.fillStyle=kol;g.fillText(t,x,y)};
+ const wiel=(pts,zamk,kol)=>{if(!pts.length)return;g.fillStyle='rgba(234,88,12,.15)';g.strokeStyle=kol;g.lineWidth=2;g.beginPath();pts.forEach((p,i)=>{const[x,y]=E(p[0],p[1]);i?g.lineTo(x,y):g.moveTo(x,y)});if(zamk){g.closePath();g.fill()}g.stroke();
+  pts.forEach(p=>{const[x,y]=E(p[0],p[1]);g.fillStyle=kol;g.fillRect(x-3,y-3,6,6)})};
+ P2.pomiary.filter(m=>m.k==P2.k).forEach(m=>{if(m.typ=='linia'){linia(m.pts,'#ea580c',2.5);const[x,y]=E((m.pts[0][0]+m.pts[1][0])/2,(m.pts[0][1]+m.pts[1][1])/2);napis(liczba(m.dl)+' m',x,y-6,'#c2410c')}
+  else{wiel(m.pts,1,'#ea580c');const c_=m.pts.reduce((a,p)=>[a[0]+p[0]/m.pts.length,a[1]+p[1]/m.pts.length],[0,0]),[x,y]=E(c_[0],c_[1]);napis(liczba(m.pole)+' m²',x,y,'#c2410c');napis('obw. '+liczba(m.obw)+' m',x,y+20,'#9a3412')}});
+ const kur=P2.kur&&(P2.A||P2.poly.length)?p2Prosto(P2.A||P2.poly[P2.poly.length-1],P2.kur):null;
+ if(P2.A&&kur){linia([P2.A,kur],P2.nar=='przekroj'?P2KOL.przek:'#ea580c',2,[6,4]);const d=Math.hypot(kur[0]-P2.A[0],kur[1]-P2.A[1]),[x,y]=E(kur[0],kur[1]);napis(liczba(d)+' m'+(P2.shift?' ⟂':''),x+34,y-10,'#111827')}
+ if(P2.poly.length){const pts=kur?P2.poly.concat([kur]):P2.poly;wiel(pts,pts.length>2,'#ea580c');if(pts.length>2){const[A,O]=p2Pole(pts),[x,y]=kur?E(kur[0],kur[1]):[0,0];napis(liczba(A)+' m² · obw. '+liczba(O)+' m',x+60,y-12,'#111827')}}
+ if(kur){const[x,y]=E(kur[0],kur[1]);g.strokeStyle='#111827';g.lineWidth=1;g.beginPath();g.moveTo(x-8,y);g.lineTo(x+8,y);g.moveTo(x,y-8);g.lineTo(x,y+8);g.stroke()}
  // podzialka
  const m=s>60?1:s>15?5:10,[x0,y0]=[16,28];g.strokeStyle='#111827';g.lineWidth=2;g.beginPath();g.moveTo(x0,y0);g.lineTo(x0+m*s,y0);g.stroke();g.fillStyle='#111827';g.font='11px system-ui';g.textAlign='left';g.fillText(m+' m',x0,y0-5)}
 function p2Panel(){const d=P2.d,k=p2K();if(!d||!k)return;const pre=p2W()=='petle'?'_wynik/l2/petle/':'_wynik/l2/';
@@ -731,6 +753,9 @@ function p2Panel(){const d=P2.d,k=p2K();if(!d||!k)return;const pre=p2W()=='petle
  const P=(d.przekroje||[]);
  h+='<h3>Przekroje pionowe ('+P.length+')</h3>'+(P.length?P.map(p=>'<div class="p2it"><span class="sp" onclick="p2Pokaz(\''+p.nazwa+'\')" title="pokaż przekrój"><b>'+esc(p.nazwa+'–'+p.nazwa)+'</b> · '+liczba(p.dl)+' m · kond. '+p.kond+'</span><a class="btn" href="'+plik(pre+'przekroj_'+p.nazwa+'.dxf')+'">DXF</a><button class="btn cz" onclick="p2Usun(\''+p.nazwa+'\')" title="usuń">🗑</button></div>').join(''):'<div class="mala">Brak. Narzędzie ✂ Przekrój: kliknij 2 punkty na planie.</div>')+
   '<div class="p2it"><span class="sp mala">grubość plastra</span><input type="number" min="2" max="50" value="'+P2.grub+'" style="width:56px" onchange="P2.grub=+this.value||10"> cm</div>';
+ const Pz=P2.pomiary;
+ if(Pz.length)h+='<h3>Pomiary ('+Pz.length+')</h3>'+Pz.map((m,i)=>'<div class="p2it"><span class="sp">'+(m.typ=='linia'?'📏 '+liczba(m.dl)+' m':'⬠ '+liczba(m.pole)+' m² · obw. '+liczba(m.obw)+' m')+(m.k!=P2.k?' <span class="mala">(kond. '+(d.kondygnacje[m.k]||{}).nr+')</span>':'')+'</span><button class="btn cz" onclick="P2.pomiary.splice('+i+',1);p2Panel();p2Rys()">×</button></div>').join('')+
+  '<div class="p2it"><button class="btn" onclick="p2PomCSV()">⬇ Pomiary CSV</button><button class="btn" onclick="P2.pomiary=[];p2Panel();p2Rys()">Wyczyść</button></div>';
  const Z=(d.znaczniki||[]).filter(z=>z.rodzaj!='sala');
  h+='<h3>Zdjęcia i notatki ('+Z.length+')</h3>'+(Z.length?Z.map((z,i)=>'<div class="p2it"><span class="sp" onclick="p2Idz('+(d.znaczniki.indexOf(z))+')">'+(z.rodzaj=='foto'?'📷':'✎')+' '+esc(z.opis||z.plik||'')+(z.k!=P2.k?' <span class="mala">(kond. '+(d.kondygnacje[z.k]||{}).nr+')</span>':'')+'</span></div>').join(''):'<div class="mala">Zdjęcia z telefonu i notatki zrobione w czasie nagrania L2 pojawią się tu i na planie (w miejscu, gdzie byłeś).</div>');
  const Pm=k.pomieszczenia||[];
@@ -741,9 +766,11 @@ function p2Pokaz(nz){const pre=p2W()=='petle'?'_wynik/l2/petle/':'_wynik/l2/',o=
 function p2Foto(z){const o=$('p2img');o.innerHTML=(z.plik?'<img src="'+plik(z.plik)+'">':'')+'<div>'+(z.rodzaj=='foto'?'📷 ':'✎ ')+esc(z.opis||z.plik||'')+' · '+new Date(z.t*1000).toLocaleTimeString('pl')+'</div>';o.style.display='flex'}
 function p2Idz(i){const z=P2.d.znaczniki[i];if(!z)return;if((z.k||0)!=P2.k){P2.k=z.k||0;p2Narzedzia();p2Panel()}P2.w.x=z.x;P2.w.y=z.y;P2.w.s=Math.max(P2.w.s,60);p2Rys();p2Foto(z)}
 function p2Usun(nz){if(confirm('Usunąć przekrój '+nz+'–'+nz+'?'))post('api/l2_przekroj_usun?n='+S.n+'&w='+p2W()+'&nazwa='+nz,()=>p2Wczytaj(1))}
-async function p2Klik(px,py){const[x,y]=p2S(px,py),d=P2.d;if(!d)return;
- if(P2.nar=='miara'||P2.nar=='przekroj'){if(!P2.A){P2.A=[x,y];P2.miara=null;p2Narzedzia();p2Rys();return}const A=P2.A;P2.A=null;
-  if(P2.nar=='miara'){P2.miara=[A,[x,y]];p2Narzedzia();p2Rys();return}
+async function p2Klik(px,py){let[x,y]=p2S(px,py);const d=P2.d;if(!d)return;
+ if(P2.nar=='pole'){let p=[x,y];if(P2.poly.length){p=p2Prosto(P2.poly[P2.poly.length-1],p);const[a,b]=p2E(P2.poly[0][0],P2.poly[0][1]);if(P2.poly.length>=3&&Math.hypot(a-px,b-py)<12){p2Zamknij();return}}
+  P2.poly.push(p);p2Narzedzia();p2Rys();return}
+ if(P2.nar=='miara'||P2.nar=='przekroj'){if(!P2.A){P2.A=[x,y];p2Narzedzia();p2Rys();return}const A=P2.A;[x,y]=p2Prosto(A,[x,y]);P2.A=null;
+  if(P2.nar=='miara'){P2.pomiary.push({typ:'linia',k:P2.k,pts:[A,[x,y]],dl:Math.hypot(x-A[0],y-A[1])});p2Narzedzia();p2Panel();p2Rys();return}
   if(Math.hypot(x-A[0],y-A[1])<0.3){dymek('Za krótka linia',1);p2Narzedzia();p2Rys();return}
   P2.nar='reka';p2Narzedzia();dymek('Liczę przekrój…');$('dymek').style.background='#374151';
   const j=await l2Gen('przekroj',{ax:A[0].toFixed(3),ay:A[1].toFixed(3),bx:x.toFixed(3),by:y.toFixed(3),kond:p2K().nr,grub:(P2.grub/100).toFixed(2)});
@@ -756,14 +783,19 @@ async function p2Klik(px,py){const[x,y]=p2S(px,py),d=P2.d;if(!d)return;
 (function(){const c=$('cp2');const pt=new Map();let st=null,ruch=false,pinch=null;
  c.addEventListener('pointerdown',e=>{c.setPointerCapture(e.pointerId);pt.set(e.pointerId,[e.offsetX,e.offsetY]);ruch=false;st={x:e.offsetX,y:e.offsetY,wx:P2.w.x,wy:P2.w.y};
   if(pt.size==2){const[a,b]=[...pt.values()];pinch={d:Math.hypot(a[0]-b[0],a[1]-b[1]),s:P2.w.s}}});
- c.addEventListener('pointermove',e=>{if(P2.A){P2.kur=p2S(e.offsetX,e.offsetY);p2Rys()}if(!pt.has(e.pointerId))return;pt.set(e.pointerId,[e.offsetX,e.offsetY]);
+ c.addEventListener('pointermove',e=>{P2.shift=e.shiftKey;if(P2.nar!='reka'){P2.kur=p2S(e.offsetX,e.offsetY);p2Rys()}if(!pt.has(e.pointerId))return;pt.set(e.pointerId,[e.offsetX,e.offsetY]);
   if(pt.size==2&&pinch){const[a,b]=[...pt.values()];P2.w.s=Math.max(2,Math.min(800,pinch.s*Math.hypot(a[0]-b[0],a[1]-b[1])/pinch.d));ruch=true;p2Rys();return}
   if(Math.hypot(e.offsetX-st.x,e.offsetY-st.y)>5)ruch=true;if(ruch){P2.w.x=st.wx-(e.offsetX-st.x)/P2.w.s;P2.w.y=st.wy+(e.offsetY-st.y)/P2.w.s;p2Rys()}});
- c.addEventListener('pointerup',e=>{const by=pt.size;pt.delete(e.pointerId);if(pt.size<2)pinch=null;if(by==1&&!ruch)p2Klik(e.offsetX,e.offsetY)});
+ c.addEventListener('pointerleave',()=>{if(P2.kur){P2.kur=null;p2Rys()}});
+ c.addEventListener('pointerup',e=>{P2.shift=e.shiftKey;const by=pt.size;pt.delete(e.pointerId);if(pt.size<2)pinch=null;if(by==1&&!ruch)p2Klik(e.offsetX,e.offsetY)});
  c.addEventListener('pointercancel',e=>{pt.delete(e.pointerId);pinch=null});
  c.addEventListener('wheel',e=>{e.preventDefault();const[x,y]=p2S(e.offsetX,e.offsetY),f=Math.exp(-e.deltaY*0.0015);P2.w.s=Math.max(2,Math.min(800,P2.w.s*f));const[x2,y2]=p2S(e.offsetX,e.offsetY);P2.w.x+=x-x2;P2.w.y+=y-y2;p2Rys()},{passive:false});
- c.addEventListener('dblclick',()=>{p2Dopasuj();p2Rys()});
- document.addEventListener('keydown',e=>{if(e.key=='Escape'&&(P2.A||P2.miara)){P2.A=null;P2.miara=null;p2Narzedzia();p2Rys()}});
+ c.addEventListener('dblclick',()=>{if(P2.nar=='pole'){const p=P2.poly;if(p.length>1&&Math.hypot(p[p.length-1][0]-p[p.length-2][0],p[p.length-1][1]-p[p.length-2][1])<0.05)p.pop();p2Zamknij();return}if(P2.nar!='reka')return;p2Dopasuj();p2Rys()});
+ const shiftZm=e=>{if(P2.shift!=e.shiftKey){P2.shift=e.shiftKey;if(P2.kur)p2Rys()}};
+ document.addEventListener('keyup',shiftZm);
+ document.addEventListener('keydown',e=>{shiftZm(e);if(!$('wpl2').classList.contains('akt'))return;
+  if(e.key=='Escape'&&(P2.A||P2.poly.length)){P2.A=null;P2.poly=[];p2Narzedzia();p2Rys()}
+  if(e.key=='Enter'&&P2.nar=='pole')p2Zamknij()});
  new ResizeObserver(()=>p2Rys()).observe($('pp2'))})();
 // ---------------------------------------------------------------- Chmura 3D z L2 (api/l2_chmura -> podglad3d.bin z l2/l2_podglad3d.py)
 const L3={};
