@@ -112,18 +112,24 @@ def oceny(P, ref, c, a0):
         return None
     kand.sort(key=lambda x: -x[0])
     best = kand[0]
-    # drugie miejsce: najlepszy wynik >= 0,7 m albo >= 4 st. od zwyciezcy (powtarzalne sale)
-    drugi = -1.0
-    for w, a, t, wsp, W, st in kand:
+    Wb = best[4]; rb = int(PRZES / RES)
+    yy, xx = np.mgrid[0:Wb.shape[0], 0:Wb.shape[1]]
+    ti = np.round(best[2] / RES).astype(int) + rb
+    # korytarz: miejsca prawie tak dobre jak najlepsze ukladaja sie w linie -> polozenie wzdluz niej nieznane
+    blisko = np.argwhere(Wb >= best[0] - 0.04) * RES
+    u = None
+    if len(blisko) >= 5:
+        X = blisko - blisko.mean(0); w, v = np.linalg.eigh(X.T @ X / len(X))
+        if np.sqrt(w[1]) > 0.35 and w[1] > 6 * max(w[0], 1e-6):
+            u = v[:, 1]                                       # kierunek niepewny (wzdluz korytarza)
+    d = np.c_[yy.ravel() - ti[0], xx.ravel() - ti[1]] * RES
+    poprz = np.abs(d @ np.array([-u[1], u[0]])) if u is not None else np.hypot(d[:, 0], d[:, 1])
+    daleko = (poprz >= (0.5 if u is not None else 0.7)).reshape(Wb.shape)
+    drugi = float(Wb[daleko].max()) if daleko.any() else -1.0
+    for w, a, t, wsp, W, st in kand[1:]:                     # inne obroty (>= 4 st., poza katem prostym)
         if abs(st - best[5]) >= 4 and abs(abs(st - best[5]) - 90) >= 4:
             drugi = max(drugi, w)
-        else:
-            yy, xx = np.mgrid[0:W.shape[0], 0:W.shape[1]]
-            ti = np.round(best[2] / RES).astype(int) + int(PRZES / RES)
-            daleko = np.hypot(yy - ti[0], xx - ti[1]) * RES >= 0.7
-            if daleko.any():
-                drugi = max(drugi, float(W[daleko].max()))
-    return {'a': best[1] + a0, 't': best[2], 'wynik': best[0], 'wspolne': best[3], 'drugi': drugi}
+    return {'a': best[1] + a0, 't': best[2], 'wynik': best[0], 'wspolne': best[3], 'drugi': drugi, 'u': u}
 
 
 def icp(P, ref, c, a, t, iters=10):
@@ -204,10 +210,15 @@ def _proba(K, stan, i, ref, log, runda=0):
     if h is None:
         log(f"  K{k['nr']:02d}: brak wspolnej czesci"); return
     a, t, zg, wsp = icp(Pc, ref, s['c'] + s['t'], h['a'], h['t'])
+    if h['u'] is not None:                       # korytarz: wzdluz zostaje polozenie ze SLAM, poprawiamy w poprzek i obrot
+        t = t - (t @ h['u']) * h['u']
     margines = h['wynik'] - h['drugi']
     ok = wsp >= WSPOLNE_MIN and zg >= ZGODNOSC_MIN and margines >= 0.05
+    # drobna poprawka blisko polozenia ze SLAM: nawet przy niejednoznacznosci ryzyko male (<= 0,4 m, 3 st.)
+    if not ok and wsp >= 0.3 and zg >= 0.5 and np.hypot(*t) <= 0.4 and abs(np.degrees(a)) <= 3:
+        ok = True
     log(f"  {'R' + str(runda) if runda else '  '} K{k['nr']:02d}: wspolne {wsp:.2f} zgodnosc {zg:.2f} margines {margines:.2f} "
-        f"przesuniecie {np.hypot(*t):.2f} m obrot {np.degrees(a):+.1f} st. -> {'ZLOZONY' if ok else 'zostaje'}")
+        f"przesuniecie {np.hypot(*t):.2f} m obrot {np.degrees(a):+.1f} st.{' korytarz' if h['u'] is not None else ''} -> {'ZLOZONY' if ok else 'zostaje'}")
     if ok:
         # zlozenie przeksztalcen: najpierw obecne (c, a0, t0), potem obrot a wokol c+t0 i przesuniecie t
         s['a'] = s['a'] + a
