@@ -153,7 +153,15 @@ function stanTxt(st,p){if(!p)return esc(st);const godz=new Date(Date.now()+p.eta
  return st=='liczy'?'liczy '+p.proc+' % · ~'+czasTxt(p.eta_s)+' (ok. '+godz+')':st=='czeka'?'czeka ('+p.poz+'.) · ~'+godz:esc(st)}
 const plik=f=>'plik?n='+S.n+'&f='+f+(f.endsWith('.dxf')?'&jedn='+JEDN:'');
 function ustawJedn(j){JEDN=j;try{localStorage.setItem('lidar_jedn',j)}catch(e){}if(S){naglowek();pliki();porownanie()}}
-function post(u,ok,body){return fetch(u,{method:'POST',body}).then(r=>r.json()).then(j=>{if(j.blad)alert(j.blad);else ok&&ok(j)})}
+// komunikat po kazdym kliknieciu przycisku, ktory cos zleca serwerowi: dymek u dolu ekranu (zielony = przyjeto, czerwony = blad)
+const POST_OPIS={kawalki_reczne:'Poprawki zapisane – nowy DXF „⬇ złożone” będzie gotowy za chwilę',nazwy:'Zapisano',kontrola:'Zapisano pomiary kontrolne',przelicz:'Przyjęto – mapa się liczy',pomieszczenia:'Przyjęto – liczę pomieszczenia',
+ kawalki:'Przyjęto – liczę kawałki',zloz_kawalki:'Przyjęto – składam kawałki',uloz_kawalki:'Przyjęto – układam kawałki na rzucie',porownaj:'Przyjęto – porównanie SLAM się liczy',nakladka:'Przyjęto – liczę nakładkę',dopasuj:'Przyjęto – dopasowuję do rzutu CAD',
+ cad_ustaw:'Zapisano ustawienia rzutu CAD',cad_wgraj:'Rzut CAD wgrany',l2_licz:'Przyjęto – liczę L2',l2_wybor:'Zapisano',zatrzymaj:'Zatrzymano liczenie',zatrzymaj_wszystko:'Zatrzymano wszystkie obliczenia',usun_mape:'Mapa usunięta',usun_sesje:'Nagranie przeniesione do kosza',
+ usun_budynek:'Budynek przeniesiony do kosza',usun_puste:'Puste nagrania usunięte',usun_wszystkie_mapy:'Mapy usunięte',oproznij_kosz:'Kosz opróżniony',przywroc_kosz:'Przywrócono z kosza'};
+function dymek(t,zle){let d=$('dymek');if(!d){d=document.createElement('div');d.id='dymek';d.style.cssText='position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:9999;padding:11px 18px;border-radius:10px;color:#fff;font:600 14px system-ui;box-shadow:0 6px 24px rgba(0,0,0,.3);max-width:80vw;transition:opacity .4s';document.body.appendChild(d)}
+ d.textContent=(zle?'✕ ':'✓ ')+t;d.style.background=zle?'#b91c1c':'#15803d';d.style.opacity=1;clearTimeout(dymek.t);dymek.t=setTimeout(()=>d.style.opacity=0,zle?7000:3500)}
+function post(u,ok,body){const co=(u.match(/api\/([a-z_0-9]+)/)||[])[1];dymek('Wysyłam…');$('dymek').style.background='#374151';
+ return fetch(u,{method:'POST',body}).then(r=>r.json()).then(j=>{if(j.blad)dymek(j.blad,1);else{dymek(POST_OPIS[co]||'Wykonano');ok&&ok(j)}}).catch(e=>dymek('Brak połączenia z serwerem – nie wykonano',1))}
 document.addEventListener('click',e=>{if(!e.target.closest('.menu'))document.querySelectorAll('.menu').forEach(m=>m.classList.remove('otw'))});
 document.querySelectorAll('#zakl button').forEach(b=>b.onclick=()=>pokazWidok(b.dataset.w));
 function pokazWidok(w){document.querySelectorAll('#zakl button').forEach(x=>x.classList.toggle('akt',x.dataset.w==w));document.querySelectorAll('.widok').forEach(x=>x.classList.toggle('akt',x.id==w));if(w=='w2d')rys();if(w=='w3d')tryb3d();if(w=='wkaw')kawEd()}
@@ -378,7 +386,7 @@ const KE_NAZ={start:'start',zlozony:'złożony',grupa_osobno:'grupa osobno',niep
 const kawSr=()=>{let x=0,y=0,n=0;KE.sel.forEach(i=>{const s=KE.S[i];x+=s.c[0]+s.t[0];y+=s.c[1]+s.t[1];n++});return[x/(n||1),y/(n||1)]};
 function kawObrGr(S0,sr,da){KE.sel.forEach(i=>{const s=KE.S[i],o=S0[i],q=kR(o.c[0]+o.t[0]-sr[0],o.c[1]+o.t[1]-sr[1],da);s.a=o.a+da;s.t=[sr[0]+q[0]-s.c[0],sr[1]+q[1]-s.c[1]]})}
 const kawKop=()=>{const o={};KE.sel.forEach(i=>o[i]=JSON.parse(JSON.stringify(KE.S[i])));return o};
-function kawUsun(){KE.sel.forEach(i=>KE.S[i].stan='usuniety');KE.sel.clear();KE.wyb=-1;kawIle();kawPanel();kawRys()}
+function kawUsun(){dymek('Usunięto z rysunku: '+KE.sel.size+' – kliknij „Zapisz poprawki”, żeby utrwalić');KE.sel.forEach(i=>KE.S[i].stan='usuniety');KE.sel.clear();KE.wyb=-1;kawIle();kawPanel();kawRys()}
 function kawIle(){KE.zm=KE.S.filter(x=>x.stan=='reczny'||x.stan=='usuniety').length}
 function kawEd(){if(!S)return;const Z=(S.kawalki||{}).zloz||{};if(Z.stan!='gotowe'){$('pk').innerHTML='<p class="mala">Najpierw „🧲 Złóż kawałki” (przycisk u góry, przy kawałkach).</p>';KE.n=null;kawRys();return}
  if(KE.n==S.n&&KE.P.length){kawPanel();kawRys();return}
@@ -420,7 +428,7 @@ function kawDociagnij(){const i=KE.wyb;$('kawInfo').textContent='dociągam…';
   $('kawInfo').innerHTML='Dociągnięto o '+j.przesuniecie_m.toFixed(2).replace('.',',')+' m i '+j.obrot_st.toFixed(1).replace('.',',')+'°. Zgodność ze ścianami sąsiadów: <b>'+Math.round(j.zgodnosc*100)+'%</b>'+(j.zgodnosc<0.5?' – słabo, ustaw dokładniej na oko i spróbuj jeszcze raz':'')+'. <a href="#" onclick="KE.S['+i+'].a='+a0+';KE.S['+i+'].t=['+t0+'];kawRys();return false">cofnij dociągnięcie</a>'})}
 function kawZapisz(){const A=KE.rot*Math.PI/180;if(A%(2*Math.PI)){KE.S.forEach(s=>{const q=kR(s.c[0]+s.t[0],s.c[1]+s.t[1],A);s.a+=A;s.t=[q[0]-s.c[0],q[1]-s.c[1]]});
   KE.miary.forEach(m=>{m.a=kR(m.a[0],m.a[1],A);m.b=kR(m.b[0],m.b[1],A)});KE.rot=0}
- post('api/kawalki_reczne?n='+S.n,()=>{KE.S0=JSON.parse(JSON.stringify(KE.S));kawPanel();kawRys();alert('Zapisuję – za chwilę „⬇ złożone” i podgląd będą zawierać poprawki.');const n=S.n;setTimeout(()=>fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(S&&S.n==n){S.kawalki=d.kawalki;naglowek()}}),8000)},JSON.stringify(KE.S))}
+ post('api/kawalki_reczne?n='+S.n,()=>{KE.S0=JSON.parse(JSON.stringify(KE.S));kawPanel();kawRys();const n=S.n;setTimeout(()=>fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(S&&S.n==n){S.kawalki=d.kawalki;naglowek()}}),8000)},JSON.stringify(KE.S))}
 function kawTraf(e){const r=ck.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;let best=-1,bd=10,pt=null;
  KE.P.forEach((P,i)=>{for(let j=0;j<P.length;j+=2){const[x,y]=kawXY(i,P[j],P[j+1]),[a,b]=kP(x,y),d=Math.hypot(a-mx,b-my);if(d<bd||(d<bd+3&&i==KE.wyb&&best!=i)){bd=d;best=i;pt=[x,y]}}});return{i:best,pt,sw:kS(mx,my)}}
 let kd=null;
