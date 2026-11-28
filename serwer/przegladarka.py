@@ -20,7 +20,7 @@ import skan_web as SW          # tylko funkcje czytajace CSV inwentaryzacji
 
 ARGS = None
 SESJA_RE = re.compile(r'^[A-Za-z0-9_+\-]{1,100}$')
-PLIK_RE = re.compile(r'^((_wynik|_porownanie|_wynik/l2|_wynik/l2/petle)/)?[A-Za-z0-9_\-]{1,60}\.(jpg|csv|txt|bin|dxf|png|json|obj|log|pcd|npz)$')
+PLIK_RE = re.compile(r'^((_wynik|_porownanie|_wynik/l2|_wynik/l2/petle)/)?[A-Za-z0-9_\-]{1,60}\.(jpg|csv|txt|bin|dxf|png|json|obj|log|pcd|npz|stl|ply)$')
 KOLEJKA = queue.PriorityQueue()   # (0 = recznie z przycisku, 1 = automat, licznik, sesja)
 NR_ZLEC = __import__('itertools').count()
 W_TOKU = {}                    # sesja -> 'czeka' | 'liczy'
@@ -649,6 +649,9 @@ def licz_nakladke(n, k):
             W_NAK.pop(n, None)
 
 
+# wyniki narzedzi L2 na zadanie (l2/l2_ciecia.py) i plan.json (l2_rzut.py)
+L2_WYNIKI_NARZ = r'(plan\.json|rzut_przekroje\.dxf|ciecie_\d{3}(_przekroje)?\.dxf|przekroj_[A-Z0-9]{1,4}\.(dxf|png)|przekroje\.json|model3d\.(obj|stl|dxf)|chmura3d\.dxf|chmura\.ply)'
+W_L2N = {}                     # (sesja, wersja) -> opis trwajacego narzedzia L2 (przeliczenie rzutu, model 3D)
 KOLEJKA_L2 = queue.Queue()
 PODGLAD3D = threading.Lock()   # jedno przerzedzanie chmury naraz (pamiec)
 W_L2 = {}                      # sesja -> 'czeka' | 'liczy' (mapa 3D z Unitree L2: l2.bin -> rosbag -> Point-LIO -> rzut)
@@ -696,6 +699,55 @@ def pracownik_l2():
             W_L2.pop(n, None)
 
 
+def l2_wy(k, w=None):
+    return os.path.join(k, '_wynik', 'l2', 'petle') if w == 'petle' else os.path.join(k, '_wynik', 'l2')
+
+
+def l2_przelicz_rzut(n, k, w):
+    """l2_rzut.py na gotowej chmurze (np. starsze wyniki bez plan.json albo po zmianie algorytmu rzutu)."""
+    wy = l2_wy(k, w); tr = os.path.join(k, '_wynik', 'l2', 'trasa.csv'); zn = os.path.join(k, 'znaczniki.txt')
+    cmd = [sys.executable, os.path.join(REPO, 'l2', 'l2_rzut.py'), os.path.join(wy, 'chmura.pcd'), wy]
+    if os.path.isfile(tr):
+        cmd += ['--trasa', tr]
+    if os.path.isfile(zn):
+        cmd += ['--znaczniki', zn]
+    try:
+        with LICZ_RECZNE, open(os.path.join(wy, 'rzut.log'), 'w') as f:
+            uruchom(('l2r', n), cmd, stdout=f, stderr=subprocess.STDOUT, env=ENV_DZIECI)
+    finally:
+        with BLOK:
+            W_L2N.pop((n, w), None)
+
+
+def znaczniki_na_trasie(k, trasa):
+    """Zdjecia (FOTO), \"Jestem tu\" (SALA) i inne znaczniki z rejestratora -> punkt trasy L2 w chwili znacznika
+    (czas maliny w ns = czas trasy w s). Zwraca [{t, rodzaj, opis, plik, x, y, k}]."""
+    out = []
+    if len(trasa) < 2 or not os.path.isfile(os.path.join(k, 'znaczniki.txt')):
+        return out
+    import bisect
+    T = [p[0] for p in trasa]
+    for l in open(os.path.join(k, 'znaczniki.txt'), encoding='utf-8', errors='replace'):
+        c = l.rstrip('\n').split('\t')
+        if len(c) < 2 or not c[0].isdigit():
+            continue
+        t = int(c[0]) / 1e9
+        if not (T[0] - 5 <= t <= T[-1] + 5):
+            continue
+        i = min(len(T) - 1, bisect.bisect_left(T, t)); p = trasa[i]
+        op = c[1]; rodz, plik_ = 'notatka', None
+        if op.startswith('FOTO '):
+            rodz = 'foto'; cz = op.split(' ', 2); plik_ = cz[1] if len(cz) > 1 else None; op = cz[2] if len(cz) > 2 else ''
+            if plik_ and not (re.fullmatch(r'foto_[0-9_]+\.jpg', plik_) and os.path.isfile(os.path.join(k, plik_))):
+                plik_ = None
+        elif op.startswith('SALA'):
+            rodz = 'sala'; op = op[4:].strip()
+        elif op.startswith(('PAUZA', 'WZNOW', 'START', 'STOP', 'PRZECHYL', 'AUTO')):
+            continue
+        out.append({'t': round(t, 1), 'rodzaj': rodz, 'opis': op, 'plik': plik_, 'x': p[1], 'y': p[2], 'k': p[4] if len(p) > 4 else 0})
+    return out
+
+
 def stan_l2(n, k):
     wy = os.path.join(k, '_wynik', 'l2')
     with BLOK:
@@ -703,7 +755,8 @@ def stan_l2(n, k):
     jest = (lambda p: os.path.exists(os.path.join(wy, p)))
     pliki = sorted('_wynik/l2/' + p for p in os.listdir(wy)
                    if p in ('rzut.png', 'rzut.dxf', 'wysokosci.txt', 'chmura.pcd', 'przebieg.log', 'blad.txt', 'pointlio.log', 'otwory.csv',
-                            'kontrola_l2.txt', 'skosy.json', 'trasa.csv', 'pomieszczenia.csv', 'pomieszczenia.png')) if os.path.isdir(wy) else []
+                            'kontrola_l2.txt', 'skosy.json', 'trasa.csv', 'pomieszczenia.csv', 'pomieszczenia.png')
+                   or re.fullmatch(L2_WYNIKI_NARZ, p)) if os.path.isdir(wy) else []
     if not st:
         st = 'błąd' if jest('blad.txt') else 'gotowe' if (jest('rzut.png') or jest('rzut.dxf')) else 'zatrzymane' if jest('zatrzymane.txt') else 'brak'
     wys = {}
@@ -729,7 +782,7 @@ def stan_l2(n, k):
     if os.path.isdir(wp):
         jp = lambda p: os.path.exists(os.path.join(wp, p))
         petle = {'pliki': sorted('_wynik/l2/petle/' + p for p in os.listdir(wp)
-                                 if p in ('rzut.png', 'rzut.dxf', 'trasa.png', 'otwory.csv', 'chmura.pcd', 'blad.txt')),
+                                 if p in ('rzut.png', 'rzut.dxf', 'trasa.png', 'otwory.csv', 'chmura.pcd', 'blad.txt') or re.fullmatch(L2_WYNIKI_NARZ, p)),
                  'raport': None, 'wysokosci': {}, 'otwory': []}
         try:
             petle['raport'] = json.load(open(os.path.join(wp, 'petle.json'), encoding='utf-8')) if jp('petle.json') else None
@@ -763,7 +816,9 @@ def stan_l2(n, k):
             'wybor': wybor if (wybor == 'bez' or (petle and '_wynik/l2/petle/rzut.dxf' in petle['pliki'])) else 'bez',
             'liczy_s': round(time.time() - t0) if t0 else None, 'nagranie_s': czas, 'mb': round(rozmiar_l2(k) / 1e6, 1),
             'zrodlo': 'bin' if rozmiar(os.path.join(k, 'l2.bin')) >= MIN_DANE else 'bag',
-            'chmura3d': {'bez': jest('chmura.pcd'), 'petle': os.path.exists(os.path.join(wy, 'petle', 'chmura.pcd'))}}
+            'chmura3d': {'bez': jest('chmura.pcd'), 'petle': os.path.exists(os.path.join(wy, 'petle', 'chmura.pcd'))},
+            'plan': {'bez': jest('plan.json'), 'petle': os.path.exists(os.path.join(wy, 'petle', 'plan.json'))},
+            'narzedzia': {w_: W_L2N.get((n, w_)) for w_ in ('bez', 'petle') if W_L2N.get((n, w_))}}
 
 
 def zlec(n, pilne=False):
@@ -909,6 +964,19 @@ class H(BaseHTTPRequestHandler):
             po = open(pp, 'rb').read() if os.path.exists(pp) else b'null'
             return self._wyslij(200, 'application/json; charset=utf-8', b'{"mapa":' + dane + b',"nazwy":' + nz.encode() + b',"kontrola":' + ko +
                                 b',"pomieszczenia":' + po + b'}')
+        if u.path == '/api/l2_plan':
+            # dane interaktywnego planu L2: geometria z plan.json + przekroje + zdjecia/znaczniki polozone na trasie
+            wy = l2_wy(k, q.get('w'))
+            pp = os.path.join(wy, 'plan.json')
+            if not os.path.isfile(pp):
+                return self._json({'blad': 'brak plan.json', 'przelicz': os.path.isfile(os.path.join(wy, 'chmura.pcd')),
+                                   'liczy': W_L2N.get((q['n'], q.get('w') or 'bez'))}, 404)
+            pl = json.load(open(pp, encoding='utf-8'))
+            pj = os.path.join(wy, 'przekroje.json')
+            pl['przekroje'] = json.load(open(pj, encoding='utf-8')) if os.path.isfile(pj) else []
+            pl['znaczniki'] = znaczniki_na_trasie(k, pl.get('trasa') or [])
+            pl['liczy'] = W_L2N.get((q['n'], q.get('w') or 'bez'))
+            return self._json(pl)
         if u.path == '/api/l2_chmura':
             # lekka chmura do podgladu 3D w przegladarce (l2/l2_podglad3d.py), robiona przy pierwszym otwarciu i po przeliczeniu
             wy = os.path.join(k, '_wynik', 'l2', 'petle' if q.get('w') == 'petle' else '')
@@ -1061,6 +1129,55 @@ class H(BaseHTTPRequestHandler):
                 W_L2[q['n']] = 'czeka'
             KOLEJKA_L2.put(q['n'])
             return self._json({'ok': True})
+        if u.path in ('/api/l2_przekroj', '/api/l2_przekroj_usun', '/api/l2_poziomy', '/api/l2_model3d', '/api/l2_rzut'):
+            w = 'petle' if q.get('w') == 'petle' else 'bez'; wy = l2_wy(k, w)
+            if not os.path.isfile(os.path.join(wy, 'chmura.pcd')):
+                return self._json({'blad': 'brak chmury - policz mape L2'}, 409)
+            narz = os.path.join(REPO, 'l2', 'l2_ciecia.py')
+            if u.path == '/api/l2_rzut':                  # ponowny rzut z gotowej chmury (bez Point-LIO), w tle
+                with BLOK:
+                    if (q['n'], w) in W_L2N:
+                        return self._json({'blad': 'juz liczy: ' + W_L2N[(q['n'], w)]}, 409)
+                    W_L2N[(q['n'], w)] = 'rzut'
+                threading.Thread(target=l2_przelicz_rzut, args=(q['n'], k, w), daemon=True).start()
+                return self._json({'ok': True})
+            if u.path == '/api/l2_przekroj':
+                try:
+                    arg = ['pionowy', wy] + sum((['--' + x, str(float(q[x]))] for x in ('ax', 'ay', 'bx', 'by')), [])
+                except (KeyError, ValueError):
+                    return self._json({'blad': 'podaj ax, ay, bx, by'}, 400)
+                if q.get('kond', '').lstrip('-').isdigit():
+                    arg += ['--kond', q['kond']]
+                if q.get('grub'):
+                    arg += ['--grub', str(min(0.5, max(0.02, float(q['grub']))))]
+                if re.fullmatch(r'[A-Z0-9]{1,4}', q.get('nazwa', '')):
+                    arg += ['--nazwa', q['nazwa']]
+            elif u.path == '/api/l2_przekroj_usun':
+                if not re.fullmatch(r'[A-Z0-9]{1,4}', q.get('nazwa', '')):
+                    return self._json({'blad': 'zla nazwa'}, 400)
+                arg = ['usun', wy, '--nazwa', q['nazwa']]
+            elif u.path == '/api/l2_poziomy':
+                try:
+                    h = min(5.0, max(0.1, float(q.get('h', '1.0').replace(',', '.'))))
+                except ValueError:
+                    return self._json({'blad': 'zla wysokosc'}, 400)
+                arg = ['poziomy', wy, '--h', f'{h:.2f}']
+            else:
+                arg = ['model3d', wy]
+            with BLOK:
+                if (q['n'], w) in W_L2N:
+                    return self._json({'blad': 'chwila - trwa: ' + W_L2N[(q['n'], w)]}, 409)
+                W_L2N[(q['n'], w)] = arg[0]
+            try:
+                import contextlib                          # przekroje i ciecia sa lekkie - nie czekaja w kolejce ciezkich liczen
+                with (LICZ_RECZNE if arg[0] == 'model3d' else contextlib.nullcontext()):
+                    r = subprocess.run([sys.executable, narz] + arg, capture_output=True, text=True, env=ENV_DZIECI, timeout=900)
+            finally:
+                with BLOK:
+                    W_L2N.pop((q['n'], w), None)
+            if r.returncode != 0:
+                return self._json({'blad': (r.stderr or r.stdout)[-600:]}, 500)
+            return self._json({'ok': True, 'wynik': r.stdout.strip()[-400:]})
         if u.path == '/api/l2_wybor':
             w = q.get('w', 'bez')
             if w not in ('bez', 'petle'):

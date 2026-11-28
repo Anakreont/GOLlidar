@@ -369,6 +369,36 @@ def pomieszczenia_kondygnacji(r, trasa, plik_zn=None, log=print):
     return w
 
 
+def zapisz_plan(wyj, wyniki, dxs, trasa=None):
+    """plan.json dla interaktywnego planu w przegladarce (bez przesuniec dx - uklad chmury; dx podany osobno,
+    zeby przekroje mozna bylo dorysowac do rzut.dxf w tym samym miejscu)."""
+    import json
+    zaokr = lambda A, n=3: np.round(np.asarray(A, float), n).tolist()
+    kd = []
+    for r, dx in zip(wyniki, dxs):
+        Gb, ob = raster(r['B'], 0.04, 1); ib, jb = np.nonzero(Gb)
+        B = np.stack([ib, jb], 1) * 0.04 + ob + 0.02 if len(ib) else np.zeros((0, 2))
+        pom = []
+        for p in (r.get('pom') or {}).get('pomieszczenia', []):
+            pom.append({k: (zaokr(p[k], 3) if k in ('obrys', 'srodek') else p.get(k)) for k in
+                        ('nr', 'nazwa', 'typ', 'pow_m2', 'wys_m', 'kub_m3', 'ocena', 'obrys', 'srodek', 'pow_pn_iso_9836') if k in p})
+        kd.append({'nr': r['nr'], 'podl': round(r['podl'], 3), 'suf': round(r['suf'], 3), 'wys': round(r['wys'], 3), 'zt': r['zt'], 'dx': round(float(dx), 3),
+                   'min': zaokr(r['P'][:, :2].min(0), 2), 'max': zaokr(r['P'][:, :2].max(0), 2),
+                   'sciany': [zaokr(pl, 3) for pl in r['sciany']], 'sciany_pkt': zaokr(r['Wp'][::2], 2), 'ciecie_1m': zaokr(B, 2),
+                   'otwory': [{k: (round(v, 3) if isinstance(v, float) else v) for k, v in o.items()} for o in r['otwory']],
+                   'pomieszczenia': pom,
+                   'skosy': {str(k): [zaokr(c[::2], 2) for c in v] for k, v in (r['sk'] or {}).get('kontury', {}).items()} if r['sk'] else {}})
+    tr = []
+    if trasa is not None:
+        T = trasa[::max(1, len(trasa) // 4000)]
+        zts = [r['zt'] for r in wyniki]
+        for t, x, y, z in T[:, :4]:
+            k = int(np.argmin([abs(z - q) if q is not None else 0 for q in zts])) if any(q is not None for q in zts) else 0
+            tr.append([round(float(t), 2), round(float(x), 2), round(float(y), 2), round(float(z), 2), k])
+    with open(os.path.join(wyj, 'plan.json'), 'w', encoding='utf-8') as f:
+        json.dump({'wersja': 1, 'kondygnacje': kd, 'trasa': tr}, f, ensure_ascii=False, separators=(',', ':'))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('pcd'); ap.add_argument('wyjscie')
@@ -435,6 +465,7 @@ def main():
     for r in wyniki:
         lo, hi = r['P'][:, :2].min(0), r['P'][:, :2].max(0)
         dxs.append(x - lo[0]); x += (hi[0] - lo[0]) + 5.0
+    zapisz_plan(a.wyjscie, wyniki, dxs, TR)
     # obraz
     import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt
     ext = np.array([x, max(np.ptp(r['P'][:, 1]) for r in wyniki)])

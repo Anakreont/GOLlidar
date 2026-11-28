@@ -96,11 +96,35 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
 #modal .opis b{font-size:15px}#modal .opis .sp{flex:1}
 #w3d .plotno{background:linear-gradient(#e8eef7,#fff)}
 #info3d{position:absolute;right:12px;top:12px;background:rgba(255,255,255,.9);padding:8px 12px;border-radius:10px;font-size:12px;max-width:260px}
-@media(max-width:900px){body{grid-template-columns:1fr;grid-template-rows:52px auto 1fr;height:auto;min-height:100vh}header{grid-column:1}aside{max-height:45vh;border-right:0;border-bottom:1px solid var(--linia)}main{min-height:70vh}header input{display:none}.panel{display:none}}
+/* --- uklad: szuflada nagran (1), menu grup (2), podfunkcje / widok (3) --- */
+body.bez-listy{grid-template-columns:0 1fr}body.bez-listy aside{display:none}
+.hbtn{white-space:nowrap;background:#1f2937;border:1px solid #374151;color:#fff;border-radius:8px;padding:6px 11px;cursor:pointer;font:inherit}
+.menu.lewo .lista{left:0;right:auto}.menu .lista{max-height:75vh;overflow:auto}
+.menu .lista a{display:flex;gap:8px;align-items:center;width:100%;text-align:left;padding:9px 10px;border-radius:6px;color:var(--tekst);text-decoration:none}
+.menu .lista a:hover{background:var(--bg)}.menu .lista .dis{opacity:.4;pointer-events:none}
+.menu .lista h5{margin:8px 10px 2px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--szary)}
+.menu .lista .btn{display:flex;width:100%;margin:3px 0}.menu .lista .r{display:flex;gap:6px;align-items:center;padding:4px 10px}
+.menu .lista small{color:var(--szary);margin-left:auto;font-size:11px}
+.nag .grupy{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.zakl .sep{align-self:center;color:#cbd5e1;font-size:11px;padding:0 4px;white-space:nowrap}
+#wpl2.akt{display:flex}#p2war{max-width:calc(100% - 470px)}#p2war.zw .chip{display:none}#p2war .chip.wb{display:inline-block;font-weight:600}
+.menu .lista{min-width:340px}#cp2{width:100%;height:100%;display:block;background:#fff;touch-action:none;cursor:grab}
+.p2nar{position:absolute;right:10px;top:10px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:60%;z-index:2}
+.p2nar .btn{padding:5px 10px;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,.1)}.p2nar .btn.akt{background:var(--akcent);color:#fff;border-color:var(--akcent)}
+#p2pan h3{margin:14px 0 6px;font-size:14px}#p2pan h3:first-child{margin-top:0}
+.p2it{display:flex;gap:6px;align-items:center;padding:5px 6px;border-radius:6px;font-size:13px}.p2it:hover{background:var(--bg)}.p2it .sp{flex:1;cursor:pointer}
+.p2it a,.p2it button{font-size:12px;padding:2px 7px}
+#p2img{position:fixed;inset:0;background:rgba(15,23,42,.85);z-index:90;display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;padding:20px}
+#p2img img{max-width:96vw;max-height:84vh;background:#fff;border-radius:8px}#p2img div{color:#fff}
+@media(max-width:900px){body{grid-template-columns:1fr;grid-template-rows:52px 1fr;height:auto;min-height:100vh}header{grid-column:1}header h1{font-size:15px;white-space:nowrap}#p2war{top:auto;bottom:40px;max-width:calc(100% - 24px)}
+ aside{position:fixed;top:52px;left:0;bottom:0;width:min(92vw,380px);z-index:60;box-shadow:6px 0 30px rgba(0,0,0,.25);display:none}
+ body.lista-otw aside{display:block}body.bez-listy{grid-template-columns:1fr}main{min-height:calc(100vh - 52px)}header input{display:none}.panel{display:none}
+ #wpl2.akt{flex-direction:column}#wpl2 .plotno{min-height:62vh}#p2pan{display:block;width:auto;border-left:0;border-top:1px solid var(--linia)}.p2nar{max-width:100%;left:10px;justify-content:flex-start}}
 </style>
 </head>
 <body>
 <header>
+ <button class="hbtn" onclick="szuflada()" title="Pokaż / schowaj listę nagrań">☰ Nagrania</button>
  <h1>📐 Pomiary LiDAR</h1>
  <input id="szukaj" placeholder="Szukaj budynku…" oninput="lista()">
  <span class="spacer"></span>
@@ -119,8 +143,11 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
 <main>
  <div class="nag" id="nag"><div class="tyt"><b>Wybierz nagranie z listy</b><div>budynek → dzień → nagranie</div></div></div>
  <div class="zakl" id="zakl">
-  <button data-w="w2d" class="akt">Rzut</button><button data-w="w3d">Model 3D</button><button data-w="wfoto">Zdjęcia</button>
-  <button data-w="wprz">Przekroje</button><button data-w="wzn">Znaczniki i notatki</button><button data-w="winw">Inwentaryzacja</button><button data-w="wpl">Pliki</button><button data-w="wpor">Porównanie SLAM</button><button data-w="wkaw">Kawałki</button><button data-w="wcad">Rzut CAD</button><button data-w="wl2">Unitree L2 (3D)</button><button data-w="wl3">Chmura 3D</button>
+  <button data-w="wpl2" data-l2="1">Plan</button><button data-w="wl3" data-l2="1">3D</button><button data-w="wl2" data-l2="1">Mapa L2 – szczegóły</button>
+  <button data-w="w2d" class="akt" data-d5="1">Rzut D500</button><button data-w="w3d" data-d5="1">Model 3D D500</button><button data-w="wprz" data-d5="1">Przekroje D500</button>
+  <button data-w="wfoto">Zdjęcia</button><button data-w="wzn">Znaczniki i notatki</button><button data-w="winw">Inwentaryzacja</button><button data-w="wpl">Pliki</button>
+  <button data-w="zaaw" id="zaawB" title="Narzędzia D500 i porównania z rysunkiem CAD – zwykle niepotrzebne">Zaawansowane ▸</button>
+  <button data-w="wpor" data-zaaw="1">Porównanie SLAM</button><button data-w="wkaw" data-zaaw="1">Kawałki</button><button data-w="wcad" data-zaaw="1">Rzut CAD</button>
  </div>
  <div class="tresc">
   <section class="widok akt" id="w2d">
@@ -142,6 +169,11 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
   </section>
   <section class="widok" id="wcad"><div class="tabela" id="tcad"></div></section>
   <section class="widok" id="wl2"><div class="tabela" id="tl2"></div></section>
+  <section class="widok" id="wpl2">
+   <div class="plotno" id="pp2"><canvas id="cp2"></canvas><div class="warstwy" id="p2war"></div><div class="p2nar" id="p2nar"></div>
+    <div class="podp" id="p2podp">przeciągnij – przesuń · kółko / dwa palce – powiększ · dwuklik – całość</div></div>
+   <div class="panel" id="p2pan"><div class="mala">Wybierz nagranie z L2.</div></div>
+  </section>
   <section class="widok" id="wl3"><div class="plotno" id="pl3">
    <div class="l3pas"><select class="btn" id="l3wer" onchange="l3Wczytaj()"><option value="bez">mapa bez pętli</option><option value="petle">mapa z pętlami</option></select>
     <select class="btn" id="l3kol" onchange="l3Kolory()"><option value="z">kolor: wysokość</option><option value="pas">kolor: pas pod sufitem</option><option value="szary">kolor: szary</option></select>
@@ -154,6 +186,7 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
    <div class="podp" id="l3info">Wybierz nagranie z L2.</div></div></section>
  </div>
 </main>
+<div id="p2img" onclick="this.style.display='none'"></div>
 <div id="modal" onclick="if(event.target===this)zamknij()"><div class="okno" id="mokno"></div></div>
 <script>
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -171,7 +204,7 @@ function ustawJedn(j){JEDN=j;try{localStorage.setItem('lidar_jedn',j)}catch(e){}
 // komunikat po kazdym kliknieciu przycisku, ktory cos zleca serwerowi: dymek u dolu ekranu (zielony = przyjeto, czerwony = blad)
 const POST_OPIS={kawalki_reczne:'Poprawki zapisane – nowy DXF „⬇ złożone” będzie gotowy za chwilę',nazwy:'Zapisano',kontrola:'Zapisano pomiary kontrolne',przelicz:'Przyjęto – mapa się liczy',pomieszczenia:'Przyjęto – liczę pomieszczenia',
  kawalki:'Przyjęto – liczę kawałki',zloz_kawalki:'Przyjęto – składam kawałki',uloz_kawalki:'Przyjęto – układam kawałki na rzucie',porownaj:'Przyjęto – porównanie SLAM się liczy',nakladka:'Przyjęto – liczę nakładkę',dopasuj:'Przyjęto – dopasowuję do rzutu CAD',
- cad_ustaw:'Zapisano ustawienia rzutu CAD',cad_wgraj:'Rzut CAD wgrany',l2_licz:'Przyjęto – liczę L2',l2_wybor:'Zapisano',zatrzymaj:'Zatrzymano liczenie',zatrzymaj_wszystko:'Zatrzymano wszystkie obliczenia',usun_mape:'Mapa usunięta',usun_sesje:'Nagranie przeniesione do kosza',
+ cad_ustaw:'Zapisano ustawienia rzutu CAD',cad_wgraj:'Rzut CAD wgrany',l2_licz:'Przyjęto – liczę L2',l2_rzut:'Przeliczam rzut z chmury (ok. 1 min)',l2_wybor:'Zapisano',zatrzymaj:'Zatrzymano liczenie',zatrzymaj_wszystko:'Zatrzymano wszystkie obliczenia',usun_mape:'Mapa usunięta',usun_sesje:'Nagranie przeniesione do kosza',
  usun_budynek:'Budynek przeniesiony do kosza',usun_puste:'Puste nagrania usunięte',usun_wszystkie_mapy:'Mapy usunięte',oproznij_kosz:'Kosz opróżniony',przywroc_kosz:'Przywrócono z kosza'};
 function dymek(t,zle){let d=$('dymek');if(!d){d=document.createElement('div');d.id='dymek';d.style.cssText='position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:9999;padding:11px 18px;border-radius:10px;color:#fff;font:600 14px system-ui;box-shadow:0 6px 24px rgba(0,0,0,.3);max-width:80vw;transition:opacity .4s';document.body.appendChild(d)}
  d.textContent=(zle?'✕ ':'✓ ')+t;d.style.background=zle?'#b91c1c':'#15803d';d.style.opacity=1;clearTimeout(dymek.t);dymek.t=setTimeout(()=>d.style.opacity=0,zle?7000:3500)}
@@ -179,7 +212,15 @@ function post(u,ok,body){const co=(u.match(/api\/([a-z_0-9]+)/)||[])[1];dymek('W
  return fetch(u,{method:'POST',body}).then(r=>r.json()).then(j=>{if(j.blad)dymek(j.blad,1);else{dymek(POST_OPIS[co]||'Wykonano');ok&&ok(j)}}).catch(e=>dymek('Brak połączenia z serwerem – nie wykonano',1))}
 document.addEventListener('click',e=>{if(!e.target.closest('.menu'))document.querySelectorAll('.menu').forEach(m=>m.classList.remove('otw'))});
 document.querySelectorAll('#zakl button').forEach(b=>b.onclick=()=>pokazWidok(b.dataset.w));
-function pokazWidok(w){document.querySelectorAll('#zakl button').forEach(x=>x.classList.toggle('akt',x.dataset.w==w));document.querySelectorAll('.widok').forEach(x=>x.classList.toggle('akt',x.id==w));if(w=='w2d')rys();if(w=='w3d')tryb3d();if(w=='wkaw')kawEd();if(w=='wl3')l3Wczytaj()}
+function zakladki(){const cz=(S&&S.czujniki)||{d500:true,l2:false};
+ document.querySelectorAll('#zakl button').forEach(b=>{let v=true;if(b.dataset.l2)v=!!cz.l2;if(b.dataset.d5)v=!!cz.d500;if(b.dataset.zaaw)v=ZAAW;b.style.display=v?'':'none'});
+ $('zaawB').textContent=ZAAW?'Zaawansowane ◂':'Zaawansowane ▸';
+ const akt=document.querySelector('#zakl button.akt');if(akt&&akt.style.display=='none')pokazWidok(cz.l2?'wpl2':'w2d')}
+function szuflada(){const m=matchMedia('(max-width:900px)').matches;if(m)document.body.classList.toggle('lista-otw');else{document.body.classList.toggle('bez-listy');try{localStorage.setItem('lidar_bez_listy',document.body.classList.contains('bez-listy')?'1':'')}catch(e){}
+ setTimeout(()=>{if($('w2d').classList.contains('akt'))rys();if($('wpl2').classList.contains('akt'))p2Rys()},50)}}
+try{if(localStorage.getItem('lidar_bez_listy'))document.body.classList.add('bez-listy')}catch(e){}
+let ZAAW=false;
+function pokazWidok(w){if(w=='zaaw'){ZAAW=!ZAAW;zakladki();return}document.querySelectorAll('#zakl button').forEach(x=>x.classList.toggle('akt',x.dataset.w==w));document.querySelectorAll('.widok').forEach(x=>x.classList.toggle('akt',x.id==w));if(w=='w2d')rys();if(w=='w3d')tryb3d();if(w=='wkaw')kawEd();if(w=='wl3')l3Wczytaj();if(w=='wpl2')p2Wczytaj()}
 // ---------------------------------------------------------------- lista
 function lista(){fetch('api/sesje').then(r=>r.json()).then(d=>{L=d;rysujListe()})}
 const ZAZN=new Set();
@@ -233,10 +274,11 @@ function usunPuste(){post('api/usun_puste',j=>{alert('Przeniesiono do kosza '+j.
 function usunWszystkieMapy(){if(confirm('Przeliczyć wszystkie mapy od nowa? Nagrania zostają, mapy policzą się w tle (ok. 1 min na nagranie).'))post('api/usun_wszystkie_mapy',j=>{alert('Usunięto mapy '+j.ile+' sesji – liczą się od nowa');lista();if(S)otworz(S.n)})}
 function przywrocKosz(){post('api/przywroc_kosz',j=>{alert('Przywrócono '+j.ile+' nagrań'+(j.pominieto?' (pominięto '+j.pominieto+' – już są na liście)':''));lista()})}
 function oproznijKosz(){if(confirm('Opróżnić kosz? Tego nie da się cofnąć.'))post('api/oproznij_kosz',()=>alert('Kosz opróżniony'))}
-function czysc(){$('nag').innerHTML='<div class="tyt"><b>Wybierz nagranie z listy</b></div>';$('panel').innerHTML='';rys()}
+function czysc(){P2.d=null;P2.n=null;$('nag').innerHTML='<div class="tyt"><b>Wybierz nagranie z listy</b></div>';$('panel').innerHTML='';rys()}
 // ---------------------------------------------------------------- sesja
 function otworz(n){fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(!S||S.n!=n){MIARY=[];if(tryb=='miara'){tryb=null;pA=null}}S=d;S.n=n;M=null;wyb=null;KE.n=null;KE.P=[];if($('wkaw').classList.contains('akt'))setTimeout(kawEd,0);rysujListe();naglowek();galeria();przekroje();znaczniki();inwent();pliki();porownanie();cad();l2();if($('wl3').classList.contains('akt'))l3Wczytaj();
- if(S.czujniki&&!S.czujniki.d500&&S.czujniki.l2&&$('w2d').classList.contains('akt'))pokazWidok('wl2');
+ document.body.classList.remove('lista-otw');const nowa=!P2.n||P2.n!=n;zakladki();
+ if(S.czujniki&&S.czujniki.l2&&(!S.czujniki.d500||nowa)&&['w2d','w3d','wprz','wl2'].some(x=>$(x).classList.contains('akt')))pokazWidok('wpl2');else if($('wpl2').classList.contains('akt'))p2Wczytaj();
  fetch('api/mapa?n='+n).then(r=>r.ok?r.json():null).then(j=>{POM=j?j.pomieszczenia:null;if(j){M=j.mapa;NZ=j.nazwy||{};KO=j.kontrola||[];seg=0;
  (M.kondygnacje||[]).forEach(k=>{k.znaczniki.forEach(z=>{if((z.opis||'').startsWith('POMIAR '))z.rodzaj='pomiar'});grupujPom(k.znaczniki)});}else{M=null;KO=[]}panel();warstwy();dopasuj();rys();inwent();if($('w3d').classList.contains('akt'))tryb3d()})})}
 function kawTxt(){const K=S.kawalki||{};if(K.stan=='gotowe')return'<a class="btn" title="Mapa pocięta na przekrojach i przerwach – każdy kawałek jako blok do przesuwania/obracania w CAD" href="'+plik('_wynik/kawalki.dxf')+'">⬇ Kawałki DXF</a><a class="btn" title="Kawałki rozłożone obok siebie, każdy na swojej warstwie (godziny, sale) – do mierzenia pomieszczeń w kawałku" href="'+plik('_wynik/kawalki_osobno.dxf')+'">⬇ osobno</a><a class="btn" title="Sale zmierzone automatycznie w kawałkach (CSV)" href="'+plik('_wynik/kawalki_pomieszczenia.csv')+'">sale CSV</a><a class="btn" href="'+plik('_wynik/kawalki.png')+'" target="_blank">podgląd</a><button class="btn" title="Przelicz kawałki (nowa wersja: warstwy z godzinami, rozłożenie, sale)" onclick="kawLicz()">↻</button>'+zlozTxt(K.zloz||{})+ulozTxt(K.uloz||{});
@@ -262,14 +304,44 @@ function zajeta(){const z=x=>x=='liczy'||x=='czeka';return z(S.stan)||z((S.porow
 function zatrzymaj(){if(confirm('Zatrzymać liczenie tej sesji (mapa, porównanie, CAD, kawałki) i usunąć ją z kolejki?'))post('api/zatrzymaj?n='+S.n,()=>{setTimeout(()=>{lista();otworz(S.n)},1500)})}
 function zatrzymajWszystko(){if(confirm('Zatrzymać WSZYSTKIE liczenia i wyczyścić kolejkę?'))post('api/zatrzymaj_wszystko',j=>{alert('Zatrzymano: '+j.ile);setTimeout(()=>{lista();if(S)otworz(S.n)},1500)})}
 function naglowek(){const i=S.info,ma=S.wyniki.includes('_wynik/rzut.dxf'),cz=S.czujniki||{d500:true},L2=S.l2||{};
+ const w=L2.wybor=='petle'?'petle':'bez',pre=w=='petle'?'_wynik/l2/petle/':'_wynik/l2/',pl2=(w=='petle'?((L2.petle||{}).pliki||[]):(L2.pliki||[])),ma2=f=>pl2.includes(pre+f);
+ const a=(href,txt,opis,dis)=>'<a'+(dis?' class="dis"':'')+' href="'+href+'">'+txt+(opis?'<small>'+opis+'</small>':'')+'</a>',
+       b=(fn,txt,opis,dis)=>'<a'+(dis?' class="dis"':'')+' href="#" onclick="'+fn+';return false">'+txt+(opis?'<small>'+opis+'</small>':'')+'</a>';
+ let pob='<div class="r">Jednostki DXF: <select class="btn" onchange="ustawJedn(this.value)">'+['m','cm','mm'].map(j=>'<option value="'+j+'"'+(j==JEDN?' selected':'')+'>'+j+' (1:1)</option>').join('')+'</select></div>',lic='',zaaw='';
+ if(cz.l2){const jest=ma2('rzut.dxf'),prz=(P2.n==S.n&&P2.d&&P2.d.przekroje)||[];
+  if(L2.petle&&(L2.petle.pliki||[]).includes('_wynik/l2/petle/rzut.dxf'))pob+='<div class="r">Wersja mapy L2: <select class="btn" onchange="l2Wybor(this.value)"><option value="bez"'+(w=='bez'?' selected':'')+'>bez pętli</option><option value="petle"'+(w=='petle'?' selected':'')+'>z pętlami</option></select></div>';
+  pob+='<h5>Rzut 2D (L2)</h5>'+a(plik(pre+(ma2('rzut_przekroje.dxf')?'rzut_przekroje.dxf':'rzut.dxf')),'⬇ Ściany do lica – automatycznie','bez szaf i mebli, okna, drzwi, pomieszczenia',!jest)+
+   b("l2Gen('poziomy',{h:1})",'⬇ Przekrój poziomy 1,00 m nad podłogą','DXF, cięcie 5 cm',!L2.chmura3d||!L2.chmura3d[w])+
+   b("l2Poziomy()",'⬇ Przekrój poziomy – inna wysokość…','',!L2.chmura3d||!L2.chmura3d[w]);
+  pob+='<h5>Przekroje pionowe</h5>'+(prz.length?prz.map(p=>a(plik(pre+'przekroj_'+p.nazwa+'.dxf'),'⬇ '+esc(p.nazwa+'–'+p.nazwa),'dł. '+liczba(p.dl)+' m, kond. '+p.kond)).join(''):'')+
+   b("pokazWidok('wpl2');p2Narz('przekroj')",'✂ Nowy przekrój – wskaż 2 punkty na Planie','');
+  const m3=ma2('model3d.obj');
+  pob+='<h5>3D</h5>'+b("l2Gen3d('model3d.dxf')",'⬇ Model 3D DXF','ściany od podłogi do sufitu, 3DFACE')+b("l2Gen3d('model3d.obj')",'⬇ Model 3D OBJ','')+b("l2Gen3d('model3d.stl')",'⬇ Model 3D STL','')+
+   b("l2Gen3d('chmura3d.dxf')",'⬇ Chmura punktów DXF 3D','przerzedzona, warstwa CHMURA')+b("l2Gen3d('chmura.ply')",'⬇ Chmura punktów PLY','pełna')+a(plik(pre+'chmura.pcd'),'⬇ Chmura punktów PCD','pełna',!ma2('chmura.pcd'))+
+   (m3?'':'<div class="mala" style="padding:2px 10px">Model 3D liczy się przy pierwszym pobraniu (do minuty).</div>');
+  pob+='<h5>Tabele</h5>'+a(plik(pre+'pomieszczenia.csv'),'⬇ Pomieszczenia CSV','powierzchnie, wysokości, kubatury',!ma2('pomieszczenia.csv'))+a(plik(pre+'otwory.csv'),'⬇ Okna i drzwi CSV','',!ma2('otwory.csv'));
+  const zaj=L2.stan=='czeka'||L2.stan=='liczy';
+  lic+='<h5>Unitree L2</h5>'+b('l2Licz()',(L2.stan=='gotowe'?'↻ Policz mapę L2 od nowa':'▶ Policz mapę L2'),'Point-LIO, trwa ≈ czas nagrania',zaj||!L2.dostepne)+
+   b('l2Rzut()','↻ Przelicz rzut z gotowej chmury','ściany, otwory, pomieszczenia; ok. 1 min',!(L2.chmura3d||{})[w])+b("l2Gen('model3d',{})",'↻ Model 3D od nowa','',!(L2.chmura3d||{})[w]);}
+ if(cz.d500){pob+='<h5>D500 (zapas)</h5>'+a(plik('_wynik/rzut.dxf'),'⬇ Rzut D500 DXF','',!ma)+a(plik('_wynik/przekroje.dxf'),'⬇ Przekroje D500 DXF','',!S.wyniki.includes('_wynik/przekroje.dxf'))+
+   a(plik('_wynik/model3d.dxf'),'⬇ Model 3D D500 DXF','',!S.wyniki.includes('_wynik/model3d.dxf'))+a(plik('_wynik/model3d.obj'),'⬇ Model 3D D500 OBJ','',!S.wyniki.includes('_wynik/model3d.obj'));
+  lic+='<h5>D500</h5>'+b('przelicz()','🔄 Przelicz mapę D500','');zaaw=pomTxt()+kawTxt()}
+ if(zajeta())lic+='<h5>Teraz</h5>'+b('zatrzymaj()','⏹ Zatrzymaj liczenie tej sesji','');
+ const menu=(ik,t,h,kl)=>'<div class="menu lewo'+(kl||'')+'"><button class="btn'+(kl?'':' gl')+'" onclick="this.parentNode.classList.toggle(\'otw\')">'+ik+' '+t+' ▾</button><div class="lista">'+h+'</div></div>';
  $('nag').innerHTML='<div class="tyt"><b>'+esc(i.budynek||'?')+' › '+esc(i.kondygnacja||'?')+'</b><div>'+esc((i.start||'').replace('T',' ').slice(0,16))+' · '+esc(S.n)+' · '+(cz.d500?'D500 <span class="pill '+esc(S.stan)+'">'+stanTxt(S.stan,S.postep)+'</span>':'bez D500')+(cz.l2?' · L2 <span class="pill '+esc(L2.stan)+'">'+esc(L2.stan)+'</span>':'')+'</div></div>'+
- (cz.l2&&L2.pliki&&L2.pliki.includes('_wynik/l2/rzut.dxf')?'<a class="btn'+(ma?'':' gl')+'" href="'+plik(L2.wybor=='petle'?'_wynik/l2/petle/rzut.dxf':'_wynik/l2/rzut.dxf')+'">⬇ Rzut L2 DXF'+(L2.wybor=='petle'?' (pętle)':'')+'</a>':'')+
- (ma?'<a class="btn gl" href="'+plik('_wynik/rzut.dxf')+'">⬇ Rzut DXF</a>':'')+
- (S.wyniki.includes('_wynik/przekroje.dxf')?'<a class="btn" href="'+plik('_wynik/przekroje.dxf')+'">⬇ Przekroje DXF</a>':'')+
- (S.wyniki.includes('_wynik/model3d.dxf')?'<a class="btn" href="'+plik('_wynik/model3d.dxf')+'">⬇ Model 3D DXF</a><a class="btn" href="'+plik('_wynik/model3d.obj')+'">OBJ</a>':'')+
- (zajeta()?'<button class="btn" style="color:var(--czerw)" onclick="zatrzymaj()">⏹ Zatrzymaj</button>':'')+pomTxt()+kawTxt()+'<select class="btn" title="Jednostka plików DXF (rysunek 1:1)" onchange="ustawJedn(this.value)">'+['m','cm','mm'].map(j=>'<option value="'+j+'"'+(j==JEDN?' selected':'')+'>DXF w '+j+'</option>').join('')+'</select>'+
- (cz.d500?'<button class="btn" onclick="przelicz()">🔄 Przelicz</button>':'')+(cz.l2?'<button class="btn" onclick="pokazWidok(\'wl2\')">🧊 Mapa L2</button>':'')+(cz.l2&&L2.chmura3d&&L2.chmura3d.bez?'<button class="btn" onclick="pokazWidok(\'wl3\')">☁ Chmura 3D</button>':'')+'<div class="menu"><button class="btn" onclick="this.parentNode.classList.toggle(\'otw\')">⋯</button><div class="lista">'+
- '<button onclick="usunMape()">Usuń mapę tej sesji (policzy się od nowa)</button><button style="color:var(--czerw)" onclick="usunSesje()">Przenieś całą sesję do kosza</button></div></div>'}
+ '<div class="grupy">'+menu('⬇','Pobierz',pob)+menu('⚙','Przelicz',lic,' ')+(zaaw?menu('🧰','Zaawansowane D500',zaaw,' '):'')+
+ (zajeta()?'<button class="btn" style="color:var(--czerw)" onclick="zatrzymaj()">⏹ Zatrzymaj</button>':'')+
+ '<div class="menu"><button class="btn" onclick="this.parentNode.classList.toggle(\'otw\')">⋯</button><div class="lista">'+
+ '<button onclick="usunMape()">Usuń mapę D500 tej sesji (policzy się od nowa)</button><button style="color:var(--czerw)" onclick="usunSesje()">Przenieś całą sesję do kosza</button></div></div></div>'}
+async function l2Gen(co,par){const w=(S.l2||{}).wybor=='petle'?'petle':'bez',n=S.n;dymek('Liczę…');$('dymek').style.background='#374151';
+ const u='api/l2_'+(co=='poziomy'?'poziomy':co)+'?n='+encodeURIComponent(n)+'&w='+w+Object.entries(par||{}).map(([k,v])=>'&'+k+'='+encodeURIComponent(v)).join('');
+ let j;try{j=await (await fetch(u,{method:'POST'})).json()}catch(e){dymek('Brak połączenia z serwerem',1);return null}
+ if(j.blad){dymek(j.blad,1);return null}dymek('Gotowe');const d=await (await fetch('api/sesja?n='+n)).json();if(S&&S.n==n){S.l2=d.l2;naglowek()}
+ const m=(j.wynik||'').match(/PLIK (\S+)/);if(co=='poziomy'&&m)location.href=plik((w=='petle'?'_wynik/l2/petle/':'_wynik/l2/')+m[1]);return j}
+function l2Poziomy(){const h=prompt('Wysokość cięcia nad podłogą każdej kondygnacji [m]:','1,00');if(h)l2Gen('poziomy',{h:h.replace(',','.')})}
+async function l2Gen3d(f){const L2=S.l2||{},w=L2.wybor=='petle'?'petle':'bez',pre=w=='petle'?'_wynik/l2/petle/':'_wynik/l2/',pl=(w=='petle'?((L2.petle||{}).pliki||[]):(L2.pliki||[]));
+ if(!pl.includes(pre+f)&&!await l2Gen('model3d',{}))return;location.href=plik(pre+f)}
+function l2Rzut(){const w=(S.l2||{}).wybor=='petle'?'petle':'bez';post('api/l2_rzut?n='+S.n+'&w='+w,()=>{P2.d=null;P2.klucz=null;pokazWidok('wpl2')})}
 function przelicz(){post('api/przelicz?n='+S.n,()=>{alert('Zlecone – mapa liczy się ok. 1 min na każde 8 min nagrania.');lista()})}
 function usunMape(){if(confirm('Usunąć mapę tej sesji? Policzy się od nowa (trwające liczenie zostanie zatrzymane).'))post('api/usun_mape?n='+S.n,()=>{lista();otworz(S.n)})}
 function usunSesje(){if(confirm('Przenieść całą sesję do kosza? Trwające liczenie zostanie zatrzymane.'))post('api/usun_sesje?n='+S.n,()=>{S=null;M=null;czysc();lista()})}
@@ -594,6 +666,102 @@ function l2(){const X=S.l2||{stan:'brak',pliki:[]},cz=S.czujniki||{};clearTimeou
    (mp('rzut.png')?'<a href="'+pp('rzut.png')+'" target="_blank"><img src="'+pp('rzut.png')+'&v='+Date.now()+'" style="width:100%;border:1px solid var(--linia);border-radius:8px;background:#fff"></a>':'')+'</div>'}
  $('tl2').innerHTML=h;
  if(zaj){const n=S.n;l2T=setTimeout(()=>{if(S&&S.n==n)fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(S&&S.n==n){const by=S.l2.stan;S.l2=d.l2;l2();if(by!=d.l2.stan)naglowek()}})},15000)}}
+// ---------------------------------------------------------------- Plan L2 (interaktywny): api/l2_plan -> plan.json z l2_rzut.py + przekroje + znaczniki na trasie
+const P2={d:null,n:null,klucz:null,k:0,w:{x:0,y:0,s:40},nar:'reka',A:null,kur:null,grub:10,
+ war:{sciany:1,pkt:1,ciecie:1,otwory:1,pom:1,skosy:1,trasa:1,zn:1,przek:1,siatka:1}};
+const P2NAZ={sciany:'Ściany (auto)',pkt:'Punkty ścian',ciecie:'Cięcie 1,0 m',otwory:'Okna i drzwi',pom:'Pomieszczenia',skosy:'Skosy',trasa:'Trasa',zn:'Zdjęcia i znaczniki',przek:'Przekroje',siatka:'Siatka 1 m'};
+const P2KOL={sciany:'#1e3a8a',pkt:'#6b7280',ciecie:'#dc2626',otwory:'#0891b2',pom:'#16a34a',skosy:'#d97706',trasa:'#db2777',zn:'#2563eb',przek:'#9333ea',siatka:'#cbd5e1'};
+function p2W(){return (S&&S.l2&&S.l2.wybor=='petle')?'petle':'bez'}
+async function p2Wczytaj(wymus){if(!S){return}const pan=$('p2pan');
+ if(!(S.czujniki||{}).l2){P2.d=null;pan.innerHTML='<div class="pusto">W tym nagraniu nie ma danych z L2.</div>';p2Rys();return}
+ const w=p2W(),kl=S.n+'|'+w;if(!wymus&&P2.klucz==kl&&P2.d){p2Narzedzia();p2Panel();p2Rys();return}
+ if(P2.n!=S.n){P2.k=0;P2.A=null;P2.nar='reka'}P2.n=S.n;
+ let r,j;try{r=await fetch('api/l2_plan?n='+encodeURIComponent(S.n)+'&w='+w);j=await r.json()}catch(e){pan.innerHTML='Brak połączenia z serwerem';return}
+ if(!S||S.n+'|'+p2W()!=kl)return;
+ if(!r.ok){P2.d=null;P2.klucz=null;p2Rys();clearTimeout(P2.t);
+  pan.innerHTML='<h3>Plan L2</h3>'+(j.liczy?'<p>⏳ Liczę rzut z chmury… (odświeżę sam)</p>':j.przelicz?'<p class="mala">Ta mapa L2 jest z wcześniejszej wersji programu – nie ma danych do interaktywnego planu.</p><p><button class="btn gl" onclick="l2Rzut()">↻ Przelicz rzut z gotowej chmury (ok. 1 min)</button></p>':'<p class="mala">Najpierw policz mapę L2: menu ⚙ Przelicz → Policz mapę L2.</p>');
+  if(j.liczy)P2.t=setTimeout(()=>{if($('wpl2').classList.contains('akt'))p2Wczytaj(1)},5000);return}
+ P2.d=j;P2.klucz=kl;if(P2.k>=j.kondygnacje.length)P2.k=0;
+ if(j.liczy){clearTimeout(P2.t);P2.t=setTimeout(()=>{if($('wpl2').classList.contains('akt'))p2Wczytaj(1)},5000)}
+ p2Warstwy();p2Narzedzia();p2Dopasuj();p2Panel();p2Rys();naglowek()}
+function p2K(){return P2.d?P2.d.kondygnacje[P2.k]:null}
+P2.zw=matchMedia('(max-width:900px)').matches;
+function p2Warstwy(){$('p2war').classList.toggle('zw',P2.zw);$('p2war').innerHTML='<span class="chip wb" onclick="P2.zw=!P2.zw;p2Warstwy()">'+(P2.zw?'Warstwy ▸':'Warstwy ◂')+'</span>'+Object.keys(P2NAZ).map(k=>'<span class="chip'+(P2.war[k]?'':' wyl')+'" onclick="P2.war.'+k+'^=1;p2Warstwy();p2Rys()"><i style="background:'+P2KOL[k]+'"></i>'+P2NAZ[k]+'</span>').join('')}
+function p2Narzedzia(){const d=P2.d;let h='';
+ if(d&&d.kondygnacje.length>1)h+='<span class="seg">'+d.kondygnacje.map((k,i)=>'<button class="'+(i==P2.k?'akt':'')+'" onclick="P2.k='+i+';P2.A=null;p2Narzedzia();p2Dopasuj();p2Panel();p2Rys()">kond. '+k.nr+'</button>').join('')+'</span>';
+ h+=[['reka','✋ Przesuń'],['miara','📏 Zmierz'],['przekroj','✂ Przekrój']].map(([k,t])=>'<button class="btn'+(P2.nar==k?' akt':'')+'" onclick="p2Narz(\''+k+'\')">'+t+'</button>').join('')+'<button class="btn" onclick="p2Dopasuj();p2Rys()">⤢ Całość</button>';
+ $('p2nar').innerHTML=h;
+ $('p2podp').textContent=P2.nar=='przekroj'?(P2.A?'kliknij koniec linii przekroju (Esc – anuluj)':'✂ kliknij początek linii przekroju'):P2.nar=='miara'?(P2.A?'kliknij drugi punkt':'📏 kliknij pierwszy punkt'):'przeciągnij – przesuń · kółko / dwa palce – powiększ · dwuklik – całość · kliknij 📷 lub literę przekroju'}
+function p2Narz(n){P2.nar=n;P2.A=null;if(n!='miara')P2.miara=null;p2Narzedzia();p2Rys()}
+function p2Dopasuj(){const k=p2K(),c=$('cp2'),r=c.getBoundingClientRect();if(!k||!r.width)return;
+ const sx=k.max[0]-k.min[0]||1,sy=k.max[1]-k.min[1]||1;P2.w.s=Math.min(r.width/sx,r.height/sy)*0.9;P2.w.x=(k.min[0]+k.max[0])/2;P2.w.y=(k.min[1]+k.max[1])/2}
+const p2E=(x,y)=>{const r=$('cp2').getBoundingClientRect();return[(x-P2.w.x)*P2.w.s+r.width/2,r.height/2-(y-P2.w.y)*P2.w.s]};
+const p2S=(px,py)=>{const r=$('cp2').getBoundingClientRect();return[(px-r.width/2)/P2.w.s+P2.w.x,(r.height/2-py)/P2.w.s+P2.w.y]};
+function p2Rys(){const c=$('cp2');if(!c||!$('wpl2').classList.contains('akt'))return;const r=c.getBoundingClientRect(),dp=devicePixelRatio||1;
+ c.width=r.width*dp;c.height=r.height*dp;const g=c.getContext('2d');g.setTransform(dp,0,0,dp,0,0);g.clearRect(0,0,r.width,r.height);
+ const k=p2K();if(!k){g.fillStyle='#9ca3af';g.font='16px system-ui';g.textAlign='center';g.fillText(S?'Plan L2: patrz panel obok':'Wybierz nagranie z listy',r.width/2,r.height/2);return}
+ const E=p2E,V=P2.war,s=P2.w.s;
+ if(V.siatka&&s>8){g.strokeStyle='#eef2f7';g.lineWidth=1;const[a0,b0]=p2S(0,r.height),[a1,b1]=p2S(r.width,0);g.beginPath();
+  for(let x=Math.floor(a0);x<=a1;x++){const p=E(x,0)[0];g.moveTo(p,0);g.lineTo(p,r.height)}for(let y=Math.floor(b0);y<=b1;y++){const p=E(0,y)[1];g.moveTo(0,p);g.lineTo(r.width,p)}g.stroke()}
+ const linia=(pts,kol,sz,dash)=>{if(pts.length<2)return;g.strokeStyle=kol;g.lineWidth=sz;g.setLineDash(dash||[]);g.beginPath();pts.forEach((p,i)=>{const[x,y]=E(p[0],p[1]);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();g.setLineDash([])};
+ const kropki=(pts,kol,rr)=>{g.fillStyle=kol;for(const p of pts){const[x,y]=E(p[0],p[1]);g.fillRect(x-rr/2,y-rr/2,rr,rr)}};
+ if(V.pom)(k.pomieszczenia||[]).forEach(p=>{if(!p.obrys)return;g.fillStyle='rgba(22,163,74,.10)';g.beginPath();p.obrys.forEach((q,i)=>{const[x,y]=E(q[0],q[1]);i?g.lineTo(x,y):g.moveTo(x,y)});g.closePath();g.fill()});
+ if(V.skosy)Object.entries(k.skosy||{}).forEach(([h,cs])=>cs.forEach(c_=>linia(c_,h.startsWith('1.4')?'#f59e0b':'#a855f7',1.2,[6,4])));
+ if(V.pkt)kropki(k.sciany_pkt,'rgba(75,85,99,.55)',Math.max(1.2,Math.min(3,s*0.03)));
+ if(V.ciecie)kropki(k.ciecie_1m,'rgba(220,38,38,.6)',Math.max(1,Math.min(3,s*0.04)));
+ if(V.sciany)(k.sciany||[]).forEach(pl=>linia(pl,P2KOL.sciany,2));
+ if(V.otwory)(k.otwory||[]).forEach(o=>{linia([[o.x0,o.y0],[o.x1,o.y1]],o.typ=='okno'?'#06b6d4':'#16a34a',5);if(s>25){const[x,y]=E((o.x0+o.x1)/2,(o.y0+o.y1)/2);g.fillStyle='#0f172a';g.font='11px system-ui';g.textAlign='center';g.fillText((o.typ=='okno'?'O ':'D ')+liczba(o.szer)+'×'+liczba(o.wys),x,y-7)}});
+ if(V.pom)(k.pomieszczenia||[]).forEach(p=>{if(!p.srodek)return;const[x,y]=E(p.srodek[0],p.srodek[1]);g.textAlign='center';g.fillStyle='#14532d';g.font='600 12px system-ui';g.fillText((p.nr?p.nr+' ':'')+(p.nazwa||''),x,y-2);g.font='12px system-ui';g.fillText(liczba(p.pow_m2)+' m²',x,y+13)});
+ const tr=(P2.d.trasa||[]).filter(p=>(p[4]||0)==P2.k);if(V.trasa)linia(tr.map(p=>[p[1],p[2]]),'rgba(219,39,119,.7)',1.5);
+ if(V.przek)(P2.d.przekroje||[]).filter(p=>p.kond==k.nr).forEach(p=>{const a=p.a,b=p.b,dx=b[0]-a[0],dy=b[1]-a[1],L_=Math.hypot(dx,dy)||1,t=[dx/L_,dy/L_],n=[-t[1],t[0]];
+  const A=[a[0]-t[0]*.5,a[1]-t[1]*.5],B=[b[0]+t[0]*.5,b[1]+t[1]*.5];linia([A,B],P2KOL.przek,2,[10,4,2,4]);
+  [A,B].forEach(q=>{linia([q,[q[0]+n[0]*.6,q[1]+n[1]*.6]],P2KOL.przek,2.5);const[x,y]=E(q[0]+n[0]*.95,q[1]+n[1]*.95);g.fillStyle=P2KOL.przek;g.beginPath();g.arc(x,y,11,0,7);g.fill();g.fillStyle='#fff';g.font='700 12px system-ui';g.textAlign='center';g.fillText(p.nazwa,x,y+4)})});
+ if(V.zn)(P2.d.znaczniki||[]).filter(z=>(z.k||0)==P2.k).forEach(z=>{const[x,y]=E(z.x,z.y);
+  if(z.rodzaj=='sala'){g.fillStyle='#1e3a8a';g.font='600 12px system-ui';g.textAlign='center';g.fillText('⌖ '+z.opis,x,y-6);return}
+  g.fillStyle=z.rodzaj=='foto'?'#2563eb':'#16a34a';g.beginPath();g.arc(x,y,9,0,7);g.fill();g.fillStyle='#fff';g.font='11px system-ui';g.textAlign='center';g.fillText(z.rodzaj=='foto'?'📷':'✎',x,y+4)});
+ if(P2.A&&P2.kur){linia([P2.A,P2.kur],P2.nar=='przekroj'?P2KOL.przek:'#ea580c',2,[6,4]);const d=Math.hypot(P2.kur[0]-P2.A[0],P2.kur[1]-P2.A[1]),[x,y]=E(P2.kur[0],P2.kur[1]);g.fillStyle='#111827';g.font='600 13px system-ui';g.textAlign='left';g.fillText(liczba(d)+' m',x+10,y-8)}
+ if(P2.miara){const[m0,m1]=P2.miara;linia([m0,m1],'#ea580c',2.5);const[x,y]=E((m0[0]+m1[0])/2,(m0[1]+m1[1])/2);g.fillStyle='#ea580c';g.font='700 14px system-ui';g.textAlign='center';g.fillText(liczba(Math.hypot(m1[0]-m0[0],m1[1]-m0[1]))+' m',x,y-8)}
+ // podzialka
+ const m=s>60?1:s>15?5:10,[x0,y0]=[16,r.height-34];g.strokeStyle='#111827';g.lineWidth=2;g.beginPath();g.moveTo(x0,y0);g.lineTo(x0+m*s,y0);g.stroke();g.fillStyle='#111827';g.font='11px system-ui';g.textAlign='left';g.fillText(m+' m',x0,y0-5)}
+function p2Panel(){const d=P2.d,k=p2K();if(!d||!k)return;const pre=p2W()=='petle'?'_wynik/l2/petle/':'_wynik/l2/';
+ let h='<h3>Kondygnacja '+k.nr+'</h3><div class="mala">podłoga '+liczba(k.podl)+' m · sufit '+liczba(k.suf)+' m · <b>wysokość w świetle '+liczba(k.wys)+' m</b></div>';
+ const P=(d.przekroje||[]);
+ h+='<h3>Przekroje pionowe ('+P.length+')</h3>'+(P.length?P.map(p=>'<div class="p2it"><span class="sp" onclick="p2Pokaz(\''+p.nazwa+'\')" title="pokaż przekrój"><b>'+esc(p.nazwa+'–'+p.nazwa)+'</b> · '+liczba(p.dl)+' m · kond. '+p.kond+'</span><a class="btn" href="'+plik(pre+'przekroj_'+p.nazwa+'.dxf')+'">DXF</a><button class="btn cz" onclick="p2Usun(\''+p.nazwa+'\')" title="usuń">🗑</button></div>').join(''):'<div class="mala">Brak. Narzędzie ✂ Przekrój: kliknij 2 punkty na planie.</div>')+
+  '<div class="p2it"><span class="sp mala">grubość plastra</span><input type="number" min="2" max="50" value="'+P2.grub+'" style="width:56px" onchange="P2.grub=+this.value||10"> cm</div>';
+ const Z=(d.znaczniki||[]).filter(z=>z.rodzaj!='sala');
+ h+='<h3>Zdjęcia i notatki ('+Z.length+')</h3>'+(Z.length?Z.map((z,i)=>'<div class="p2it"><span class="sp" onclick="p2Idz('+(d.znaczniki.indexOf(z))+')">'+(z.rodzaj=='foto'?'📷':'✎')+' '+esc(z.opis||z.plik||'')+(z.k!=P2.k?' <span class="mala">(kond. '+(d.kondygnacje[z.k]||{}).nr+')</span>':'')+'</span></div>').join(''):'<div class="mala">Zdjęcia z telefonu i notatki zrobione w czasie nagrania L2 pojawią się tu i na planie (w miejscu, gdzie byłeś).</div>');
+ const Pm=k.pomieszczenia||[];
+ if(Pm.length)h+='<h3>Pomieszczenia ('+Pm.length+', '+liczba(Pm.reduce((a,p)=>a+(p.pow_m2||0),0))+' m²)</h3><table><tr><th>nr</th><th>nazwa</th><th>m²</th><th>wys.</th></tr>'+Pm.map(p=>'<tr><td>'+esc(p.nr)+'</td><td>'+esc(p.nazwa||'')+'</td><td>'+liczba(p.pow_m2)+'</td><td>'+liczba(p.wys_m)+'</td></tr>').join('')+'</table><div class="mala">Podział automatyczny – do sprawdzenia.</div>';
+ if(d.liczy)h='<p>⏳ trwa: '+esc(d.liczy)+'</p>'+h;
+ $('p2pan').innerHTML=h}
+function p2Pokaz(nz){const pre=p2W()=='petle'?'_wynik/l2/petle/':'_wynik/l2/',o=$('p2img');o.innerHTML='<img src="'+plik(pre+'przekroj_'+nz+'.png')+'&v='+Date.now()+'"><div>Przekrój '+esc(nz+'–'+nz)+' · <a style="color:#93c5fd" href="'+plik(pre+'przekroj_'+nz+'.dxf')+'" onclick="event.stopPropagation()">⬇ DXF</a> · kliknij, aby zamknąć</div>';o.style.display='flex'}
+function p2Foto(z){const o=$('p2img');o.innerHTML=(z.plik?'<img src="'+plik(z.plik)+'">':'')+'<div>'+(z.rodzaj=='foto'?'📷 ':'✎ ')+esc(z.opis||z.plik||'')+' · '+new Date(z.t*1000).toLocaleTimeString('pl')+'</div>';o.style.display='flex'}
+function p2Idz(i){const z=P2.d.znaczniki[i];if(!z)return;if((z.k||0)!=P2.k){P2.k=z.k||0;p2Narzedzia();p2Panel()}P2.w.x=z.x;P2.w.y=z.y;P2.w.s=Math.max(P2.w.s,60);p2Rys();p2Foto(z)}
+function p2Usun(nz){if(confirm('Usunąć przekrój '+nz+'–'+nz+'?'))post('api/l2_przekroj_usun?n='+S.n+'&w='+p2W()+'&nazwa='+nz,()=>p2Wczytaj(1))}
+async function p2Klik(px,py){const[x,y]=p2S(px,py),d=P2.d;if(!d)return;
+ if(P2.nar=='miara'||P2.nar=='przekroj'){if(!P2.A){P2.A=[x,y];P2.miara=null;p2Narzedzia();p2Rys();return}const A=P2.A;P2.A=null;
+  if(P2.nar=='miara'){P2.miara=[A,[x,y]];p2Narzedzia();p2Rys();return}
+  if(Math.hypot(x-A[0],y-A[1])<0.3){dymek('Za krótka linia',1);p2Narzedzia();p2Rys();return}
+  P2.nar='reka';p2Narzedzia();dymek('Liczę przekrój…');$('dymek').style.background='#374151';
+  const j=await l2Gen('przekroj',{ax:A[0].toFixed(3),ay:A[1].toFixed(3),bx:x.toFixed(3),by:y.toFixed(3),kond:p2K().nr,grub:(P2.grub/100).toFixed(2)});
+  if(j){await p2Wczytaj(1);const m=(j.wynik||'').match(/NAZWA (\S+)/);if(m)p2Pokaz(m[1])}return}
+ // klik w znacznik albo litere przekroju
+ const E=p2E;let naj=null,dm=14;(P2.war.zn?d.znaczniki||[]:[]).filter(z=>(z.k||0)==P2.k&&z.rodzaj!='sala').forEach(z=>{const[a,b]=E(z.x,z.y),q=Math.hypot(a-px,b-py);if(q<dm){dm=q;naj=()=>p2Foto(z)}});
+ (P2.war.przek?d.przekroje||[]:[]).filter(p=>p.kond==p2K().nr).forEach(p=>{const a=p.a,b=p.b,dx=b[0]-a[0],dy=b[1]-a[1],L_=Math.hypot(dx,dy)||1,t=[dx/L_,dy/L_],n=[-t[1],t[0]];
+  [[a[0]-t[0]*.5,a[1]-t[1]*.5],[b[0]+t[0]*.5,b[1]+t[1]*.5]].forEach(q=>{const[u,v]=E(q[0]+n[0]*.95,q[1]+n[1]*.95),qq=Math.hypot(u-px,v-py);if(qq<dm){dm=qq;naj=()=>p2Pokaz(p.nazwa)}})});
+ if(naj)naj()}
+(function(){const c=$('cp2');const pt=new Map();let st=null,ruch=false,pinch=null;
+ c.addEventListener('pointerdown',e=>{c.setPointerCapture(e.pointerId);pt.set(e.pointerId,[e.offsetX,e.offsetY]);ruch=false;st={x:e.offsetX,y:e.offsetY,wx:P2.w.x,wy:P2.w.y};
+  if(pt.size==2){const[a,b]=[...pt.values()];pinch={d:Math.hypot(a[0]-b[0],a[1]-b[1]),s:P2.w.s}}});
+ c.addEventListener('pointermove',e=>{if(P2.A){P2.kur=p2S(e.offsetX,e.offsetY);p2Rys()}if(!pt.has(e.pointerId))return;pt.set(e.pointerId,[e.offsetX,e.offsetY]);
+  if(pt.size==2&&pinch){const[a,b]=[...pt.values()];P2.w.s=Math.max(2,Math.min(800,pinch.s*Math.hypot(a[0]-b[0],a[1]-b[1])/pinch.d));ruch=true;p2Rys();return}
+  if(Math.hypot(e.offsetX-st.x,e.offsetY-st.y)>5)ruch=true;if(ruch){P2.w.x=st.wx-(e.offsetX-st.x)/P2.w.s;P2.w.y=st.wy+(e.offsetY-st.y)/P2.w.s;p2Rys()}});
+ c.addEventListener('pointerup',e=>{const by=pt.size;pt.delete(e.pointerId);if(pt.size<2)pinch=null;if(by==1&&!ruch)p2Klik(e.offsetX,e.offsetY)});
+ c.addEventListener('pointercancel',e=>{pt.delete(e.pointerId);pinch=null});
+ c.addEventListener('wheel',e=>{e.preventDefault();const[x,y]=p2S(e.offsetX,e.offsetY),f=Math.exp(-e.deltaY*0.0015);P2.w.s=Math.max(2,Math.min(800,P2.w.s*f));const[x2,y2]=p2S(e.offsetX,e.offsetY);P2.w.x+=x-x2;P2.w.y+=y-y2;p2Rys()},{passive:false});
+ c.addEventListener('dblclick',()=>{p2Dopasuj();p2Rys()});
+ document.addEventListener('keydown',e=>{if(e.key=='Escape'&&(P2.A||P2.miara)){P2.A=null;P2.miara=null;p2Narzedzia();p2Rys()}});
+ new ResizeObserver(()=>p2Rys()).observe($('pp2'))})();
 // ---------------------------------------------------------------- Chmura 3D z L2 (api/l2_chmura -> podglad3d.bin z l2/l2_podglad3d.py)
 const L3={};
 async function l3Init(){if(L3.ren)return;const THREE=await import('three'),{OrbitControls}=await import('./static/OrbitControls.js');L3.T=THREE;
