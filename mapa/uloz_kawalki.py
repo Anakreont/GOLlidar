@@ -25,11 +25,11 @@ from scipy.optimize import least_squares
 
 RES = 0.10          # siatka szukania [m]
 OBCIECIE = 0.5      # obciecie mapy odleglosci [m]
-INL = 0.08          # punkt "na scianie" CAD [m]
+INL = 0.12          # punkt "na scianie" CAD [m] (smuga D500 ~10 cm)
 K_HIP = 6           # hipotez na kawalek
 ODSTEP = 1.5        # minimalny odstep hipotez [m]
 KARA_SALA = 0.25    # kara za znacznik poza swoja sala (w jednostkach "udzialu punktow")
-U_NIEZNANY = 0.65   # koszt stanu "nieznany" (= udzial 0,35)
+U_NIEZNANY = 0.88   # koszt stanu "nieznany" (= udzial 0,12); prawdziwe kawalki D500 maja udzial 0,2-0,6
 V_MAX, ZAPAS = 1.2, 0.5
 
 
@@ -264,10 +264,13 @@ def uloz(kawalki, rz, log=print):
         s = wyb[i]
         marg = float(np.min(np.delete(mm[i], s)) - mm[i][s]) if len(mm[i]) > 1 else 9.0
         if s == len(H[i]):
-            wynik.append({'nr': k['nr'], 'klasa': 'nieznany', 'udzial': 0.0, 'margines': round(marg, 2)})
-            continue
-        h = H[i][s]
-        klasa = 'pewny' if (h['udzial'] >= 0.45 and marg >= 0.3) else 'niepewny' if h['udzial'] >= 0.3 else 'nieznany'
+            if not H[i]:
+                wynik.append({'nr': k['nr'], 'klasa': 'nieznany', 'udzial': 0.0, 'margines': round(marg, 2)})
+                continue
+            h = H[i][0]; klasa = 'nieznany'          # rysowany w najlepszym miejscu, na czerwono
+        else:
+            h = H[i][s]
+            klasa = 'pewny' if (h['udzial'] >= 0.30 and marg >= 0.3) else 'niepewny' if h['udzial'] >= 0.15 else 'nieznany'
         wynik.append({'nr': k['nr'], 'klasa': klasa, 'udzial': round(h['udzial'], 3), 'margines': round(marg, 2),
                       'a': float(h['a']), 't': h['t'].tolist(), 'c': h['c'].tolist(), 'kara_sali': round(h['kara'], 2),
                       'hipotez': len(H[i])})
@@ -275,16 +278,17 @@ def uloz(kawalki, rz, log=print):
 
 
 def metryki(kawalki, wynik, rz):
+    klasy = {c: sum(w['klasa'] == c for w in wynik) for c in ('pewny', 'niepewny', 'nieznany')}
     d = []
     for k, w in zip(kawalki, wynik):
         if 'a' in w and w['klasa'] != 'nieznany':
             d.append(rz.odl(przeksztalc(k['P'][::3], w['c'], w['a'], np.array(w['t']))))
     if not d:
-        return {}
+        return {'klasy': klasy}
     d = np.concatenate(d)
     return {'mediana_cm': round(float(np.median(d) * 100), 1), 'p90_cm': round(float(np.percentile(d, 90) * 100), 1),
             **{f'pod_{x}cm_proc': round(float(np.mean(d < x / 100) * 100), 1) for x in (5, 10, 20)},
-            'klasy': {c: sum(w['klasa'] == c for w in wynik) for c in ('pewny', 'niepewny', 'nieznany')}}
+            'klasy': klasy}
 
 
 # ---------------------------------------------------------------- sesja + rysunek z dysku -------------------------
@@ -360,7 +364,7 @@ def zapisz(kat, kawalki, wynik, S, met, nazwa='kawalki_cad'):
             if 'a' in w:
                 X = przeksztalc(k['P'][::3], np.array(w['c']), w['a'], np.array(w['t']))
                 ax.scatter(*X.T, s=0.2, color=kk[w['klasa']]); ax.text(*X.mean(0), f"K{k['nr']}", fontsize=7)
-        ax.set_aspect('equal'); ax.set_title('kawalki na rysunku: zielone pewne, pomaranczowe niepewne (rysunek szary)')
+        ax.set_aspect('equal'); ax.set_title('kawalki na rysunku: zielone pewne, pomaranczowe niepewne, czerwone bez pewnego miejsca')
         fig.savefig(os.path.join(wy, nazwa + '.png'), dpi=110, bbox_inches='tight'); plt.close(fig)
     except Exception:
         pass

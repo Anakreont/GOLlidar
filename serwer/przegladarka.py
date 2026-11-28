@@ -237,7 +237,7 @@ def zatrzymaj(n):
     import signal
     ile = 0
     with BLOK:
-        for rodz in ('mapa', 'por', 'cad', 'kaw', 'l2', 'pom', 'uloz'):
+        for rodz in ('mapa', 'por', 'cad', 'kaw', 'l2', 'pom', 'uloz', 'zloz'):
             p = PROC.get((rodz, n))
             if p:
                 ZATRZ.add((rodz, n))
@@ -537,6 +537,38 @@ def licz_uloz(n, k):
     finally:
         with BLOK:
             W_ULOZ.pop(n, None)
+
+
+W_ZLOZ = {}                    # sesja -> 'liczy' (skladanie kawalkow miedzy soba, bez CAD: mapa/zloz_kawalki.py)
+
+
+def licz_zloz(n, k):
+    wy = os.path.join(k, '_wynik')
+    try:
+        with LICZ_RECZNE:
+            with BLOK:
+                W_ZLOZ[n] = 'liczy'
+            r = uruchom(('zloz', n), [sys.executable, os.path.join(REPO, 'mapa', 'zloz_kawalki.py'), k],
+                        capture_output=True, text=True, env=ENV_DZIECI)
+        with open(os.path.join(wy, 'kawalki_zlozone_log.txt'), 'w') as f:
+            f.write((r.stdout or '') + (r.stderr or ''))
+        with BLOK:
+            ZATRZ.discard(('zloz', n))
+    finally:
+        with BLOK:
+            W_ZLOZ.pop(n, None)
+
+
+def stan_zloz(n, k):
+    wy = os.path.join(k, '_wynik')
+    st = W_ZLOZ.get(n) or ('gotowe' if os.path.exists(os.path.join(wy, 'kawalki_zlozone.dxf')) else 'brak')
+    ile = None
+    try:
+        S = json.load(open(os.path.join(wy, 'kawalki_zlozone.json'), encoding='utf-8'))
+        ile = {x: sum(s_['stan'] == x for s_ in S) for x in ('start', 'zlozony', 'niepewny')}
+    except (OSError, ValueError):
+        pass
+    return {'stan': st, 'ile': ile}
 
 
 def stan_uloz(n, k):
@@ -841,7 +873,7 @@ class H(BaseHTTPRequestHandler):
                                'porownanie': stan_por(q['n'], k), 'cad': stan_cad(q['n'], k), 'czujniki': czujniki(k), 'l2': stan_l2(q['n'], k),
                                'kawalki': {'stan': W_KAW.get(q['n']) or ('gotowe' if os.path.exists(os.path.join(k, '_wynik', 'kawalki.dxf')) else
                                            ('brak danych' if not os.path.exists(os.path.join(k, '_wynik', 'kf.npz')) else 'brak')),
-                                           'uloz': stan_uloz(q['n'], k)},
+                                           'uloz': stan_uloz(q['n'], k), 'zloz': stan_zloz(q['n'], k)},
                                'pomieszczenia': {'stan': W_POM.get(q['n']) or ('gotowe' if os.path.exists(os.path.join(k, '_wynik', 'pomieszczenia.json')) else
                                                  ('brak danych' if not os.path.exists(os.path.join(k, '_wynik', 'mapa.json')) else 'brak'))},
                                'znaczniki': znaczniki(k), 'oprawy': SW.wiersze_pom(k), 'grzejniki': SW.wiersze_grz(k),
@@ -1037,6 +1069,15 @@ class H(BaseHTTPRequestHandler):
                     return self._json({'blad': 'juz sie liczy'}, 409)
                 W_KAW[q['n']] = 'czeka'
             threading.Thread(target=licz_kawalki, args=(q['n'], k), daemon=True).start()
+            return self._json({'ok': True})
+        if u.path == '/api/zloz_kawalki':
+            if not os.path.exists(os.path.join(k, '_wynik', 'kf.npz')):
+                return self._json({'blad': 'najpierw przelicz mape ta wersja programu (brak kf.npz)'}, 409)
+            with BLOK:
+                if q['n'] in W_ZLOZ:
+                    return self._json({'blad': 'juz sie liczy'}, 409)
+                W_ZLOZ[q['n']] = 'czeka'
+            threading.Thread(target=licz_zloz, args=(q['n'], k), daemon=True).start()
             return self._json({'ok': True})
         if u.path == '/api/uloz_kawalki':
             if not os.path.exists(os.path.join(k, '_wynik', 'kf.npz')):
