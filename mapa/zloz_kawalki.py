@@ -12,7 +12,7 @@ Ta sama sala widziana w kilku kawalkach daje kilka przesunietych kopii scian. Al
     (powtarzalne sale/korytarze); inaczej kawalek zostaje jak byl ("niepewny").
  6. Druga runda: kazdy kawalek jeszcze raz wzgledem wszystkich pozostalych (poprawia wczesne decyzje).
 Wynik: _wynik/kawalki_zlozone.dxf/.png/.json (kawalki na warstwach KAWALEK_NN_zlozony/niepewny).
-Uzycie: python3 mapa/zloz_kawalki.py <sesja>
+Uzycie: python3 mapa/zloz_kawalki.py <sesja> [dlugosc_odcinka_m, domyslnie 12]
 """
 import os, sys, json
 import numpy as np
@@ -29,6 +29,7 @@ PRZES = 3.0         # zasieg szukania przesuniecia [m]
 OBROT = 15          # zasieg szukania obrotu [st.]
 WSPOLNE_MIN = 0.15
 ZGODNOSC_MIN = 0.40
+DZIEL_M = 12.0      # kawalki ze SLAM dzielone na odcinki trasy ~12 m (powolny rozjazd wewnatrz kawalka)
 KARA_ODEJSCIA = 0.02  # za kazdy metr od polozenia ze SLAM (w jednostkach udzialu)
 
 
@@ -252,8 +253,9 @@ def main():
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import kawalki as KW
     kat = sys.argv[1].rstrip('/')
-    K, _ = KW.kawalki(kat)
-    print(f'{len(K)} kawalkow', flush=True)
+    dziel = float(sys.argv[2]) if len(sys.argv) > 2 else DZIEL_M
+    K, _ = KW.kawalki(kat, dziel_m=dziel)
+    print(f'{len(K)} odcinkow po ~{dziel:.0f} m trasy', flush=True)
     S = zloz(K)
     zapisz(kat, K, S)
     ile = {x: sum(s['stan'] == x for s in S) for x in ('start', 'zlozony', 'niepewny')}

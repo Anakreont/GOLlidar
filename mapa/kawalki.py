@@ -81,7 +81,9 @@ def etykiety_kf(kat):
     return lab, czasy, t0
 
 
-def kawalki(kat):
+def kawalki(kat, dziel_m=None):
+    """dziel_m: dodatkowo tnie kazdy kawalek na odcinki trasy ~dziel_m metrow (do skladania kawalkow, gdy SLAM
+    rozjechal sie powoli bez zgubienia - wtedy jeden kawalek zawiera te same sale kilka razy)."""
     from eksport_dxf import lica
     z = np.load(os.path.join(kat, '_wynik', 'kf.npz'))
     X, kt = z['X'], z['kt']
@@ -97,6 +99,16 @@ def kawalki(kat):
         fr = z['fr']; nr = np.concatenate([[0], np.cumsum(np.diff(fr) != 0)])
     else:
         nr = podziel(kt, ciecia)
+    if dziel_m:
+        nr2 = np.zeros_like(nr); nowy = 0
+        for c in range(nr.max() + 1):
+            idx = np.where(nr == c)[0]
+            if not len(idx): continue
+            dl = np.r_[0, np.cumsum(np.hypot(*np.diff(X[idx, :2], axis=0).T))]
+            n_odc = max(1, int(round(dl[-1] / dziel_m)))
+            czesc = np.minimum((dl / (dl[-1] / n_odc + 1e-9)).astype(int), n_odc - 1) if dl[-1] > 0 else np.zeros(len(idx), int)
+            nr2[idx] = nowy + czesc; nowy += n_odc
+        nr = nr2
     wyn = []
     for c in range(nr.max() + 1):
         idx = np.where(nr == c)[0]
