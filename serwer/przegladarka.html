@@ -212,7 +212,7 @@ function przywrocKosz(){post('api/przywroc_kosz',j=>{alert('Przywrócono '+j.ile
 function oproznijKosz(){if(confirm('Opróżnić kosz? Tego nie da się cofnąć.'))post('api/oproznij_kosz',()=>alert('Kosz opróżniony'))}
 function czysc(){$('nag').innerHTML='<div class="tyt"><b>Wybierz nagranie z listy</b></div>';$('panel').innerHTML='';rys()}
 // ---------------------------------------------------------------- sesja
-function otworz(n){fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{S=d;S.n=n;M=null;wyb=null;KE.n=null;KE.P=[];if($('wkaw').classList.contains('akt'))setTimeout(kawEd,0);rysujListe();naglowek();galeria();przekroje();znaczniki();inwent();pliki();porownanie();cad();l2();
+function otworz(n){fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(!S||S.n!=n){MIARY=[];if(tryb=='miara'){tryb=null;pA=null}}S=d;S.n=n;M=null;wyb=null;KE.n=null;KE.P=[];if($('wkaw').classList.contains('akt'))setTimeout(kawEd,0);rysujListe();naglowek();galeria();przekroje();znaczniki();inwent();pliki();porownanie();cad();l2();
  if(S.czujniki&&!S.czujniki.d500&&S.czujniki.l2&&$('w2d').classList.contains('akt'))pokazWidok('wl2');
  fetch('api/mapa?n='+n).then(r=>r.ok?r.json():null).then(j=>{POM=j?j.pomieszczenia:null;if(j){M=j.mapa;NZ=j.nazwy||{};KO=j.kontrola||[];seg=0;
  (M.kondygnacje||[]).forEach(k=>{k.znaczniki.forEach(z=>{if((z.opis||'').startsWith('POMIAR '))z.rodzaj='pomiar'});grupujPom(k.znaczniki)});}else{M=null;KO=[]}panel();warstwy();dopasuj();rys();inwent();if($('w3d').classList.contains('akt'))tryb3d()})})}
