@@ -192,6 +192,8 @@ def przejscie(L, a, b, prz, wolne=None):
 def podziel(k, log=print):
     """k = kondygnacja z mapa.json. Zwraca slownik z pomieszczeniami i drzwiami (wspolrzedne mapy, metry)."""
     t0 = time.time()
+    global LICO
+    LICO = float(k.get("lico_m", 0.08))               # D500: 8 cm (smuga); L2: 4 cm (= pogrubienie przeszkod o 1 komorke)
     ch = np.array(k['chmura_cm'], float).reshape(-1, 2) / 100
     sc = [np.asarray(pl, float) for pl in k['sciany'] if len(pl) >= 2]
     tr = np.asarray(k['trasa'], float).reshape(-1, 2)

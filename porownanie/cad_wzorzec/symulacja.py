@@ -89,8 +89,9 @@ def symuluj(Kd, seed=0):
     return k, E, pomin
 
 
-def porownaj(nazwa, k, E, png=False, log=True):
-    w = PM.podziel(k, log=lambda *a: None)
+def porownaj(nazwa, k, E, png=False, log=True, w=None):
+    if w is None:
+        w = PM.podziel(k, log=lambda *a: None)
     if png:
         PM.podglad(k, w, f'sym_{nazwa}.png')
     gr = defaultdict(list)

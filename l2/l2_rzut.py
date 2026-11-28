@@ -211,7 +211,7 @@ def mapa_sufitu(P, podl, kom=0.15):
     return np.where(znane, S, S[ii, jj]), o, kom, znane
 
 
-def punkty_scian(P, podl, M):
+def punkty_scian(P, podl, M, pas_z=None):
     """Punkty scian: pionowa powierzchnia od ~1 m nad podloga do samego sufitu/dachu nad nia (pas 5-25 cm pod lokalnym
     sufitem + ciaglosc w dol). Szafy, regaly i komody maja nad soba szczeline (widac sufit) - nie sa scianami; lampy i
     kanaly pod sufitem nie maja ciaglosci w dol."""
@@ -219,6 +219,8 @@ def punkty_scian(P, podl, M):
     ij = np.clip(((P[:, :2] - o) / kom).astype(int), 0, np.array(S.shape) - 1)
     c = S[ij[:, 0], ij[:, 1]]
     pas = (P[:, 2] > c - 0.25) & (P[:, 2] < c - 0.05) & (P[:, 2] > podl + 0.3)
+    if pas_z is not None:                                       # te same sciany, ale inny pas wysokosci (np. 1,0-1,9 m:
+        pas = (P[:, 2] > podl + pas_z[0]) & (P[:, 2] < podl + pas_z[1])   # drzwi jako otwory, nadproza pominiete)
     dol = (P[:, 2] > np.maximum(podl + 0.3, c - 0.7)) & (P[:, 2] < c - 0.3)   # ta sama pionowa powierzchnia 30-70 cm pod
     # sufitem (scianka kolankowa tez); mebel ponizej ma tam pusta szczeline;
     # sam skos dachu w komorce nie ma punktow 30 cm pod soba - nie jest sciana
@@ -284,7 +286,77 @@ def rzut_kondygnacji(P, podl, suf, siatka, bez_otworow=False, sk=None):
     except Exception as e:
         print('szkielet scian pominiety:', e)
     ot = [] if bez_otworow else otwory(P, sciany, podl, suf)
-    return {'Wp': Wp, 'B': B, 'sciany': sciany, 'otwory': ot}
+    return {'Wp': Wp, 'A': A, 'B': B, 'sciany': sciany, 'otwory': ot}
+
+
+def sale_l2(plik_zn, trasa, zt):
+    """Znaczniki "Jestem tu" (SALA <nazwa>) z rejestratora -> punkty na trasie tej kondygnacji (czas maliny w ns =
+    czas trasy w s; trasa z l2_trasa.py). Zwraca liste {'rodzaj':'sala','opis','x','y'}."""
+    if not plik_zn or not os.path.exists(plik_zn) or trasa is None:
+        return []
+    wyn = []
+    for l in open(plik_zn, encoding='utf-8'):
+        k = l.rstrip('\n').split('\t')
+        if len(k) < 2 or not k[0].isdigit() or not k[1].startswith('SALA'):
+            continue
+        t = int(k[0]) / 1e9; nz = (k[1][4:].strip() or (k[2] if len(k) > 2 else '')).strip()
+        if not (trasa[0, 0] - 2 <= t <= trasa[-1, 0] + 2):
+            continue
+        i = int(np.clip(np.searchsorted(trasa[:, 0], t), 0, len(trasa) - 1))
+        if zt is not None and abs(trasa[i, 3] - zt) > 0.8:          # znacznik z innej kondygnacji
+            continue
+        wyn.append({'rodzaj': 'sala', 'opis': nz, 'x': float(trasa[i, 1]), 'y': float(trasa[i, 2])})
+    return wyn
+
+
+def pomieszczenia_kondygnacji(r, trasa, plik_zn=None, log=print):
+    """Podzial kondygnacji L2 na pomieszczenia tym samym algorytmem co D500 (mapa/pomieszczenia.py): przeszkody = tylko
+    sciany dochodzace do sufitu (bez szaf), trasa operatora = punkty widzenia. Na poddaszu powierzchnia kazdego
+    pomieszczenia takze wg PN-ISO 9836 (z mapy wysokosci pod dachem) i kubatura z rzeczywistej wysokosci."""
+    import pomieszczenia as PM
+    zt = r.get('zt')
+    if trasa is not None:
+        tk = trasa if zt is None else trasa[np.abs(trasa[:, 3] - zt) < 0.8]
+        tr = tk[:, 1:3]
+    else:
+        tr = np.zeros((0, 2))
+    if len(tr) < 10:                                         # bez trasy: srodek kazdej wolnej przestrzeni nie jest znany
+        log(f'kondygnacja {r["nr"]}: brak trasy - pomieszczenia pominiete'); return None
+    # przeszkody do podzialu: sciany dochodzace do sufitu (bez szaf, lamp), ale ich punkty z pasa 1,0-1,9 m nad podloga -
+    # wtedy drzwi sa otworami z osciezami (jak w D500), a nie zamkniete nadprozem
+    try:
+        A = punkty_scian(r['P'], r['podl'], mapa_sufitu(r['P'], r['podl']), pas_z=(1.0, 1.9))
+    except Exception:
+        A = r.get('A', r['Wp'])
+    A = A[np.unique(np.round(A / 0.02).astype(np.int64), axis=0, return_index=True)[1]]
+    k = {'nr': r['nr'], 'chmura_cm': np.round(A * 100).astype(int).ravel().tolist(), 'lico_m': 0.04,
+         'sciany': [np.asarray(pl).tolist() for pl in r['sciany']], 'trasa': tr[::3].tolist(),
+         'wysokosc_m': round(float(r['wys']), 2), 'wysokosc_zrodlo': 'L2: podloga i sufit z chmury',
+         'znaczniki': sale_l2(plik_zn, trasa, zt)}
+    w = PM.podziel(k, log)
+    w['nr'] = r['nr']
+    # wysokosc kazdego pomieszczenia z mapy sufitu (mediana), skosy wg PN-ISO 9836
+    try:
+        from matplotlib.path import Path
+        S_, o, kom, _ = mapa_sufitu(r['P'], r['podl'], 0.10)
+        ii, jj = np.mgrid[0:S_.shape[0], 0:S_.shape[1]]
+        C = np.c_[ii.ravel(), jj.ravel()] * kom + o + kom / 2
+        H = (S_ - r['podl']).ravel()
+        for p in w['pomieszczenia']:
+            m = Path(np.asarray(p['obrys'])).contains_points(C)
+            if m.sum() < 5:
+                continue
+            h = H[m]; a = kom * kom; skala = p['pow_m2'] / (m.sum() * a)     # raster -> dokladny obrys
+            p['wys_m'] = round(float(np.median(h)), 2)
+            p['kub_m3'] = round(float(np.sum(np.clip(h, 0, None)) * a * skala), 1)
+            if np.mean(h < r['wys'] - 0.3) > 0.08:                          # pomieszczenie pod skosem
+                A100 = float((h >= 2.2).sum() * a * skala); A50 = float(((h >= 1.4) & (h < 2.2)).sum() * a * skala)
+                p['pow_pn_iso_9836'] = round(A100 + 0.5 * A50, 2)
+                p['pow_ponizej_1_40'] = round(float((h < 1.4).sum() * a * skala), 2)
+                p['wys_max_m'] = round(float(np.percentile(h, 98)), 2)
+    except Exception as e:
+        log(f'wysokosci pomieszczen pominiete: {e}')
+    return w
 
 
 def main():
@@ -293,12 +365,15 @@ def main():
     ap.add_argument('--siatka', type=float, default=0.02)
     ap.add_argument('--trasa', help='trasa.csv z l2_trasa.py - podzial nagrania na kondygnacje')
     ap.add_argument('--bez-otworow', action='store_true', help='nie szukaj okien i drzwi')
+    ap.add_argument('--znaczniki', help='znaczniki.txt z rejestratora (SALA <nazwa> -> nazwy pomieszczen)')
+    ap.add_argument('--bez-pomieszczen', action='store_true')
     a = ap.parse_args()
     os.makedirs(a.wyjscie, exist_ok=True)
     P = czytaj_pcd(a.pcd)
     P = P[np.isfinite(P).all(1)]
     print(f'chmura: {len(P)} punktow, zakres {np.ptp(P, 0).round(1).tolist()} m')
-    KD = kondygnacje(P, czytaj_trase(a.trasa))
+    TR = czytaj_trase(a.trasa)
+    KD = kondygnacje(P, TR)
     wyniki = []
     for nr, (podl, suf, zt) in enumerate(KD):
         gora = KD[nr + 1][0] - 0.05 if nr + 1 < len(KD) else np.inf
@@ -307,7 +382,8 @@ def main():
         print(f'kondygnacja {nr}: podloga {podl:+.2f} m, sufit {suf:+.2f} m, wysokosc w swietle {suf - podl:.2f} m'
               + (f", skosy: pow. wg PN-ISO 9836 {sk['pow_uzytkowa_pn_iso_9836']} m2 z {sk['pow_rzutu']} m2 rzutu" if sk else ''))
         r = rzut_kondygnacji(Pk, podl, suf, a.siatka, a.bez_otworow, sk)
-        r.update(nr=nr, podl=podl, suf=suf, wys=suf - podl, sk=sk, P=Pk)
+        r.update(nr=nr, podl=podl, suf=suf, wys=suf - podl, sk=sk, P=Pk, zt=zt)
+        r['pom'] = None if a.bez_pomieszczen else pomieszczenia_kondygnacji(r, TR, a.znaczniki)
         wyniki.append(r)
     import json
     ot_all = [dict(o, kondygnacja=r['nr']) for r in wyniki for o in r['otwory']]
@@ -331,6 +407,19 @@ def main():
     if any(r['sk'] for r in wyniki):
         with open(os.path.join(a.wyjscie, 'skosy.json'), 'w', encoding='utf-8') as f:
             json.dump({r['nr']: {k_: v for k_, v in r['sk'].items() if k_ != 'kontury'} for r in wyniki if r['sk']}, f, indent=1)
+    POMW = [r['pom'] for r in wyniki if r.get('pom')]
+    if POMW:
+        import pomieszczenia as PM
+        PM.zapisz(a.wyjscie, {'sesja': os.path.basename(os.path.dirname(os.path.abspath(a.wyjscie)))}, POMW)
+        with open(os.path.join(a.wyjscie, 'pomieszczenia.csv'), 'a', encoding='utf-8') as f:
+            pod = [(w['nr'], p) for w in POMW for p in w['pomieszczenia'] if 'pow_pn_iso_9836' in p]
+            if pod:
+                f.write('\npomieszczenia pod skosami (PN-ISO 9836: >= 2,20 m w 100 %, 1,40-2,20 m w 50 %, < 1,40 m pomijane)\n'
+                        'kondygnacja;nr;nazwa;powierzchnia rzutu m2;powierzchnia PN-ISO 9836 m2;ponizej 1,40 m m2;wys. max m;kubatura m3\n')
+                for kn, p in pod:
+                    f.write(f"{kn};{p['nr']};{p['nazwa']};{p['pow_m2']:.2f};{p['pow_pn_iso_9836']:.2f};{p['pow_ponizej_1_40']:.2f};"
+                            f"{p['wys_max_m']:.2f};{p['kub_m3']:.1f}\n".replace('.', ','))
+        print('pomieszczenia: ' + ', '.join(f"k{w['nr']}: {len(w['pomieszczenia'])} ({sum(p['pow_m2'] for p in w['pomieszczenia']):.1f} m2)" for w in POMW))
     # kondygnacje obok siebie na arkuszu (odstep 5 m), ta sama skala
     dxs, x = [], 0.0
     for r in wyniki:
@@ -351,6 +440,11 @@ def main():
             for prog, kol in ((1.4, 'tab:orange'), (2.2, 'tab:purple')):
                 for c in r['sk']['kontury'][prog]:
                     ax.plot(c[:, 0] + dx, c[:, 1], '--', color=kol, lw=1, label=f'skos h={prog:.2f} m'.replace('.', ',') if c is r['sk']['kontury'][prog][0] else None)
+        if r.get('pom'):
+            for p in r['pom']['pomieszczenia']:
+                o_ = np.asarray(p['obrys']); ax.fill(o_[:, 0] + dx, o_[:, 1], alpha=0.18, color='tab:green', lw=0)
+                ax.text(p['srodek'][0] + dx, p['srodek'][1], (f"{p['nr']} {p['nazwa']}\n{p['pow_m2']:.2f} m²" +
+                        (f"\nPN-ISO {p['pow_pn_iso_9836']:.2f}" if 'pow_pn_iso_9836' in p else '')).replace('.', ','), ha='center', va='center', fontsize=8)
         opis = f"kondygnacja {r['nr']}: h {r['wys']:.2f} m" + (f" | PN-ISO 9836: {r['sk']['pow_uzytkowa_pn_iso_9836']:.2f} m²" if r['sk'] else '')
         ax.text(r['P'][:, 0].min() + dx, r['P'][:, 1].max() + 0.5, opis.replace('.', ','), fontsize=10, color='g')
     ax.set_aspect('equal'); ax.grid(alpha=.3); ax.legend(loc='upper right', markerscale=10)
@@ -363,6 +457,12 @@ def main():
     warstwy(d, (('SCIANY', 7), ('SCIANY_PUNKTY', 8), ('CIECIE_1M', 1), ('OKNA', 4), ('DRZWI', 3), ('OTWORY_OPIS', 2), ('OPIS', 3), ('SKALA', 7),
                 ('SKOS_1_40', 30), ('SKOS_2_20', 200)))
     msp = d.modelspace()
+    if any(r.get('pom') for r in wyniki):
+        import pomieszczenia as PM
+        PM.warstwy_arch(d)
+        for r, dx in zip(wyniki, dxs):
+            if r.get('pom'):
+                PM.rysuj_arch(msp, r['pom'], dx, None)
     nr_ot = 0
     for r, dx in zip(wyniki, dxs):
         for pl in r['sciany']:
@@ -401,7 +501,7 @@ def main():
         msp.add_text(opis.replace('.', ','), height=0.3, dxfattribs={'layer': 'OPIS'}).set_placement((float(m0[0] + dx), float(r['P'][:, 1].max() + 0.8)))
         podzialka(msp, float(m0[0] + dx), float(m0[1]) - 1.5)
     d.saveas(os.path.join(a.wyjscie, 'rzut.dxf'))
-    print('zapisano rzut.png, rzut.dxf, wysokosci.txt, otwory.json, otwory.csv' + (', skosy.json' if any(r['sk'] for r in wyniki) else ''))
+    print('zapisano rzut.png, rzut.dxf, wysokosci.txt, otwory.json, otwory.csv' + (', pomieszczenia.json/csv' if any(r.get('pom') for r in wyniki) else '') + (', skosy.json' if any(r['sk'] for r in wyniki) else ''))
 
 
 if __name__ == '__main__':
