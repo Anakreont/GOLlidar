@@ -104,3 +104,25 @@ Można przejść cały dom (parter → schody → poddasze) **jednym nagraniem**
   - ściany bez mebli;
   - powierzchnia PN-ISO 9836 61,11 m² z meblami i bez (wzorzec 60,93);
   - kubatura 178,0 m³ (wzorzec 177,5).
+
+## Kontrola jakości przed strojeniem (`l2_kontrola.py`, od 28.11.2026)
+
+Liczy się automatycznie po mapie (gdy jest trasa). Wynik w `kontrola_l2.txt` / `.json` i w przeglądarce, w zakładce L2.
+- **Zamknięcie trasy:** koniec względem startu, w XY i Z. Ma sens, gdy wracasz na start.
+- **Postoje ≥ 5 s:** drganie i dryf pozycji. Powinny być bliskie zera.
+- **Podłoga:**
+  - falowanie = rozrzut median pól 25 cm po odjęciu płaszczyzny; pola przy ścianach i meblach pomijane;
+  - grubość warstwy = 1,4826·MAD (dwie warstwy podłogi ją podbijają).
+- **Ściany:** grubość warstwy na pionowych płaszczyznach, 0,5–2,0 m nad podłogą (mediana i p90). Podwójne ściany podbijają p90.
+- **Log Point-LIO:** komunikaty „loop back” i „clear buffer” wskazują problem z czasem.
+- **Progi wstępne:** zamknięcie < 15 cm XY i < 5 cm Z, postój < 2 cm, podłoga < 4 cm i falowanie < 3 cm, ściany mediana < 4 cm i p90 < 6 cm. Szum pojedynczego punktu L2 to ok. 2,5–3,5 cm.
+- **Test na sztucznym domu:**
+  - czysta chmura: podłoga 1,9 cm / falowanie 1,2 cm, ściany 2,0 / 3,7 cm;
+  - zepsuta (pół chmury przesunięte o 8 cm, podłoga ±4 cm): falowanie 5,3 cm, ściany 4,0–5,6 cm, p90 6,1 cm — wyłapane.
+- **Sekwencja na pierwsze nagranie** (60–90 s):
+  1. 15 s postoju z plecakiem na ziemi;
+  2. powolny obrót o 360° przed ścianą;
+  3. 10–15 m prosto i powrót dokładnie na start;
+  4. 15 s postoju.
+  Najpierw kontrola, dopiero potem strojenie Point-LIO (czas, kalibracja LiDAR–IMU, sztywność montażu).
+- **Szkoła:** sesje na kondygnację, zaczynane i kończone na klatce schodowej (łączenie sesji — do zrobienia). Dom może być jednym nagraniem.

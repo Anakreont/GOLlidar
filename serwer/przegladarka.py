@@ -630,7 +630,8 @@ def stan_l2(n, k):
         st = W_L2.get(n); t0 = W_START_L2.get(n)
     jest = (lambda p: os.path.exists(os.path.join(wy, p)))
     pliki = sorted('_wynik/l2/' + p for p in os.listdir(wy)
-                   if p in ('rzut.png', 'rzut.dxf', 'wysokosci.txt', 'chmura.pcd', 'przebieg.log', 'blad.txt', 'pointlio.log', 'otwory.csv')) if os.path.isdir(wy) else []
+                   if p in ('rzut.png', 'rzut.dxf', 'wysokosci.txt', 'chmura.pcd', 'przebieg.log', 'blad.txt', 'pointlio.log', 'otwory.csv',
+                            'kontrola_l2.txt', 'skosy.json', 'trasa.csv')) if os.path.isdir(wy) else []
     if not st:
         st = 'błąd' if jest('blad.txt') else 'gotowe' if (jest('rzut.png') or jest('rzut.dxf')) else 'zatrzymane' if jest('zatrzymane.txt') else 'brak'
     wys = {}
@@ -672,7 +673,13 @@ def stan_l2(n, k):
         wybor = open(os.path.join(wy, 'wybor.txt')).read().strip() or 'bez'
     except OSError:
         pass
-    return {'stan': st, 'pliki': pliki, 'wysokosci': wys, 'otwory': otw, 'dostepne': bool(skrypt_l2()), 'petle': petle,
+    kontrola = None
+    if jest('kontrola_l2.json'):
+        try:
+            kontrola = json.load(open(os.path.join(wy, 'kontrola_l2.json'), encoding='utf-8'))
+        except ValueError:
+            pass
+    return {'stan': st, 'pliki': pliki, 'wysokosci': wys, 'otwory': otw, 'dostepne': bool(skrypt_l2()), 'petle': petle, 'kontrola': kontrola,
             'wybor': wybor if (wybor == 'bez' or (petle and '_wynik/l2/petle/rzut.dxf' in petle['pliki'])) else 'bez',
             'liczy_s': round(time.time() - t0) if t0 else None, 'nagranie_s': czas, 'mb': round(rozmiar(os.path.join(k, 'l2.bin')) / 1e6, 1)}
 

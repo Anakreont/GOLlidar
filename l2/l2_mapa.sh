@@ -35,6 +35,8 @@ cp "$PCD" "$WY/chmura.pcd"
 TR=""
 if [ -n "$RB" ] && [ -f "$WY/pointlio_wynik.bag" ] && python "$TU/l2_trasa.py" "$WY/pointlio_wynik.bag" "$WY/trasa.csv"; then TR="--trasa $WY/trasa.csv"; fi
 python "$TU/l2_rzut.py" "$WY/chmura.pcd" "$WY" $TR
+# kontrola jakosci przed strojeniem (czas, osie, montaz): kontrola_l2.txt/json - blad nie przerywa
+if [ -n "$TR" ]; then python "$TU/l2_kontrola.py" "$WY/chmura.pcd" "$WY/trasa.csv" "$WY" --log "$WY/pointlio.log" || echo "kontrola L2 nieudana"; fi
 # druga wersja mapy: z zamknieciem petli (mapa bez petli zostaje w $WY, z petlami w $WY/petle) - blad nie psuje wyniku
 if [ -n "$RB" ] && [ -f "$WY/pointlio_wynik.bag" ]; then
   echo "== zamykanie petli"
