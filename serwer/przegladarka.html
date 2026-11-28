@@ -132,7 +132,7 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
   <section class="widok" id="wpor"><div class="tabela" id="tpor"></div></section>
   <section class="widok" id="wkaw">
    <div class="plotno"><canvas id="ck" style="width:100%;height:100%;display:block;background:#fff;touch-action:none;cursor:grab"></canvas>
-    <div class="podp">kliknij odcinek – wybierz · przeciągnij wybrany – przesuń · Shift+przeciągnij wybrany – obróć · przeciągnij tło – przesuń widok · kółko – powiększ · dwuklik – całość</div></div>
+    <div class="podp">kliknij odcinek – wybierz · przeciągnij wybrany – przesuń · Shift+przeciągnij wybrany – obróć odcinek · przeciągnij tło – przesuń widok · Shift+przeciągnij tło – obróć całość · kółko – powiększ · dwuklik – całość</div></div>
    <div class="panel" id="pk"><div class="mala">Najpierw „🧲 Złóż kawałki”.</div></div>
   </section>
   <section class="widok" id="wcad"><div class="tabela" id="tcad"></div></section>
@@ -370,7 +370,7 @@ c.addEventListener('touchend',e=>{if(e.touches.length<2)pinch=null});
 c.addEventListener('dblclick',()=>{dopasuj();rys()});addEventListener('resize',()=>{rys();if(R3.ren)R3.rozmiar()});
 
 // ---------------------------------------------------------------- reczna poprawka zlozonych odcinkow (zakladka Kawalki)
-const KE={n:null,P:[],T:[],S:[],S0:[],wyb:-1,w:{x:0,y:0,s:20},miary:[],pA:null,tryb:null,zm:0};
+const KE={n:null,P:[],T:[],S:[],S0:[],wyb:-1,w:{x:0,y:0,s:20},miary:[],pA:null,tryb:null,zm:0,rot:0};
 const ck=$('ck'),gk=ck.getContext('2d');
 const KE_KOL={start:'#1f2937',zlozony:'#1f2937',grupa_osobno:'#2563eb',niepewny:'#dc2626',reczny:'#16a34a'};
 const KE_NAZ={start:'start',zlozony:'złożony',grupa_osobno:'grupa osobno',niepewny:'niepewny',reczny:'poprawiony ręcznie'};
@@ -380,8 +380,10 @@ function kawEd(){if(!S)return;const Z=(S.kawalki||{}).zloz||{};if(Z.stan!='gotow
   if(!E){$('pk').innerHTML='<p class="mala">Ten wynik składania jest ze starszej wersji – kliknij „🧲 ↻”, żeby złożyć od nowa.</p>';return}
   KE.n=S.n;KE.S=St;KE.S0=JSON.parse(JSON.stringify(St));KE.P=E.kawalki.map(e=>new Float32Array(e.P.map(v=>v/100)));KE.T=E.kawalki.map(e=>e.trasa.map(v=>v/100));KE.wyb=-1;KE.zm=0;KE.miary=[];kawCalosc();kawPanel();kawRys()})}
 function kawXY(i,x,y){const s=KE.S[i],ca=Math.cos(s.a),sa=Math.sin(s.a),dx=x-s.c[0],dy=y-s.c[1];return[ca*dx-sa*dy+s.c[0]+s.t[0],sa*dx+ca*dy+s.c[1]+s.t[1]]}
-const kP=(x,y)=>[KE.w.x+x*KE.w.s,KE.w.y-y*KE.w.s];
-function kawCalosc(){const r=ck.getBoundingClientRect();let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;KE.P.forEach((P,i)=>{for(let j=0;j<P.length;j+=20){const[x,y]=kawXY(i,P[j],P[j+1]);x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y)}});
+const kR=(x,y,a)=>{const c_=Math.cos(a),s_=Math.sin(a);return[c_*x-s_*y,s_*x+c_*y]};
+const kP=(x,y)=>{const q=kR(x,y,KE.rot*Math.PI/180);return[KE.w.x+q[0]*KE.w.s,KE.w.y-q[1]*KE.w.s]};
+const kS=(sx,sy)=>kR((sx-KE.w.x)/KE.w.s,(KE.w.y-sy)/KE.w.s,-KE.rot*Math.PI/180);   // ekran -> swiat
+function kawCalosc(){const r=ck.getBoundingClientRect();let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;KE.P.forEach((P,i)=>{for(let j=0;j<P.length;j+=20){const[x,y]=kR(...kawXY(i,P[j],P[j+1]),KE.rot*Math.PI/180);x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y)}});
  if(x0>x1||!r.width)return;KE.w.s=Math.min(r.width/(x1-x0+2),r.height/(y1-y0+2));KE.w.x=r.width/2-(x0+x1)/2*KE.w.s;KE.w.y=r.height/2+(y0+y1)/2*KE.w.s}
 function kawRys(){const r=ck.getBoundingClientRect(),d=devicePixelRatio||1;if(!r.width)return;ck.width=r.width*d;ck.height=r.height*d;gk.setTransform(d,0,0,d,0,0);gk.clearRect(0,0,r.width,r.height);
  if(!KE.P.length)return;const st=KE.w.s<15?2:1;
@@ -397,8 +399,11 @@ function kawPanel(){const i=KE.wyb,s=i>=0?KE.S[i]:null,ile={};KE.S.forEach(x=>il
  (s?'<h3>Wybrany: K'+s.nr+' ('+(KE_NAZ[s.stan]||s.stan)+')</h3><div class="rzad"><button class="btn" onclick="kawObr(-90)">⟲90°</button><button class="btn" onclick="kawObr(-5)">⟲5°</button><button class="btn" onclick="kawObr(-1)">⟲1°</button><button class="btn" onclick="kawObr(1)">⟳1°</button><button class="btn" onclick="kawObr(5)">⟳5°</button><button class="btn" onclick="kawObr(90)">⟳90°</button></div>'+
   '<div class="rzad"><button class="btn gl" onclick="kawDociagnij()" title="Dopasuj dokładnie do ścian sąsiednich odcinków (ustaw najpierw na oko, z dokładnością do ok. 30 cm i kilku stopni)">🧲 Dociągnij</button><button class="btn" onclick="kawCofnij()">↶ jak było</button><button class="btn" onclick="KE.wyb=-1;kawPanel();kawRys()">odznacz</button></div><p class="mala" id="kawInfo"></p>'
   :'<p class="mala">Kliknij odcinek na rysunku (najlepiej czerwony – niepewny), przeciągnij go na oko na właściwe miejsce, obróć przyciskami albo Shift+przeciąganiem, potem „🧲 Dociągnij”.</p>')+
+ '<h3>Obrót całości</h3><div class="rzad"><button class="btn" onclick="kawObrCal(90)">⟲90°</button><button class="btn" onclick="kawObrCal(1)">⟲1°</button><button class="btn" onclick="kawObrCal(-1)">⟳1°</button><button class="btn" onclick="kawObrCal(-90)">⟳90°</button></div>'+
+ '<div class="rzad"><input type="text" id="kob" style="width:80px" value="'+(((KE.rot%360)+360)%360).toFixed(1)+'" onchange="KE.rot=+String(this.value).replace(\',\',\'.\')||0;kawRys()"> ° <span class="mala">też Shift+przeciągnij tło; zapisuje się razem z poprawkami</span></div>'+
  '<h3>Zmierz</h3><div class="rzad"><button class="btn'+(KE.tryb=='miara'?' gl':'')+'" onclick="kawMiara()">📐 '+(KE.tryb=='miara'?(KE.pA?'kliknij drugi punkt… (Esc – przerwij)':'kliknij pierwszy punkt… (Esc – przerwij)'):'Zmierz odległość')+'</button>'+(KE.miary.length?'<button class="btn" onclick="KE.miary=[];kawPanel();kawRys()">✕ wyczyść</button>':'')+'</div>'+
- '<h3>Zapis</h3><div class="rzad"><button class="btn gl" onclick="kawZapisz()" '+(KE.zm?'':'disabled')+'>💾 Zapisz poprawki ('+KE.zm+')</button></div><p class="mala">Zapis tworzy na nowo „⬇ złożone” (DXF) i podgląd przed/po. Poprawione odcinki mają warstwę KAWALEK_NN_reczny.</p>'}
+ '<h3>Zapis</h3><div class="rzad"><button class="btn gl" onclick="kawZapisz()" '+(KE.zm||KE.rot%360?'':'disabled')+'>💾 Zapisz poprawki ('+KE.zm+(KE.rot%360?' + obrót':'')+')</button></div><p class="mala">Zapis tworzy na nowo „⬇ złożone” (DXF) i podgląd przed/po. Poprawione odcinki mają warstwę KAWALEK_NN_reczny.</p>'}
+function kawObrCal(d){const r=ck.getBoundingClientRect(),cx=r.width/2,cy=r.height/2,w0=kS(cx,cy);KE.rot+=d;const q=kR(w0[0],w0[1],KE.rot*Math.PI/180);KE.w.x=cx-q[0]*KE.w.s;KE.w.y=cy+q[1]*KE.w.s;kawPanel();kawRys()}
 function kawMiara(){KE.tryb=KE.tryb=='miara'?null:'miara';KE.pA=null;kawPanel();kawRys()}
 function kawObr(d){const s=KE.S[KE.wyb];s.a+=d*Math.PI/180;kawZmiana();kawRys()}
 function kawZmiana(){const s=KE.S[KE.wyb];if(s.stan!='reczny'){s.stan='reczny';}KE.zm=KE.S.filter((x,i)=>x.stan=='reczny').length;kawPanel()}
@@ -407,13 +412,15 @@ function kawDociagnij(){const i=KE.wyb;$('kawInfo').textContent='dociągam…';
  fetch('api/kawalki_dociagnij?n='+S.n+'&i='+i,{method:'POST',body:JSON.stringify(KE.S)}).then(r=>r.json()).then(j=>{if(j.blad){$('kawInfo').textContent=j.blad;return}
   const s=KE.S[i],a0=s.a,t0=s.t.slice();s.a=j.a;s.t=j.t;kawZmiana();kawRys();
   $('kawInfo').innerHTML='Dociągnięto o '+j.przesuniecie_m.toFixed(2).replace('.',',')+' m i '+j.obrot_st.toFixed(1).replace('.',',')+'°. Zgodność ze ścianami sąsiadów: <b>'+Math.round(j.zgodnosc*100)+'%</b>'+(j.zgodnosc<0.5?' – słabo, ustaw dokładniej na oko i spróbuj jeszcze raz':'')+'. <a href="#" onclick="KE.S['+i+'].a='+a0+';KE.S['+i+'].t=['+t0+'];kawRys();return false">cofnij dociągnięcie</a>'})}
-function kawZapisz(){post('api/kawalki_reczne?n='+S.n,()=>{KE.S0=JSON.parse(JSON.stringify(KE.S));alert('Zapisuję – za chwilę „⬇ złożone” i podgląd będą zawierać poprawki.');const n=S.n;setTimeout(()=>fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(S&&S.n==n){S.kawalki=d.kawalki;naglowek()}}),8000)},JSON.stringify(KE.S))}
+function kawZapisz(){const A=KE.rot*Math.PI/180;if(A%(2*Math.PI)){KE.S.forEach(s=>{const q=kR(s.c[0]+s.t[0],s.c[1]+s.t[1],A);s.a+=A;s.t=[q[0]-s.c[0],q[1]-s.c[1]]});
+  KE.miary.forEach(m=>{m.a=kR(m.a[0],m.a[1],A);m.b=kR(m.b[0],m.b[1],A)});KE.rot=0}
+ post('api/kawalki_reczne?n='+S.n,()=>{KE.S0=JSON.parse(JSON.stringify(KE.S));kawPanel();kawRys();alert('Zapisuję – za chwilę „⬇ złożone” i podgląd będą zawierać poprawki.');const n=S.n;setTimeout(()=>fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(S&&S.n==n){S.kawalki=d.kawalki;naglowek()}}),8000)},JSON.stringify(KE.S))}
 function kawTraf(e){const r=ck.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;let best=-1,bd=10,pt=null;
- KE.P.forEach((P,i)=>{for(let j=0;j<P.length;j+=2){const[x,y]=kawXY(i,P[j],P[j+1]),[a,b]=kP(x,y),d=Math.hypot(a-mx,b-my);if(d<bd||(d<bd+3&&i==KE.wyb&&best!=i)){bd=d;best=i;pt=[x,y]}}});return{i:best,pt,sw:[(mx-KE.w.x)/KE.w.s,(KE.w.y-my)/KE.w.s]}}
+ KE.P.forEach((P,i)=>{for(let j=0;j<P.length;j+=2){const[x,y]=kawXY(i,P[j],P[j+1]),[a,b]=kP(x,y),d=Math.hypot(a-mx,b-my);if(d<bd||(d<bd+3&&i==KE.wyb&&best!=i)){bd=d;best=i;pt=[x,y]}}});return{i:best,pt,sw:kS(mx,my)}}
 let kd=null;
-ck.addEventListener('pointerdown',e=>{const h=KE.wyb>=0&&KE.tryb!='miara'?kawTraf(e):{i:-1};kd={x:e.clientX,y:e.clientY,ox:KE.w.x,oy:KE.w.y,mv:0,kaw:h.i==KE.wyb&&KE.wyb>=0,rot:e.shiftKey,s0:KE.wyb>=0?JSON.parse(JSON.stringify(KE.S[KE.wyb])):null};ck.setPointerCapture(e.pointerId)});
+ck.addEventListener('pointerdown',e=>{const h=KE.wyb>=0&&KE.tryb!='miara'?kawTraf(e):{i:-1};kd={x:e.clientX,y:e.clientY,ox:KE.w.x,oy:KE.w.y,r0:KE.rot,mv:0,kaw:h.i==KE.wyb&&KE.wyb>=0,rot:e.shiftKey,s0:KE.wyb>=0?JSON.parse(JSON.stringify(KE.S[KE.wyb])):null};ck.setPointerCapture(e.pointerId)});
 ck.addEventListener('pointermove',e=>{if(!kd)return;const dx=e.clientX-kd.x,dy=e.clientY-kd.y;kd.mv=Math.max(kd.mv,Math.abs(dx)+Math.abs(dy));if(kd.mv<4)return;
- if(kd.kaw){const s=KE.S[KE.wyb];if(kd.rot){s.a=kd.s0.a+dx*0.004}else{s.t=[kd.s0.t[0]+dx/KE.w.s,kd.s0.t[1]-dy/KE.w.s]}if(s.stan!='reczny')kawZmiana()}else{KE.w.x=kd.ox+dx;KE.w.y=kd.oy+dy}kawRys()});
+ if(kd.kaw){const s=KE.S[KE.wyb];if(kd.rot){s.a=kd.s0.a-dx*0.004}else{const d_=kR(dx/KE.w.s,-dy/KE.w.s,-KE.rot*Math.PI/180);s.t=[kd.s0.t[0]+d_[0],kd.s0.t[1]+d_[1]]}if(s.stan!='reczny')kawZmiana()}else if(kd.rot){KE.rot=kd.r0-dx*0.2;const o=$('kob');if(o)o.value=(((KE.rot%360)+360)%360).toFixed(1)}else{KE.w.x=kd.ox+dx;KE.w.y=kd.oy+dy}kawRys()});
 ck.addEventListener('pointerup',e=>{if(kd&&kd.mv<4){const h=kawTraf(e);
  if(KE.tryb=='miara'){const q=h.pt||h.sw;if(!KE.pA){KE.pA=q}else{KE.miary.push({a:KE.pA,b:q});KE.pA=null;KE.tryb=null}kawPanel();kawRys()}
  else{KE.wyb=h.i;kawPanel();kawRys()}}kd=null});
