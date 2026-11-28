@@ -219,13 +219,18 @@ def punkty_scian(P, podl, M, pas_z=None):
     ij = np.clip(((P[:, :2] - o) / kom).astype(int), 0, np.array(S.shape) - 1)
     c = S[ij[:, 0], ij[:, 1]]
     pas = (P[:, 2] > c - 0.25) & (P[:, 2] < c - 0.05) & (P[:, 2] > podl + 0.3)
+    gora = pas
     if pas_z is not None:                                       # te same sciany, ale inny pas wysokosci (np. 1,0-1,9 m:
-        pas = (P[:, 2] > podl + pas_z[0]) & (P[:, 2] < podl + pas_z[1])   # drzwi jako otwory, nadproza pominiete)
+        # drzwi jako otwory, nadproza pominiete); pod skosem pas schodzi nizej (scianka kolankowa), a sam dach odpada
+        pas = (P[:, 2] > np.maximum(podl + 0.3, np.minimum(podl + pas_z[0], c - 0.8))) & (P[:, 2] < np.minimum(podl + pas_z[1], c - 0.05))
     dol = (P[:, 2] > np.maximum(podl + 0.3, c - 0.7)) & (P[:, 2] < c - 0.3)   # ta sama pionowa powierzchnia 30-70 cm pod
     # sufitem (scianka kolankowa tez); mebel ponizej ma tam pusta szczeline;
     # sam skos dachu w komorce nie ma punktow 30 cm pod soba - nie jest sciana
     G = np.zeros(S.shape, bool); G[ij[dol, 0], ij[dol, 1]] = True
     G = ndimage.binary_dilation(G)                                  # sciana moze byc lekko nachylona / szum
+    if pas_z is not None:                                           # inny pas: komorka musi miec tez punkty tuz pod sufitem
+        Gg = np.zeros(S.shape, bool); Gg[ij[gora, 0], ij[gora, 1]] = True   # (wysoka szafa ma ciaglosc, ale nie siega sufitu)
+        G &= ndimage.binary_dilation(Gg)
     return P[pas & G[ij[:, 0], ij[:, 1]], :2]
 
 
@@ -328,7 +333,12 @@ def pomieszczenia_kondygnacji(r, trasa, plik_zn=None, log=print):
         A = punkty_scian(r['P'], r['podl'], mapa_sufitu(r['P'], r['podl']), pas_z=(1.0, 1.9))
     except Exception:
         A = r.get('A', r['Wp'])
-    A = A[np.unique(np.round(A / 0.02).astype(np.int64), axis=0, return_index=True)[1]]
+    # rdzen sciany: komorki 2 cm z liczba punktow >= 35 % lokalnego maksimum (szum L2 2-3 cm rozmywa lico; ogon rozkladu
+    # pogrubialby sciany i zmniejszal pomieszczenia)
+    q = np.round(A / 0.02).astype(np.int64); q0 = q.min(0); sh = tuple((q.max(0) - q0 + 1).tolist())
+    Hc = np.zeros(sh, np.int32); np.add.at(Hc, (q[:, 0] - q0[0], q[:, 1] - q0[1]), 1)
+    rdzen = (Hc > 0) & (Hc >= 0.35 * ndimage.maximum_filter(Hc, 9))
+    A = (np.argwhere(rdzen) + q0) * 0.02
     k = {'nr': r['nr'], 'chmura_cm': np.round(A * 100).astype(int).ravel().tolist(), 'lico_m': 0.04,
          'sciany': [np.asarray(pl).tolist() for pl in r['sciany']], 'trasa': tr[::3].tolist(),
          'wysokosc_m': round(float(r['wys']), 2), 'wysokosc_zrodlo': 'L2: podloga i sufit z chmury',
