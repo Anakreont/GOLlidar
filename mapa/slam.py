@@ -13,7 +13,12 @@ PAR = dict(imu_w=200.0, promien=8.0, kf_dl=0.25, kf_kat=8.0, co_ktory=2, przechy
            przechyl_zm=99.0,               # skan odrzucany, gdy przechyl zmienia sie w trakcie obrotu o wiecej (wkladanie w przekroj)
            yaw_zyro=False,
            luka_kurs=9.0,                  # po luce: szukanie kursu +-9 st. (BNO po przekroju), 0 = wylaczone
-           postoj_mg=25.0)                 # odch. std |przysp.| w 0,5 s ponizej progu = operator stoi -> przewidywany ruch zerowy                  # IMU SHTP: kurs z calki zyroskopu; wylaczone - przy zanikach zasilania (USB) gubi skoki, ktore kwaternion zachowuje
+           postoj_mg=25.0,
+           # 28.11 (Test dom 4, 2 pietro99): po wyjsciu z ciasnego pomieszczenia trasa byla przesunieta o ~11 cm / 2 st.
+           # i hol rysowal sie drugi raz. Kotwica: skan dopasowany dodatkowo TYLKO do starych kluczowych skanow
+           # (starszych niz kotw_wiek s); pewna i powtarzalna roznica = dryf -> pozycja wraca na stara mape,
+           # a blad jest rozkladany wstecz na odcinek, na ktorym powstal.
+           kotwica=True, kotw_wiek=20.0, kotw_inl=0.45, kotw_max=0.6, kotw_max_kat=10.0, kotw_ile=3)                 # odch. std |przysp.| w 0,5 s ponizej progu = operator stoi -> przewidywany ruch zerowy                  # IMU SHTP: kurs z calki zyroskopu; wylaczone - przy zanikach zasilania (USB) gubi skoki, ktore kwaternion zachowuje
 STAT = {}
 import os as _os, json as _json
 if _os.environ.get('LIDAR_PAR'):            # proby porownawcze: LIDAR_PAR='{"deg": false}' python3 przetworz.py ...
@@ -172,6 +177,42 @@ def icp(src, tgt, ntg, tree, T0, iters=15, huber=0.05, max_d=0.5, prior=None, de
     ev = np.linalg.eigvalsh(((J * w[:, None]).T @ J)[:2, :2])     # bez sztucznego wiezu - do oceny degeneracji
     return np.array([x, y, th]), np.sqrt(np.mean(r ** 2 * w)), ev, m.mean()
 
+def icp_widok(src, tgt, ntg, tree, T0, iters=25, huber=0.03, max_d=0.5, prior=None):
+    """ICP do starej mapy z kontrola widocznosci: normalne celu sa skierowane do czujnika, ktory je widzial;
+    punkt celu liczy sie tylko, gdy to lico jest zwrocone takze do obecnej pozycji (inaczej skan z pokoju A
+    dociagalby sie do drugiej strony tej samej sciany, widzianej kiedys z pokoju B).
+    Zwraca (T, rms, ev, udzial punktow skanu zgodnych z mapa do 5 cm) albo None."""
+    x, y, th = T0
+    for _ in range(iters):
+        c, s = np.cos(th), np.sin(th)
+        q = src @ np.array([[c, s], [-s, c]]) + [x, y]
+        dist, j = tree.query(q, distance_upper_bound=max_d)
+        m = np.isfinite(dist)
+        if m.sum() < 50: return None
+        jj = j[m]; qm = q[m]
+        prom = np.array([x, y]) - qm; prom /= np.maximum(np.linalg.norm(prom, axis=1), 1e-6)[:, None]
+        wid = np.sum(ntg[jj] * prom, 1) > 0.15
+        if wid.sum() < 50: return None
+        idx = np.where(m)[0][wid]
+        qm, nm, tm_, sm = q[idx], ntg[j[idx]], tgt[j[idx]], src[idx]
+        r = np.sum((qm - tm_) * nm, 1)
+        w = np.where(np.abs(r) < huber, 1.0, huber / np.maximum(np.abs(r), 1e-9))
+        dq = np.stack([-s * sm[:, 0] - c * sm[:, 1], c * sm[:, 0] - s * sm[:, 1]], 1)
+        J = np.stack([nm[:, 0], nm[:, 1], np.sum(nm * dq, 1)], 1)
+        H = (J * w[:, None]).T @ J; g = (J * w[:, None]).T @ r
+        ev = np.linalg.eigvalsh(H[:2, :2])
+        if prior is not None:
+            H[2, 2] += prior[1]; g[2] += prior[1] * (th - prior[0])
+        try: dx = -np.linalg.solve(H + 1e-6 * np.eye(3), g)
+        except np.linalg.LinAlgError: return None
+        x, y, th = x + dx[0], y + dx[1], th + dx[2]
+        if np.abs(dx).max() < 1e-4: break
+    return np.array([x, y, th]), np.sqrt(np.mean(r ** 2 * w)), ev, float(np.sum(np.abs(r) < 0.05)) / len(src)
+
+def _do_czujnika(Pw, Nw, T):
+    """Normalne skierowane do pozycji czujnika (znak nie zmienia dopasowania punkt-prosta)."""
+    return Nw * np.where(np.sum(Nw * (T[:2] - Pw), 1) < 0, -1.0, 1.0)[:, None]
+
 def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segmenty=None, promien=None, dane=None, rzutuj=True):
     imu_w = PAR['imu_w'] if imu_w is None else imu_w; promien = PAR['promien'] if promien is None else promien
     z = dane if dane is not None else wczytaj(kat)
@@ -192,7 +233,8 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segme
         if n_ < 10 or not am.any(): return False
         m_ = (c1[b_] - c1[a_]) / n_
         return (c2[b_] - c2[a_]) / n_ - m_ * m_ < PAR['postoj_mg'] ** 2
-    STAT.update(skany=len(sk), slabe=0, przechyl=0, zmiana=0, ev=[])
+    STAT.update(skany=len(sk), slabe=0, przechyl=0, zmiana=0, ev=[], kotwice=[])
+    kf_t = []; t_kotw = None; kand = []        # kotwica: czasy kluczowych, ostatnie pewne zakotwiczenie, kandydaci poprawki
     prz = np.degrees(np.arccos(np.clip(np.cos(np.radians(pit - pion[0])) * np.cos(np.radians(rol - pion[1])), -1, 1)))
     poses, kf, info = [], [], []
     T = np.zeros(3); v = np.zeros(2); ostT = None; yaw_ost = None
@@ -221,7 +263,9 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segme
         w = np.exp(-(pz.mean() ** 2) / (2 * 8 ** 2))
         def dodaj_kf():
             n = normalne(p); mk = np.isfinite(n[:, 0]); c, s_ = np.cos(T[2]), np.sin(T[2]); Rm = np.array([[c, s_], [-s_, c]])
-            kf.append((T.copy(), p, n)); frag.append((seg, fr_id)); kf_seg.append((T.copy(), p[mk] @ Rm + T[:2], n[mk] @ Rm))
+            Pw_ = p[mk] @ Rm + T[:2]
+            kf.append((T.copy(), p, n)); frag.append((seg, fr_id)); kf_t.append(tm)
+            kf_seg.append([T.copy(), Pw_, _do_czujnika(Pw_, n[mk] @ Rm, T), tm, len(kf) - 1, p[mk], n[mk]])
         if not kf_seg:
             dodaj_kf(); poses.append((tm, *T, w)); yaw_ost = ym; t_ok = tm; continue
         dth = znak * (ym - yaw_ost)
@@ -285,6 +329,46 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segme
             if frac < 0.3 or np.linalg.norm(Tn[:2] - T0[:2]) > 0.4: info.append((tm, 'skok')); Tn = T0
         v = 0.5 * v + 0.5 * (Tn[:2] - T[:2]); T = Tn; yaw_ost = ym; t_ok = tm
         poses.append((tm, *T, w))
+        if PAR['kotwica']:
+            stare = [i for i in bl if kf_seg[i][3] < tm - PAR['kotw_wiek']]
+            rk = None
+            if len(stare) >= 3:
+                if len(stare) > 60:
+                    stare = [stare[i] for i in np.argsort(np.hypot(*(poz[stare] - T[:2]).T))[:60]]
+                Ps = np.vstack([kf_seg[i][1] for i in stare]); Ns = np.vstack([kf_seg[i][2] for i in stare])
+                rk = icp_widok(ps, Ps, Ns, cKDTree(Ps), T.copy(), prior=(T[2], 20.0))
+            dk = None
+            if (rk is not None and rk[3] >= PAR['kotw_inl'] and rk[1] <= 0.03 and rk[2][0] >= 1.5 * PAR['deg_prog']):
+                dk = rk[0] - T
+                if np.hypot(dk[0], dk[1]) > PAR['kotw_max'] or abs(dk[2]) > np.radians(PAR['kotw_max_kat']): dk = None
+            if dk is None:
+                kand = []
+            elif np.hypot(dk[0], dk[1]) < 0.03 and abs(dk[2]) < np.radians(0.7):
+                t_kotw = tm; kand = []                      # zgodne ze stara mapa - stad liczymy ewentualny dryf
+            else:
+                kand.append((dk, max(kf_seg[i][3] for i in stare)))
+                K = np.array([k_[0] for k_ in kand[-PAR['kotw_ile']:]])
+                if len(kand) >= PAR['kotw_ile'] and np.ptp(K[:, 0]) < 0.05 and np.ptp(K[:, 1]) < 0.05 and np.ptp(K[:, 2]) < np.radians(1.5):
+                    # pewny, powtarzalny dryf wzgledem starej mapy: rozkladamy go liniowo w czasie od ostatniego
+                    # zakotwiczenia (albo od chwili, gdy to miejsce bylo ostatnio widziane) do teraz
+                    t_a = max(kand[-1][1], t_kotw if t_kotw is not None else -1e9)
+                    Tc = rk[0]; dth_ = Tc[2] - T[2]
+                    pa = np.array(poses); ia = max(0, np.searchsorted(pa[:, 0], t_a, side='right') - 1); A = pa[ia, 1:3].copy()
+                    def _R(a_): return np.array([[np.cos(a_), -np.sin(a_)], [np.sin(a_), np.cos(a_)]])
+                    tres = Tc[:2] - (A + _R(dth_) @ (T[:2] - A))
+                    def _popr(Tp, t_):
+                        w_ = float(np.clip((t_ - t_a) / max(tm - t_a, 1e-6), 0, 1))
+                        xy = A + _R(w_ * dth_) @ (np.asarray(Tp[:2]) - A) + w_ * tres
+                        return np.array([xy[0], xy[1], Tp[2] + w_ * dth_])
+                    for i_ in range(ia + 1, len(poses)):
+                        t_, x_, y_, th_, ww_ = poses[i_]; n_ = _popr((x_, y_, th_), t_); poses[i_] = (t_, n_[0], n_[1], n_[2], ww_)
+                    for e in kf_seg:
+                        if e[3] > t_a:
+                            e[0] = _popr(e[0], e[3]); c, s_ = np.cos(e[0][2]), np.sin(e[0][2]); Rm = np.array([[c, s_], [-s_, c]])
+                            e[1] = e[5] @ Rm + e[0][:2]; e[2] = _do_czujnika(e[1], e[6] @ Rm, e[0])
+                            kf[e[4]] = (e[0].copy(), kf[e[4]][1], kf[e[4]][2])
+                    STAT['kotwice'].append((float(tm), float(tm - t_a), float(np.hypot(*(Tc[:2] - T[:2]))), float(np.degrees(dth_))))
+                    T = np.array(poses[-1][1:4]); t_kotw = tm; kand = []
         Tk = kf_seg[-1][0]
         if np.hypot(*(T[:2] - Tk[:2])) > PAR['kf_dl'] or abs(T[2] - Tk[2]) > np.radians(PAR['kf_kat']):
             dodaj_kf()
