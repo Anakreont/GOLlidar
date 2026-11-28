@@ -378,13 +378,13 @@ const KE_NAZ={start:'start',zlozony:'złożony',grupa_osobno:'grupa osobno',niep
 const kawSr=()=>{let x=0,y=0,n=0;KE.sel.forEach(i=>{const s=KE.S[i];x+=s.c[0]+s.t[0];y+=s.c[1]+s.t[1];n++});return[x/(n||1),y/(n||1)]};
 function kawObrGr(S0,sr,da){KE.sel.forEach(i=>{const s=KE.S[i],o=S0[i],q=kR(o.c[0]+o.t[0]-sr[0],o.c[1]+o.t[1]-sr[1],da);s.a=o.a+da;s.t=[sr[0]+q[0]-s.c[0],sr[1]+q[1]-s.c[1]]})}
 const kawKop=()=>{const o={};KE.sel.forEach(i=>o[i]=JSON.parse(JSON.stringify(KE.S[i])));return o};
-function kawUsun(){KE.sel.forEach(i=>KE.S[i].stan='usuniety');KE.sel.clear();KE.wyb=-1;kawLicz();kawPanel();kawRys()}
-function kawLicz(){KE.zm=KE.S.filter(x=>x.stan=='reczny'||x.stan=='usuniety').length}
+function kawUsun(){KE.sel.forEach(i=>KE.S[i].stan='usuniety');KE.sel.clear();KE.wyb=-1;kawIle();kawPanel();kawRys()}
+function kawIle(){KE.zm=KE.S.filter(x=>x.stan=='reczny'||x.stan=='usuniety').length}
 function kawEd(){if(!S)return;const Z=(S.kawalki||{}).zloz||{};if(Z.stan!='gotowe'){$('pk').innerHTML='<p class="mala">Najpierw „🧲 Złóż kawałki” (przycisk u góry, przy kawałkach).</p>';KE.n=null;kawRys();return}
  if(KE.n==S.n&&KE.P.length){kawPanel();kawRys();return}
  Promise.all([fetch(plik('_wynik/kawalki_zlozone.json')).then(r=>r.json()),fetch(plik('_wynik/kawalki_zlozone_punkty.json')).then(r=>r.ok?r.json():null)]).then(([St,E])=>{
   if(!E){$('pk').innerHTML='<p class="mala">Ten wynik składania jest ze starszej wersji – kliknij „🧲 ↻”, żeby złożyć od nowa.</p>';return}
-  KE.n=S.n;KE.S=St;KE.S0=JSON.parse(JSON.stringify(St));KE.P=E.kawalki.map(e=>new Float32Array(e.P.map(v=>v/100)));KE.T=E.kawalki.map(e=>e.trasa.map(v=>v/100));KE.wyb=-1;KE.sel.clear();kawLicz();KE.miary=[];kawCalosc();kawPanel();kawRys()})}
+  KE.n=S.n;KE.S=St;KE.S0=JSON.parse(JSON.stringify(St));KE.P=E.kawalki.map(e=>new Float32Array(e.P.map(v=>v/100)));KE.T=E.kawalki.map(e=>e.trasa.map(v=>v/100));KE.wyb=-1;KE.sel.clear();kawIle();KE.miary=[];kawCalosc();kawPanel();kawRys()})}
 function kawXY(i,x,y){const s=KE.S[i],ca=Math.cos(s.a),sa=Math.sin(s.a),dx=x-s.c[0],dy=y-s.c[1];return[ca*dx-sa*dy+s.c[0]+s.t[0],sa*dx+ca*dy+s.c[1]+s.t[1]]}
 const kR=(x,y,a)=>{const c_=Math.cos(a),s_=Math.sin(a);return[c_*x-s_*y,s_*x+c_*y]};
 const kP=(x,y)=>{const q=kR(x,y,KE.rot*Math.PI/180);return[KE.w.x+q[0]*KE.w.s,KE.w.y-q[1]*KE.w.s]};
@@ -412,8 +412,8 @@ function kawPanel(){const i=KE.wyb,s=i>=0?KE.S[i]:null,ile={};KE.S.forEach(x=>il
 function kawObrCal(d){const r=ck.getBoundingClientRect(),cx=r.width/2,cy=r.height/2,w0=kS(cx,cy);KE.rot+=d;const q=kR(w0[0],w0[1],KE.rot*Math.PI/180);KE.w.x=cx-q[0]*KE.w.s;KE.w.y=cy+q[1]*KE.w.s;kawPanel();kawRys()}
 function kawMiara(){KE.tryb=KE.tryb=='miara'?null:'miara';KE.pA=null;kawPanel();kawRys()}
 function kawObr(d){kawObrGr(kawKop(),kawSr(),d*Math.PI/180);kawZmiana();kawRys()}
-function kawZmiana(){KE.sel.forEach(i=>KE.S[i].stan='reczny');kawLicz();kawPanel()}
-function kawCofnij(){KE.sel.forEach(i=>{KE.S[i]=JSON.parse(JSON.stringify(KE.S0[i]));if(KE.S[i].stan=='usuniety')KE.S[i].stan='reczny'});kawLicz();kawPanel();kawRys()}
+function kawZmiana(){KE.sel.forEach(i=>KE.S[i].stan='reczny');kawIle();kawPanel()}
+function kawCofnij(){KE.sel.forEach(i=>{KE.S[i]=JSON.parse(JSON.stringify(KE.S0[i]));if(KE.S[i].stan=='usuniety')KE.S[i].stan='reczny'});kawIle();kawPanel();kawRys()}
 function kawDociagnij(){const i=KE.wyb;$('kawInfo').textContent='dociągam…';
  fetch('api/kawalki_dociagnij?n='+S.n+'&i='+i,{method:'POST',body:JSON.stringify(KE.S)}).then(r=>r.json()).then(j=>{if(j.blad){$('kawInfo').textContent=j.blad;return}
   const s=KE.S[i],a0=s.a,t0=s.t.slice();s.a=j.a;s.t=j.t;kawZmiana();kawRys();
