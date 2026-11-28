@@ -20,6 +20,8 @@ PAR = dict(imu_w=200.0, promien=8.0, kf_dl=0.25, kf_kat=8.0, co_ktory=2, przechy
            # a blad jest rozkladany wstecz na odcinek, na ktorym powstal.
            deskew_v=1.0,                   # 28.11: deskew takze przesuniecia (ruch glowicy w czasie obrotu, ~5 cm przy 0,5 m/s); 0 = tylko obrot.
                                            # A/B na 6 sesjach: grubosc scian (mediana) 22->18, 21->14, 28->22, 22->18 mm; znak -1 pogarsza (29-33 mm)
+           przechyl_sledz=25.0,            # 28.11: skany przechylone 12-25 st. nie sa odrzucane - po rzutowaniu na poziom sluza do samego
+                                           # sledzenia (nie trafiaja do mapy); mniej luk i fragmentow (SP162 2 pietro: 3 -> 2). 0 = wylaczone
            kotwica=True, kotw_wiek=20.0, kotw_inl=0.45, kotw_max=0.6, kotw_max_kat=10.0, kotw_ile=3)                 # odch. std |przysp.| w 0,5 s ponizej progu = operator stoi -> przewidywany ruch zerowy                  # IMU SHTP: kurs z calki zyroskopu; wylaczone - przy zanikach zasilania (USB) gubi skoki, ktore kwaternion zachowuje
 STAT = {}
 import os as _os, json as _json
@@ -145,8 +147,10 @@ def obroty(z, rmin=0.3, rmax=9.0, pion=None, pion_pas=None):
                 h = D * np.sin(np.clip(elew, -1.2, 1.2))
                 pasm = (h < PAR['pas_gora']) & (h > -PAR['pas_dol'])
                 n_pas[0] += int((~pasm & (D > rmin)).sum()); n_pas[1] += len(D)
-            if rzut:
-                D = D * np.cos(np.clip(elew, -0.35, 0.35))
+            # przechyl_sledz: skan przechylony ponad przechyl_max nie jest odrzucany, tylko rzutowany na poziom
+            # (odleglosc do pionowej sciany * cos elewacji) i uzywany do samego sledzenia (nie trafia do mapy)
+            if rzut or (PAR.get('przechyl_sledz', 0) and np.degrees(np.sqrt(p_ ** 2 + r_ ** 2).max()) > PAR['przechyl_max']):
+                D = D * np.cos(np.clip(elew, -0.6, 0.6))
         m = (D > rmin) & (D < rmax) & ~slabe & pasm
         m &= ~((D < 0.7) & (A > 130) & (A < 230))
         m &= ~((D < 0.9) & maska[j][(A // 10).astype(int) % 36])
@@ -261,7 +265,7 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segme
         if n_ < 10 or not am.any(): return False
         m_ = (c1[b_] - c1[a_]) / n_
         return (c2[b_] - c2[a_]) / n_ - m_ * m_ < PAR['postoj_mg'] ** 2
-    STAT.update(skany=len(sk), slabe=0, przechyl=0, zmiana=0, ev=[], kotwice=[])
+    STAT.update(skany=len(sk), slabe=0, przechyl=0, zmiana=0, ev=[], kotwice=[], skos_sledzone=0)
     kf_t = []; t_kotw = None; kand = []        # kotwica: czasy kluczowych, ostatnie pewne zakotwiczenie, kandydaci poprawki
     prz = np.degrees(np.arccos(np.clip(np.cos(np.radians(pit - pion[0])) * np.cos(np.radians(rol - pion[1])), -1, 1)))
     poses, kf, info = [], [], []
@@ -281,7 +285,10 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segme
         if seg != seg_ost:
             kf_seg = []; seg_ost = seg
         pz = np.interp(tt, ti, prz)
-        if pz.max() > PAR['przechyl_max']: info.append((tm, 'przechyl')); STAT['przechyl'] += 1; continue
+        skos = pz.max() > PAR['przechyl_max']
+        if skos and not (PAR.get('przechyl_sledz', 0) and pz.max() <= PAR['przechyl_sledz'] and kf_seg):
+            info.append((tm, 'przechyl')); STAT['przechyl'] += 1; continue
+        if skos: STAT['skos_sledzone'] = STAT.get('skos_sledzone', 0) + 1
         if pz.max() - pz.min() > PAR['przechyl_zm']: info.append((tm, 'przechyl')); STAT['zmiana'] += 1; continue
         tl_ = [l for l in TEST_LUKI if l[0] <= tm <= l[0] + l[1]]
         if tl_: info.append((tm, 'test')); zaburz = tl_[0]; continue
@@ -402,7 +409,7 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segme
                     STAT['kotwice'].append((float(tm), float(tm - t_a), float(np.hypot(*(Tc[:2] - T[:2]))), float(np.degrees(dth_))))
                     T = np.array(poses[-1][1:4]); t_kotw = tm; kand = []
         Tk = kf_seg[-1][0]
-        if np.hypot(*(T[:2] - Tk[:2])) > PAR['kf_dl'] or abs(T[2] - Tk[2]) > np.radians(PAR['kf_kat']):
+        if not skos and (np.hypot(*(T[:2] - Tk[:2])) > PAR['kf_dl'] or abs(T[2] - Tk[2]) > np.radians(PAR['kf_kat'])):
             dodaj_kf()
     mapa.frag = np.array(frag, int).reshape(-1, 2); mapa.frag_luka = frag_luka
     return np.array(poses), kf, info, pion

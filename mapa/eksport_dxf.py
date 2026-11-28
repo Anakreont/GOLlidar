@@ -142,6 +142,55 @@ def lica(Qd, Nd, kat_st=20):
     return wyn, typ
 
 
+def domknij(sciany, typy, trasa=None, zasieg=0.8):
+    """Domykanie naroznikow: pomieszczenia maja katy proste, wiec lico sciany urwane przed naroznikiem (cien mebla,
+    slabe odbicie, kat padania) przedluzamy do najblizszego lica prostopadlego, jesli jego linia lezy do `zasieg`
+    metrow dalej, a ono samo siega (albo po takim samym przedluzeniu siegnie) do tego miejsca. Oba lica spotykaja
+    sie wtedy w narozniku. Nie przedluzamy przez miejsce, ktorym przeszedl operator (drzwi) - odcinek przedluzenia
+    nie moze przecinac trasy. Decyzje z pierwotnej geometrii, zeby kolejnosc nie miala znaczenia.
+    Zwraca (sciany, typy, liczba domknietych koncow)."""
+    S = [np.array(pl, float) for pl in sciany]
+    H = []; V = []            # (indeks, stala, od, do)
+    for i, (pl, t) in enumerate(zip(S, typy)):
+        if t != 'lico' or len(pl) != 2: continue
+        (x1, y1), (x2, y2) = pl
+        if abs(y1 - y2) < 1e-6 and abs(x1 - x2) > 1e-6: H.append((i, y1, min(x1, x2), max(x1, x2)))
+        elif abs(x1 - x2) < 1e-6 and abs(y1 - y2) > 1e-6: V.append((i, x1, min(y1, y2), max(y1, y2)))
+    tr = np.asarray(trasa, float) if trasa is not None and len(trasa) > 1 else None
+    def przecina(p, q):
+        if tr is None: return False
+        a, b = tr[:-1], tr[1:]
+        lo, hi = np.minimum(p, q) - 0.05, np.maximum(p, q) + 0.05
+        m = (np.maximum(a, b) >= lo).all(1) & (np.minimum(a, b) <= hi).all(1)
+        if not m.any(): return False
+        a, b = a[m], b[m]; d = q - p; e = b - a
+        den = d[0] * e[:, 1] - d[1] * e[:, 0]
+        with np.errstate(divide='ignore', invalid='ignore'):
+            t_ = ((a[:, 0] - p[0]) * e[:, 1] - (a[:, 1] - p[1]) * e[:, 0]) / den
+            u_ = ((a[:, 0] - p[0]) * d[1] - (a[:, 1] - p[1]) * d[0]) / den
+        return bool(np.any((np.abs(den) > 1e-12) & (t_ >= 0) & (t_ <= 1) & (u_ >= 0) & (u_ <= 1)))
+    nowe = {}                 # (indeks, 0 = poczatek / 1 = koniec) -> nowa wspolrzedna
+    def szukaj(rownol, prostop, poziome):
+        for i, c, od, do in rownol:
+            for kon, znak in ((do, +1), (od, -1)):
+                best = None
+                for j, cv, o2, d2 in prostop:
+                    dl = (cv - kon) * znak            # odleglosc do linii prostopadlej w kierunku przedluzenia
+                    if dl < 0.02 or dl > zasieg: continue
+                    if not (o2 - zasieg <= c <= d2 + zasieg): continue
+                    if best is None or dl < best[0]: best = (dl, cv)
+                if best is None: continue
+                p = np.array([kon, c] if poziome else [c, kon]); q = np.array([best[1], c] if poziome else [c, best[1]])
+                if przecina(p, q): continue
+                nowe[(i, 1 if znak > 0 else 0)] = best[1]
+    szukaj(H, V, True); szukaj(V, H, False)
+    for (i, k), w in nowe.items():
+        pl = S[i]; os_ = 0 if abs(pl[0, 1] - pl[1, 1]) < 1e-6 else 1
+        j = int(np.argmax(pl[:, os_])) if k == 1 else int(np.argmin(pl[:, os_]))
+        pl[j, os_] = w
+    return S, list(typy), len(nowe)
+
+
 def przezroczyste(Q, ile, poz, kom=0.05, krok_pkt=3):
     """Wycinanie 'przez wolna przestrzen': komorka, przez ktora wiazki z innych miejsc wielokrotnie przechodzily,
     a rzadko w nia trafialy, to nie sciana, tylko cos chwilowego albo pozornego (ludzie, otwarte drzwi, odbicia

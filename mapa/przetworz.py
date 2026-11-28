@@ -10,9 +10,9 @@ import numpy as np
 TU = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, TU); sys.path.insert(0, os.path.join(TU, '..'))
 import slam, sprawdz as S
-from eksport_dxf import kierunek, kondygnacja, szkielet, lica, KOM, MIN_KF
+from eksport_dxf import kierunek, kondygnacja, szkielet, lica, domknij, KOM, MIN_KF
 
-WERSJA = 10  # 10: deskew przesuniecia; 9: drugi przebieg (dopracowanie); 8: kotwica do starej mapy (dryf po ciasnym pomieszczeniu); 7: degeneracja w korytarzach, pas wysokosci, szukanie kursu po luce, IMU SHTP
+WERSJA = 11  # 11: sledzenie przy przechyle 12-25 st., domykanie naroznikow lic; 10: deskew przesuniecia; 9: drugi przebieg (dopracowanie); 8: kotwica do starej mapy (dryf po ciasnym pomieszczeniu); 7: degeneracja w korytarzach, pas wysokosci, szukanie kursu po luce, IMU SHTP
 DZIEL_BARO = False   # True: dawny podzial sesji na kondygnacje wg barometru
 PETLE = False          # zamykanie petli (posegraf.graf) - do dopracowania wag, na razie gorzej niz bez
 RZUTUJ = False
@@ -109,7 +109,7 @@ def przetworz(kat):
           f"[min. wart. wlasna: 10%={np.percentile(ev,10):.0f} 50%={np.percentile(ev,50):.0f}], "
           f"odrzucone przechyl {st.get('przechyl')} + zmiana przechylu {st.get('zmiana')}, "
           f"punkty poza pasem wysokosci {100*st.get('pas_odrzucone',0):.1f}%, fragmentow {len(set(map(tuple, slam.mapa.frag.tolist())))}, "
-          f"kotwice {len(st.get('kotwice') or [])}, kurs: {'zyroskop' if (slam.PAR['yaw_zyro'] and 'yaw_zyro' in z) else 'BNO'}", flush=True)
+          f"kotwice {len(st.get('kotwice') or [])}, sledzone w przechyle {st.get('skos_sledzone', 0)}, kurs: {'zyroskop' if (slam.PAR['yaw_zyro'] and 'yaw_zyro' in z) else 'BNO'}", flush=True)
     kt = [P[np.argmin(np.abs(P[:, 1:4] - Tk).sum(1)), 0] for Tk, _, _ in kf]
     # katy proste: prostowanie kursu osobno w kazdym odcinku (kondygnacji)
     import posegraf
@@ -168,6 +168,9 @@ def przetworz(kat):
         sciany, typy = lica(Qd, Nd)
         m = (P[:, 0] >= a) & (P[:, 0] <= b)
         tr = P[m, 1:3] @ R - [x0, y0]
+        if slam.PAR.get('domknij', True):          # katy proste: lica urwane przed naroznikiem przedluzone do lica prostopadlego
+            sciany, typy, ile_d = domknij(sciany, typy, trasa=tr, zasieg=float(slam.PAR.get('domknij_m', 0.8)))
+            print(f'  domkniete narozniki: {ile_d} koncow lic', flush=True)
 
         def poz(t):
             i = min(np.searchsorted(P[:, 0], t), len(P) - 1)
