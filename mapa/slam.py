@@ -18,6 +18,8 @@ PAR = dict(imu_w=200.0, promien=8.0, kf_dl=0.25, kf_kat=8.0, co_ktory=2, przechy
            # i hol rysowal sie drugi raz. Kotwica: skan dopasowany dodatkowo TYLKO do starych kluczowych skanow
            # (starszych niz kotw_wiek s); pewna i powtarzalna roznica = dryf -> pozycja wraca na stara mape,
            # a blad jest rozkladany wstecz na odcinek, na ktorym powstal.
+           deskew_v=1.0,                   # 28.11: deskew takze przesuniecia (ruch glowicy w czasie obrotu, ~5 cm przy 0,5 m/s); 0 = tylko obrot.
+                                           # A/B na 6 sesjach: grubosc scian (mediana) 22->18, 21->14, 28->22, 22->18 mm; znak -1 pogarsza (29-33 mm)
            kotwica=True, kotw_wiek=20.0, kotw_inl=0.45, kotw_max=0.6, kotw_max_kat=10.0, kotw_ile=3)                 # odch. std |przysp.| w 0,5 s ponizej progu = operator stoi -> przewidywany ruch zerowy                  # IMU SHTP: kurs z calki zyroskopu; wylaczone - przy zanikach zasilania (USB) gubi skoki, ktore kwaternion zachowuje
 STAT = {}
 import os as _os, json as _json
@@ -266,6 +268,10 @@ def mapa(kat, znak=+1, t_od=0, t_do=1e9, imu_w=None, pion=None, log=False, segme
         yp = np.interp(tt, ti, yaw); ym = np.interp(tm, ti, yaw)
         a = -ang + znak * (yp - ym)              # LD19 zgodnie z zegarem -> matematycznie przeciwnie; deskew obrotu
         p = np.stack([D * np.cos(a), D * np.sin(a)], 1)
+        if PAR.get('deskew_v') and len(poses) and t_ok is not None and tm - t_ok < 0.3:
+            # deskew przesuniecia: w czasie obrotu (0,1 s) glowica przechodzi ~5 cm; v = ruch na skan w ukladzie swiata
+            c_, s__ = np.cos(T[2]), np.sin(T[2]); vl = np.array([c_ * v[0] + s__ * v[1], -s__ * v[0] + c_ * v[1]])
+            p = p + float(PAR['deskew_v']) * np.outer((tt - tm) / max(tm - t_ok, 0.05), vl)
         w = np.exp(-(pz.mean() ** 2) / (2 * 8 ** 2))
         def dodaj_kf():
             n = normalne(p); mk = np.isfinite(n[:, 0]); c, s_ = np.cos(T[2]), np.sin(T[2]); Rm = np.array([[c, s_], [-s_, c]])
