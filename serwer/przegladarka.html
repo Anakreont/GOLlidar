@@ -111,6 +111,7 @@ body.bez-listy{grid-template-columns:0 1fr}body.bez-listy aside{display:none}
 .menu .lista{min-width:340px}#cp2{width:100%;height:100%;display:block;background:#fff;touch-action:none;cursor:grab}
 .p2nar{position:absolute;right:10px;top:10px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:60%;z-index:2}
 .p2nar .btn{padding:5px 10px;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,.1)}.p2nar .btn.akt{background:var(--akcent);color:#fff;border-color:var(--akcent)}
+#p2pan{width:400px}#p2pan table{font-size:12px}#p2pan th,#p2pan td{padding:5px 6px}#p2pan .tw{overflow-x:auto;margin-bottom:8px}#p2pan .p2it{flex-wrap:wrap}
 #p2pan h3{margin:14px 0 6px;font-size:14px}#p2pan h3:first-child{margin-top:0}
 .p2it{display:flex;gap:6px;align-items:center;padding:5px 6px;border-radius:6px;font-size:13px}.p2it:hover{background:var(--bg)}.p2it .sp{flex:1;cursor:pointer}
 .p2it a,.p2it button{font-size:12px;padding:2px 7px}
@@ -722,9 +723,9 @@ function p2RysPom(g,E,PR){PR.pomieszczenia.forEach((p,i)=>{if(!p.obrys)return;co
 function p2PomTraf(x,y){const PR=p2PomK();if(!PR)return null;const w=(P,x,y)=>{let c=false;for(let i=0,j=P.length-1;i<P.length;j=i++){const a=P[i],b=P[j];if((a[1]>y)!=(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])c=!c}return c};
  return PR.pomieszczenia.filter(p=>p.obrys&&w(p.obrys,x,y)).sort((a,b)=>a.pow_m2-b.pow_m2)[0]||null}
 function p2PomPanel(){const PR=p2PomK(),pre=p2W()=='petle'?'_wynik/l2/petle/':'_wynik/l2/',d=P2.d;if(!PR)return'';const P=PR.pomieszczenia.filter(p=>p.pow_m2!=null);
- let h='<h3>Pomieszczenia – poprawione ('+P.length+', '+liczba(P.reduce((a,p)=>a+p.pow_m2,0))+' m²)</h3><table><tr><th>nr</th><th>nazwa</th><th>m²</th><th>dł.×szer.</th><th>h</th><th>m³</th><th></th></tr>'+
+ let h='<h3>Pomieszczenia – poprawione ('+P.length+', '+liczba(P.reduce((a,p)=>a+p.pow_m2,0))+' m²)</h3><div class="tw"><table><tr><th>nr</th><th>nazwa</th><th>m²</th><th>dł.×szer.</th><th>h</th><th>m³</th><th></th></tr>'+
   PR.pomieszczenia.map(p=>'<tr'+(p.ocena&&p.ocena!='ok'?' style="color:#b91c1c" title="'+esc(p.ocena)+'"':'')+'><td>'+p.nr+'</td><td>'+esc(p.nazwa||'')+(p.ocena&&p.ocena!='ok'?' ⚠':'')+'</td><td>'+liczba(p.pow_m2)+'</td><td>'+(p.dl_m?liczba(p.dl_m)+'×'+liczba(p.szer_m):'')+'</td><td>'+liczba(p.wys_m)+'</td><td>'+liczba(p.kub_m3,1)+'</td>'+
-   '<td style="white-space:nowrap"><button class="btn" onclick="p2PomNazwa('+p.id+')">✎</button><button class="btn cz" onclick="p2Pom(\'usun\',{id:'+p.id+'})">🗑</button></td></tr>').join('')+'</table>';
+   '<td style="white-space:nowrap"><button class="btn" onclick="p2PomNazwa('+p.id+')">✎</button><button class="btn cz" onclick="p2Pom(\'usun\',{id:'+p.id+'})">🗑</button></td></tr>').join('')+'</table></div>';
  if((PR.sciany||[]).length)h+='<div class="mala">Dorysowane ściany: '+PR.sciany.map((w,i)=>'<button class="btn" onclick="p2Pom(\'usun_sciane\',{id:'+i+'})">'+(i+1)+' ×</button>').join(' ')+'</div>';
  const r=(d.pom_reczne||{}).r_drzwi||0.55;
  h+='<div class="p2it"><span class="sp mala">same domykaj przejścia do</span><input type="number" step="0.1" min="0" max="2" value="'+(2*r).toFixed(1)+'" style="width:58px" onchange="p2Pom(\'drzwi\',{r:(+this.value||0)/2})"> m</div>'+

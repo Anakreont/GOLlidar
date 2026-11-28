@@ -360,6 +360,16 @@ def main():
     tylko = a.k
     if a.op == 'start' or not ED['k']:
         start(PL, ED); tylko = None
+        # punkty z automatu w tym samym obszarze (np. kilka w jednej hali) - zostaje jeden, bez kopii pomieszczenia
+        D = dane(wy, PL)
+        for k in PL['kondygnacje']:
+            E_ = ED['k'][str(k['nr'])]; Mk = maski(D[k['nr']], E_['sciany'], ED.get('r_drzwi', R_DRZWI)); byly = set(); zost = []
+            for p in E_['pom']:
+                e = do_kom(Mk, *p['seed'])
+                if e and e in byly:
+                    continue
+                byly.add(e); zost.append(p)
+            E_['pom'] = zost
     E = ED['k'].setdefault(str(a.k), {'sciany': [], 'pom': []}) if a.k is not None else None
     if a.op == 'dodaj':
         E['pom'].append({'id': nowe_id(E), 'seed': [round(a.x, 3), round(a.y, 3)], 'nazwa': a.nazwa})
