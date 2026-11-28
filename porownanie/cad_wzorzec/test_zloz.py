@@ -59,7 +59,7 @@ def main():
         if os.environ.get('LOG'):
             for i, s in enumerate(S):
                 print(f"   K{K[i]['nr']:02d} {s['stan']:9s} obrot {np.degrees(s['a']):+6.1f}  potrzebny {np.degrees(K[i0]['A'] - K[i]['A']):+6.1f}  blad {bl[i]:.2f}")
-        bl = np.array(bl); zl = np.array([s['stan'] != 'niepewny' for s in S])
+        bl = np.array(bl); zl = np.array([s['stan'] in ('start', 'zlozony') for s in S])
         print(f"== {Kd['nazwa']}: {len(K)} kawalkow; przed: mediana bledu {np.median(bl_przed):.2f} m; "
               f"po: zlozonych {zl.sum()}/{len(S)}, z nich <20 cm: {(bl[zl] < 0.2).sum()}, BLEDNIE zlozonych (>=50 cm): "
               f"{(bl[zl] >= 0.5).sum()}; mediana bledu po {np.median(bl):.2f} m; {time.time() - t0:.0f} s")

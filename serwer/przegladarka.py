@@ -565,7 +565,7 @@ def stan_zloz(n, k):
     ile = None
     try:
         S = json.load(open(os.path.join(wy, 'kawalki_zlozone.json'), encoding='utf-8'))
-        ile = {x: sum(s_['stan'] == x for s_ in S) for x in ('start', 'zlozony', 'niepewny')}
+        ile = {x: sum(s_['stan'] == x for s_ in S) for x in ('start', 'zlozony', 'grupa_osobno', 'niepewny')}
     except (OSError, ValueError):
         pass
     return {'stan': st, 'ile': ile}

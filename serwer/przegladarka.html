@@ -221,7 +221,7 @@ function pomLicz(){post('api/pomieszczenia?n='+S.n,()=>{S.pomieszczenia={stan:'l
 function zlozTxt(U){if(U.stan=='liczy'||U.stan=='czeka')return'<span class="btn">🧲 składam kawałki…</span>';
  const b='<button class="btn" title="Złóż kawałki między sobą (bez rysunku CAD): ta sama sala widziana w kilku kawałkach zostaje nałożona" onclick="zlozLicz()">🧲 '+(U.stan=='gotowe'?'↻':'Złóż kawałki')+'</button>';
  if(U.stan!='gotowe')return b;const i=U.ile||{};
- return'<a class="btn" title="Kawałki po złożeniu, warstwy KAWALEK_NN_zlozony/niepewny" href="'+plik('_wynik/kawalki_zlozone.dxf')+'">⬇ złożone</a><a class="btn" href="'+plik('_wynik/kawalki_zlozone.png')+'" target="_blank">przed/po ('+((i.start||0)+(i.zlozony||0))+' złożonych, '+(i.niepewny||0)+' zostało)</a>'+b}
+ return'<a class="btn" title="Kawałki po złożeniu, warstwy KAWALEK_NN_zlozony/niepewny" href="'+plik('_wynik/kawalki_zlozone.dxf')+'">⬇ złożone</a><a class="btn" href="'+plik('_wynik/kawalki_zlozone.png')+'" target="_blank">przed/po ('+((i.start||0)+(i.zlozony||0))+' złożonych, '+(i.grupa_osobno||0)+' w osobnych grupach, '+(i.niepewny||0)+' zostało)</a>'+b}
 function zlozLicz(){post('api/zloz_kawalki?n='+S.n,()=>{S.kawalki.zloz={stan:'liczy'};naglowek();const n=S.n;const f=()=>fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(!S||S.n!=n)return;S.kawalki=d.kawalki;naglowek();const z=(d.kawalki.zloz||{}).stan;if(z=='liczy'||z=='czeka')setTimeout(f,10000);else if(z!='gotowe')alert('Składanie nie wyszło – szczegóły w _wynik/kawalki_zlozone_log.txt')});setTimeout(f,10000)})}
 function ulozTxt(U){if(U.stan=='liczy'||U.stan=='czeka')return'<span class="btn">🧩 układam na CAD…</span>';
  if(U.stan=='brak cad')return'';const m=U.metryki||{},k=m.klasy||{};

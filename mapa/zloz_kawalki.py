@@ -65,7 +65,7 @@ class Odniesienie:
         return koszt, pokr.astype(float)
 
 
-def oceny(P, ref, c, a0):
+def oceny(P, ref, c, a0, PRZES=PRZES, OBROT=OBROT):
     """Najlepsze (a, t) dla kawalka P obroconego wokol c, przesuniecie wzgledem obecnego polozenia."""
     Q = rzedz(P, 0.05)
     if len(Q) > 3000:
@@ -156,44 +156,91 @@ def przeksztalc(P, c, a, t):
 
 
 def zloz(K, rundy=2, log=print):
-    """K: lista kawalkow {'nr','P','trasa'} we wspolnym ukladzie (z SLAM). Zwraca liste {nr,a,t,c,stan,...}."""
+    """K: lista kawalkow {'nr','P','trasa'} we wspolnym ukladzie (z SLAM). Zwraca liste {nr,a,t,c,stan,grupa,...}.
+    Grupy: najpierw glowna grupa od najwiekszego odcinka; z tego, co zostanie, kolejne grupy (np. skrzydlo budynku,
+    ktore z reszta ma wspolny tylko kawalek korytarza, ale samo ze soba duzo); na koncu grupy doczepiane do glownej
+    w calosci (duzy fragment trudniej pomylic niz pojedynczy odcinek)."""
     n = len(K)
-    stan = [{'nr': k['nr'], 'a': 0.0, 't': np.zeros(2), 'c': k['P'].mean(0), 'stan': 'niepewny'} for k in K]
+    stan = [{'nr': k['nr'], 'a': 0.0, 't': np.zeros(2), 'c': k['P'].mean(0), 'stan': 'niepewny', 'grupa': None} for k in K]
     poz = lambda i: przeksztalc(K[i]['P'], stan[i]['c'], stan[i]['a'], stan[i]['t'])
-    zlozone = [int(np.argmax([len(k['P']) for k in K]))]
-    stan[zlozone[0]]['stan'] = 'start'
-    reszta = set(range(n)) - set(zlozone)
-    proby = {}                 # kawalek -> liczba zlozonych przy ostatniej nieudanej probie (ponowna proba, gdy przybedzie)
+    wolne = set(range(n)); grupy = []
+    while wolne:
+        g = _grupa(K, stan, wolne, poz, len(grupy), log)
+        wolne -= set(g)
+        if len(g) >= 2 or not grupy:
+            grupy.append(g)
+        else:
+            stan[g[0]]['grupa'] = None; stan[g[0]]['stan'] = 'niepewny'
+    log(f"grupy: {[len(g) for g in grupy]}")
+    # doczepianie grup do glownej (najwieksza wspolna czesc najpierw), szerokie okno
+    glowna = list(grupy[0]); reszta = grupy[1:]
+    zmiana = True
+    while reszta and zmiana:
+        zmiana = False
+        ref = Odniesienie(np.vstack([poz(j) for j in glowna]))
+        dr = cKDTree(rzedz(ref.Q, 0.2))
+        reszta.sort(key=lambda g: -np.mean(dr.query(rzedz(np.vstack([poz(j) for j in g]), 0.2), distance_upper_bound=1.0)[0] < 1.0))
+        for g in reszta:
+            Pg = np.vstack([poz(j) for j in g]); cg = Pg.mean(0)
+            h = oceny(Pg, ref, cg, 0.0, 6.0, 25)
+            if h is None:
+                continue
+            a, t, zg, wsp = icp(Pg, ref, cg, h['a'], h['t'])
+            marg = h['wynik'] - h['drugi']
+            ok = wsp >= 0.10 and zg >= 0.45 and (marg >= 0.05 or os.environ.get('ZLOZ_WSZYSTKO')) and h['u'] is None
+            log(f"  grupa {[K[j]['nr'] for j in g]}: wspolne {wsp:.2f} zgodnosc {zg:.2f} margines {marg:.2f} "
+                f"przesuniecie {np.hypot(*t):.2f} m obrot {np.degrees(a):+.1f} st. -> {'DOCZEPIONA' if ok else 'osobno'}")
+            if ok:
+                Ra = _R(a)
+                for j in g:
+                    sj = stan[j]
+                    sj['t'] = (sj['c'] + sj['t'] - cg) @ Ra.T + cg + t - sj['c']; sj['a'] += a
+                glowna += g; reszta.remove(g); zmiana = True
+                break
+    for g in reszta:                       # nie doczepione: zostaja zlozone wewnetrznie, ale polozenie grupy niepewne
+        for j in g:
+            if stan[j]['stan'] != 'niepewny':
+                stan[j]['stan'] = 'grupa_osobno'
+    for r in range(1, rundy):
+        for i in sorted(glowna, key=lambda i: -len(K[i]['P'])):
+            if stan[i]['stan'] in ('start', 'niepewny'):
+                continue
+            ref = Odniesienie(np.vstack([poz(j) for j in glowna if j != i]))
+            _proba(K, stan, i, ref, log, runda=r)
+    for s_ in stan:
+        s_['t'] = np.asarray(s_['t']).tolist(); s_['c'] = np.asarray(s_['c']).tolist()
+    return stan
+
+
+def _grupa(K, stan, wolne, poz, nr_gr, log):
+    """Sklada grupe od najwiekszego wolnego odcinka; zwraca liste zlozonych indeksow."""
+    zlozone = [max(wolne, key=lambda i: len(K[i]['P']))]
+    stan[zlozone[0]]['stan'] = 'start' if nr_gr == 0 else 'zlozony'; stan[zlozone[0]]['grupa'] = nr_gr
+    log(f"grupa {nr_gr}: start K{K[zlozone[0]]['nr']:02d}")
+    reszta = set(wolne) - set(zlozone)
+    proby = {}
     while True:
-        # odniesienie TYLKO z kawalkow juz pewnie zlozonych (odrzucone w zlym miejscu psulyby kolejne)
         ref_P = np.vstack([poz(i) for i in zlozone])
         dr = cKDTree(rzedz(ref_P, 0.2))
         kand = [i for i in reszta if proby.get(i, -1) < len(zlozone)]
         if not kand:
             break
-        # najpierw najwieksza wspolna czesc z juz zlozonymi; sasiad w czasie dostaje premie (na pewno widzial to samo)
+
         def wsp(i):
             P_ = rzedz(przeksztalc(K[i]['P'], stan[i]['c'], *_start(stan, zlozone, i)), 0.2)
             w = float(np.mean(dr.query(P_, distance_upper_bound=1.0)[0] < 1.0))
             return w + (0.3 if (i - 1 in zlozone or i + 1 in zlozone) else 0.0)
         i = max(kand, key=wsp)
+        a0, t0 = stan[i]['a'], stan[i]['t']
         stan[i]['a'], stan[i]['t'] = _start(stan, zlozone, i)
         _proba(K, stan, i, Odniesienie(ref_P), log)
         if stan[i]['stan'] == 'zlozony':
+            stan[i]['grupa'] = nr_gr
             zlozone.append(i); reszta.discard(i)
         else:
+            stan[i]['a'], stan[i]['t'] = a0, t0       # nieudany: wraca, moze zalozyc wlasna grupe
             proby[i] = len(zlozone)
-    for r in range(1, rundy):
-        for i in sorted(range(n), key=lambda i: -len(K[i]['P'])):
-            if stan[i]['stan'] == 'start':
-                continue
-            if stan[i]['stan'] == 'niepewny':
-                continue
-            ref = Odniesienie(np.vstack([poz(j) for j in range(n) if j != i and stan[j]['stan'] != 'niepewny']))
-            _proba(K, stan, i, ref, log, runda=r)
-    for s in stan:
-        s['t'] = s['t'].tolist(); s['c'] = s['c'].tolist()
-    return stan
+    return zlozone
 
 
 def _start(stan, zlozone, i):
@@ -203,21 +250,21 @@ def _start(stan, zlozone, i):
     return sn['a'], (stan[i]['c'] - sn['c']) @ Rn.T + sn['c'] + sn['t'] - stan[i]['c']
 
 
-def _proba(K, stan, i, ref, log, runda=0):
+def _proba(K, stan, i, ref, log, runda=0, szeroko=False):
     s = stan[i]; k = K[i]
     Pc = przeksztalc(k['P'], s['c'], s['a'], s['t'])        # obecne polozenie
-    h = oceny(Pc, ref, s['c'] + s['t'], 0.0)
+    h = oceny(Pc, ref, s['c'] + s['t'], 0.0, *((6.0, 25) if szeroko else (PRZES, OBROT)))
     if h is None:
         log(f"  K{k['nr']:02d}: brak wspolnej czesci"); return
     a, t, zg, wsp = icp(Pc, ref, s['c'] + s['t'], h['a'], h['t'])
     if h['u'] is not None:                       # korytarz: wzdluz zostaje polozenie ze SLAM, poprawiamy w poprzek i obrot
         t = t - (t @ h['u']) * h['u']
     margines = h['wynik'] - h['drugi']
-    ok = wsp >= WSPOLNE_MIN and zg >= ZGODNOSC_MIN and margines >= 0.05
+    ok = wsp >= WSPOLNE_MIN and zg >= ZGODNOSC_MIN and margines >= (0.08 if szeroko else 0.05)
     # drobna poprawka blisko polozenia ze SLAM: nawet przy niejednoznacznosci ryzyko male (<= 0,4 m, 3 st.)
-    if not ok and wsp >= 0.3 and zg >= 0.5 and np.hypot(*t) <= 0.4 and abs(np.degrees(a)) <= 3:
+    if not ok and not szeroko and wsp >= 0.3 and zg >= 0.5 and np.hypot(*t) <= 0.4 and abs(np.degrees(a)) <= 3:
         ok = True
-    log(f"  {'R' + str(runda) if runda else '  '} K{k['nr']:02d}: wspolne {wsp:.2f} zgodnosc {zg:.2f} margines {margines:.2f} "
+    log(f"  {'S' if szeroko else ''}{'R' + str(runda) if runda else '  '} K{k['nr']:02d}: wspolne {wsp:.2f} zgodnosc {zg:.2f} margines {margines:.2f} "
         f"przesuniecie {np.hypot(*t):.2f} m obrot {np.degrees(a):+.1f} st.{' korytarz' if h['u'] is not None else ''} -> {'ZLOZONY' if ok else 'zostaje'}")
     if ok:
         # zlozenie przeksztalcen: najpierw obecne (c, a0, t0), potem obrot a wokol c+t0 i przesuniecie t
@@ -230,7 +277,7 @@ def zapisz(kat, K, S, nazwa='kawalki_zlozone'):
     import ezdxf
     wy = os.path.join(kat, '_wynik')
     d = ezdxf.new('R2010'); d.header['$INSUNITS'] = 6; msp = d.modelspace()
-    kol = {'start': 5, 'zlozony': 3, 'niepewny': 30}
+    kol = {'start': 5, 'zlozony': 3, 'niepewny': 30, 'grupa_osobno': 6}
     for k, s in zip(K, S):
         war = f"KAWALEK_{k['nr']:02d}_{s['stan']}"
         d.layers.add(war, color=kol[s['stan']])
@@ -269,7 +316,7 @@ def main():
     print(f'{len(K)} odcinkow po ~{dziel:.0f} m trasy', flush=True)
     S = zloz(K)
     zapisz(kat, K, S)
-    ile = {x: sum(s['stan'] == x for s in S) for x in ('start', 'zlozony', 'niepewny')}
+    ile = {x: sum(s['stan'] == x for s in S) for x in ('start', 'zlozony', 'grupa_osobno', 'niepewny')}
     print(json.dumps(ile))
 
 
