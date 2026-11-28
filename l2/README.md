@@ -59,3 +59,30 @@ Ręcznie: `python3 l2_petle.py pointlio_wynik.bag wyjscie/`.
 
 Test na symulacji (pierścień korytarzy 40×24 m, dryf 2°/min): błąd max **150 → 21 cm**,
 na końcu trasy 126 → 9 cm; bez dryfu i na prostej trasie mapa się nie zmienia.
+
+## Kilka kondygnacji w jednym nagraniu i skosy (od 28.11.2026)
+
+Można przejść cały dom (parter → schody → poddasze) **jednym nagraniem**, bez zatrzymywania.
+- `l2_trasa.py` zapisuje trasę Point-LIO (`trasa.csv`: czas, x, y, z głowicy). `l2_mapa.sh` robi to samo i przekazuje trasę do `l2_rzut.py --trasa`.
+- **Kondygnacje** to poziomy, na których chodził operator (co najmniej 1,5 m od siebie).
+  - Podłoga: najwyższa duża płaszczyzna 1,0–2,7 m pod głowicą. Niższa płaszczyzna to sufit kondygnacji poniżej.
+  - Sufit: najniższa duża płaszczyzna nad głowicą (pod stropem). Na ostatniej kondygnacji: najwyższa.
+  - Rzuty kondygnacji leżą obok siebie na jednym arkuszu (odstęp 5 m), w tej samej skali. Otwory mają w CSV kolumnę `kondygnacja`.
+- **Skosy** (najwyższa kondygnacja, gdy co najmniej 8 % rzutu jest niższe od płaskiego sufitu o 30 cm):
+  - mapa wysokości pod dachem (siatka 10 cm, 75. percentyl punktów);
+  - warstwy `SKOS_1_40` i `SKOS_2_20` (linie h = 1,40 i 2,20 m);
+  - powierzchnia wg PN-ISO 9836: ≥ 2,20 m liczona w 100 %, 1,40–2,20 m w 50 %, < 1,40 m pomijana;
+  - kubatura; wyniki w `skosy.json` i `wysokosci.txt`.
+  - Pas ścian na poddaszu: 1,0–1,4 m nad podłogą, bo pod skosem pas pod sufitem byłby dachem.
+- Bez trasy (stare nagrania, `L2_PETLE=0`) działa jak dawniej: jedna kondygnacja.
+- Test (sztuczny dom 10 × 8 m, parter 2,70 m, poddasze ze ścianką kolankową 1,0 m i dachem 40°, jętki 2,60 m):
+  - podłogi 0,00 / 2,99 m (wzorzec 0 / 3,0 m);
+  - powierzchnia ≥ 2,20 m: 51,67 m² (wzorzec 51,40);
+  - 1,40–2,20 m: 19,28 m² (wzorzec 19,07);
+  - PN-ISO 9836: 61,31 m² (wzorzec 60,93; +0,6 %);
+  - kubatura: 179,0 m³ (wzorzec 177,5).
+- **Jak chodzić:**
+  - start i koniec w tym samym miejscu;
+  - schody powoli, bez obracania się na stopniu;
+  - głowica z dala od stropu nad schodami i od dachu pod skosem;
+  - w każdym pokoju „Jestem tu”.

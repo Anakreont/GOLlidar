@@ -31,11 +31,14 @@ kill -INT $PL; wait $PL || true         # Point-LIO zapisuje mape (scans.pcd) pr
 kill -INT $RC; wait $RC || true
 [ -f "$PCD" ] || { echo "brak $PCD - zobacz $WY/pointlio.log"; exit 1; }
 cp "$PCD" "$WY/chmura.pcd"
-python "$TU/l2_rzut.py" "$WY/chmura.pcd" "$WY"
+# trasa (wysokosc glowicy) -> podzial jednego nagrania na kondygnacje (parter + pietro + poddasze bez zatrzymywania)
+TR=""
+if [ -n "$RB" ] && [ -f "$WY/pointlio_wynik.bag" ] && python "$TU/l2_trasa.py" "$WY/pointlio_wynik.bag" "$WY/trasa.csv"; then TR="--trasa $WY/trasa.csv"; fi
+python "$TU/l2_rzut.py" "$WY/chmura.pcd" "$WY" $TR
 # druga wersja mapy: z zamknieciem petli (mapa bez petli zostaje w $WY, z petlami w $WY/petle) - blad nie psuje wyniku
 if [ -n "$RB" ] && [ -f "$WY/pointlio_wynik.bag" ]; then
   echo "== zamykanie petli"
-  if python "$TU/l2_petle.py" "$WY/pointlio_wynik.bag" "$WY/petle" && python "$TU/l2_rzut.py" "$WY/petle/chmura.pcd" "$WY/petle"; then
+  if python "$TU/l2_petle.py" "$WY/pointlio_wynik.bag" "$WY/petle" && python "$TU/l2_rzut.py" "$WY/petle/chmura.pcd" "$WY/petle" $TR; then
     echo "== wynik z petlami: $WY/petle"
   else
     echo "zamykanie petli nieudane - zostaje mapa bez petli"; mkdir -p "$WY/petle"; echo "zamykanie petli nieudane - szczegoly w przebieg.log" > "$WY/petle/blad.txt"
