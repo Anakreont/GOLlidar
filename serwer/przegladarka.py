@@ -565,7 +565,7 @@ def stan_zloz(n, k):
     ile = None
     try:
         S = json.load(open(os.path.join(wy, 'kawalki_zlozone.json'), encoding='utf-8'))
-        ile = {x: sum(s_['stan'] == x for s_ in S) for x in ('start', 'zlozony', 'grupa_osobno', 'niepewny')}
+        ile = {x: sum(s_['stan'] == x for s_ in S) for x in ('start', 'zlozony', 'grupa_osobno', 'niepewny', 'reczny')}
     except (OSError, ValueError):
         pass
     return {'stan': st, 'ile': ile}
@@ -1124,6 +1124,41 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/api/usun_sesje':
             b_ = do_kosza(q['n'])
             return self._json({'blad': b_}, 409) if b_ else self._json({'ok': True})
+        if u.path in ('/api/kawalki_dociagnij', '/api/kawalki_reczne'):
+            # reczna poprawka zlozonych odcinkow (edytor w zakladce Kawalki): stan [{nr,a,t,c,stan}] w tresci
+            dl = int(self.headers.get('Content-Length') or 0)
+            try:
+                St = json.loads(self.rfile.read(min(dl, 2000000)) or b'[]')
+                St = [{'nr': int(x['nr']), 'a': float(x['a']), 't': [float(v) for v in x['t'][:2]],
+                       'c': [float(v) for v in x['c'][:2]], 'stan': str(x.get('stan', ''))[:20],
+                       'grupa': x.get('grupa')} for x in St]
+            except (ValueError, KeyError, TypeError):
+                return self._json({'blad': 'zle dane'}, 400)
+            if not os.path.exists(os.path.join(k, '_wynik', 'kawalki_zlozone_punkty.json')):
+                return self._json({'blad': 'najpierw zloz kawalki (nowa wersja programu)'}, 409)
+            if u.path == '/api/kawalki_dociagnij':
+                r = subprocess.run([sys.executable, os.path.join(REPO, 'mapa', 'zloz_kawalki.py'), '--dociagnij', k, str(int(q.get('i', 0)))],
+                                   input=json.dumps(St), capture_output=True, text=True, env=ENV_DZIECI, timeout=120)
+                try:
+                    return self._json(json.loads(r.stdout.strip().splitlines()[-1]))
+                except (ValueError, IndexError):
+                    return self._json({'blad': 'dociaganie nie wyszlo: ' + (r.stderr or '')[-400:]}, 500)
+            with BLOK:
+                if q['n'] in W_ZLOZ:
+                    return self._json({'blad': 'juz sie liczy'}, 409)
+                W_ZLOZ[q['n']] = 'liczy'
+
+            def zapisz_reczne(n=q['n'], k=k, St=St):
+                try:
+                    r = subprocess.run([sys.executable, os.path.join(REPO, 'mapa', 'zloz_kawalki.py'), '--zapisz-reczne', k],
+                                       input=json.dumps(St), capture_output=True, text=True, env=ENV_DZIECI)
+                    with open(os.path.join(k, '_wynik', 'kawalki_zlozone_log.txt'), 'a') as f:
+                        f.write('\n--- poprawki reczne ---\n' + (r.stdout or '') + (r.stderr or ''))
+                finally:
+                    with BLOK:
+                        W_ZLOZ.pop(n, None)
+            threading.Thread(target=zapisz_reczne, daemon=True).start()
+            return self._json({'ok': True})
         if u.path == '/api/kontrola':
             dl = int(self.headers.get('Content-Length') or 0)
             try:

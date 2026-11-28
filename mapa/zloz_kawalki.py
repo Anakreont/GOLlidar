@@ -273,11 +273,11 @@ def _proba(K, stan, i, ref, log, runda=0, szeroko=False):
         s['stan'] = 'zlozony'; s['zgodnosc'] = round(zg, 3); s['wspolne'] = round(wsp, 3); s['margines'] = round(margines, 3)
 
 
-def zapisz(kat, K, S, nazwa='kawalki_zlozone'):
+def zapisz(kat, K, S, nazwa='kawalki_zlozone', dziel_m=None):
     import ezdxf
     wy = os.path.join(kat, '_wynik')
     d = ezdxf.new('R2010'); d.header['$INSUNITS'] = 6; msp = d.modelspace()
-    kol = {'start': 5, 'zlozony': 3, 'niepewny': 30, 'grupa_osobno': 6}
+    kol = {'start': 5, 'zlozony': 3, 'niepewny': 30, 'grupa_osobno': 6, 'reczny': 4}
     for k, s in zip(K, S):
         war = f"KAWALEK_{k['nr']:02d}_{s['stan']}"
         d.layers.add(war, color=kol[s['stan']])
@@ -290,6 +290,15 @@ def zapisz(kat, K, S, nazwa='kawalki_zlozone'):
         msp.add_text(f"K{k['nr']:02d}", height=0.25, dxfattribs={'layer': war}).set_placement(tuple(f(k['trasa']).mean(0)))
     d.saveas(os.path.join(wy, nazwa + '.dxf'))
     json.dump(S, open(os.path.join(wy, nazwa + '.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    # punkty odcinkow (siatka 5 cm, w ukladzie SLAM, przed przeksztalceniem) dla edytora w przegladarce
+    E = {'dziel_m': dziel_m, 'kawalki': []}
+    for k in K:
+        P = rzedz(k['P'], 0.05)
+        if len(P) > 5000:
+            P = P[np.random.default_rng(k['nr']).choice(len(P), 5000, replace=False)]
+        E['kawalki'].append({'nr': k['nr'], 'P': np.round(P * 100).astype(int).ravel().tolist(),
+                             'trasa': np.round(k['trasa'][::2] * 100).astype(int).ravel().tolist()})
+    json.dump(E, open(os.path.join(wy, nazwa + '_punkty.json'), 'w'), separators=(',', ':'))
     try:
         import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt
         fig, ax = plt.subplots(1, 2, figsize=(22, 10))
@@ -299,7 +308,7 @@ def zapisz(kat, K, S, nazwa='kawalki_zlozone'):
                 X = przeksztalc(k['P'][::3], np.array(s['c']), A, T)
                 ax[x].scatter(*X.T, s=0.2, color=cm(k['nr'] % 20))
                 ax[x].text(*X.mean(0), f"K{k['nr']}" + ('' if x == 0 or s['stan'] != 'niepewny' else '?'), fontsize=7)
-        ax[0].set_title('przed (jak ze SLAM)'); ax[1].set_title('po zlozeniu (? = niepewny, zostal jak byl)')
+        ax[0].set_title('przed (jak ze SLAM)'); ax[1].set_title('po zlozeniu (? = niepewny, zostal jak byl; poprawki reczne uwzglednione)')
         for x in ax:
             x.set_aspect('equal')
         fig.savefig(os.path.join(wy, nazwa + '.png'), dpi=100, bbox_inches='tight'); plt.close(fig)
@@ -307,15 +316,49 @@ def zapisz(kat, K, S, nazwa='kawalki_zlozone'):
         print('png:', e)
 
 
+def _z_edytora(kat):
+    """Punkty odcinkow zapisane dla edytora (siatka 5 cm) + aktualne przeksztalcenia."""
+    wy = os.path.join(kat, '_wynik')
+    E = json.load(open(os.path.join(wy, 'kawalki_zlozone_punkty.json')))
+    K = [{'nr': e['nr'], 'P': np.array(e['P'], float).reshape(-1, 2) / 100,
+          'trasa': np.array(e['trasa'], float).reshape(-1, 2) / 100} for e in E['kawalki']]
+    return K, E.get('dziel_m')
+
+
+def dociagnij(kat, i, S):
+    """Recznie przesuniety odcinek i: ICP do pozostalych (bez 'niepewny', chyba ze poprawione recznie)."""
+    K, _ = _z_edytora(kat)
+    poz = lambda j: przeksztalc(K[j]['P'], np.array(S[j]['c']), S[j]['a'], np.array(S[j]['t']))
+    inne = [j for j in range(len(K)) if j != i and S[j]['stan'] != 'niepewny'] or [j for j in range(len(K)) if j != i]
+    ref = Odniesienie(np.vstack([poz(j) for j in inne]))
+    Pc = poz(i); c = np.array(S[i]['c']) + np.array(S[i]['t'])
+    a, t, zg, wsp = icp(Pc, ref, c, 0.0, np.zeros(2), iters=12)
+    return {'a': float(S[i]['a'] + a), 't': (np.array(S[i]['t']) + t).tolist(), 'zgodnosc': round(zg, 3),
+            'wspolne': round(wsp, 3), 'przesuniecie_m': round(float(np.hypot(*t)), 3), 'obrot_st': round(float(np.degrees(a)), 2)}
+
+
 def main():
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import kawalki as KW
+    if sys.argv[1] == '--dociagnij':                 # zloz_kawalki.py --dociagnij <sesja> <indeks>  (stan na stdin)
+        print(json.dumps(dociagnij(sys.argv[2].rstrip('/'), int(sys.argv[3]), json.load(sys.stdin))))
+        return
+    if sys.argv[1] == '--zapisz-reczne':             # zloz_kawalki.py --zapisz-reczne <sesja>  (stan na stdin)
+        kat = sys.argv[2].rstrip('/')
+        S = json.load(sys.stdin)
+        _, dziel = _z_edytora(kat)
+        K, _ = KW.kawalki(kat, dziel_m=dziel or DZIEL_M)
+        if len(K) != len(S):
+            sys.exit(f'liczba odcinkow sie nie zgadza ({len(K)} != {len(S)}) - zloz kawalki od nowa')
+        zapisz(kat, K, S, dziel_m=dziel or DZIEL_M)
+        print(json.dumps({'ok': True, 'reczne': sum(s['stan'] == 'reczny' for s in S)}))
+        return
     kat = sys.argv[1].rstrip('/')
     dziel = float(sys.argv[2]) if len(sys.argv) > 2 else DZIEL_M
     K, _ = KW.kawalki(kat, dziel_m=dziel)
     print(f'{len(K)} odcinkow po ~{dziel:.0f} m trasy', flush=True)
     S = zloz(K)
-    zapisz(kat, K, S)
+    zapisz(kat, K, S, dziel_m=dziel)
     ile = {x: sum(s['stan'] == x for s in S) for x in ('start', 'zlozony', 'grupa_osobno', 'niepewny')}
     print(json.dumps(ile))
 

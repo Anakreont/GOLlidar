@@ -58,7 +58,7 @@ main{display:flex;flex-direction:column;min-width:0;min-height:0}
 .zakl button.akt{color:var(--akcent);border-color:var(--akcent);font-weight:600}
 .tresc{flex:1;min-height:0;position:relative;overflow:auto}
 .widok{display:none;height:100%}.widok.akt{display:block}
-#w2d.akt,#w3d.akt{display:flex}
+#w2d.akt,#w3d.akt,#wkaw.akt{display:flex}
 .plotno{flex:1;position:relative;min-width:0}
 canvas#c{width:100%;height:100%;display:block;background:#fff;touch-action:none;cursor:grab}
 .warstwy{position:absolute;left:12px;top:12px;display:flex;flex-wrap:wrap;gap:6px;max-width:70%}
@@ -115,7 +115,7 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
  <div class="nag" id="nag"><div class="tyt"><b>Wybierz nagranie z listy</b><div>budynek → dzień → nagranie</div></div></div>
  <div class="zakl" id="zakl">
   <button data-w="w2d" class="akt">Rzut</button><button data-w="w3d">Model 3D</button><button data-w="wfoto">Zdjęcia</button>
-  <button data-w="wprz">Przekroje</button><button data-w="wzn">Znaczniki i notatki</button><button data-w="winw">Inwentaryzacja</button><button data-w="wpl">Pliki</button><button data-w="wpor">Porównanie SLAM</button><button data-w="wcad">Rzut CAD</button><button data-w="wl2">Unitree L2 (3D)</button>
+  <button data-w="wprz">Przekroje</button><button data-w="wzn">Znaczniki i notatki</button><button data-w="winw">Inwentaryzacja</button><button data-w="wpl">Pliki</button><button data-w="wpor">Porównanie SLAM</button><button data-w="wkaw">Kawałki</button><button data-w="wcad">Rzut CAD</button><button data-w="wl2">Unitree L2 (3D)</button>
  </div>
  <div class="tresc">
   <section class="widok akt" id="w2d">
@@ -130,6 +130,11 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
   <section class="widok" id="winw"><div class="tabela" id="tinw"></div></section>
   <section class="widok" id="wpl"><div class="tabela" id="tpl"></div></section>
   <section class="widok" id="wpor"><div class="tabela" id="tpor"></div></section>
+  <section class="widok" id="wkaw">
+   <div class="plotno"><canvas id="ck" style="width:100%;height:100%;display:block;background:#fff;touch-action:none;cursor:grab"></canvas>
+    <div class="podp">kliknij odcinek – wybierz · przeciągnij wybrany – przesuń · Shift+przeciągnij wybrany – obróć · przeciągnij tło – przesuń widok · kółko – powiększ · dwuklik – całość</div></div>
+   <div class="panel" id="pk"><div class="mala">Najpierw „🧲 Złóż kawałki”.</div></div>
+  </section>
   <section class="widok" id="wcad"><div class="tabela" id="tcad"></div></section>
   <section class="widok" id="wl2"><div class="tabela" id="tl2"></div></section>
  </div>
@@ -137,7 +142,7 @@ tr.klik{cursor:pointer}tr.klik:hover td{background:#f9fafb}
 <div id="modal" onclick="if(event.target===this)zamknij()"><div class="okno" id="mokno"></div></div>
 <script>
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let POM=null,L=[],S=null,M=null,NZ={},KO=[],tryb=null,pA=null,seg=0,wid={x:0,y:0,s:50},wyb=null,rozwin={};
+let POM=null,L=[],S=null,M=null,NZ={},KO=[],MIARY=[],tryb=null,pA=null,seg=0,wid={x:0,y:0,s:50},wyb=null,rozwin={};
 const KOL={pom:'#2a9d8f',pomiar:'#0d9488',sala:'#1e3a8a',foto:'#2563eb',przekroj:'#9333ea',punkt:'#ea580c',notatka:'#16a34a',oprawy:'#0891b2',grzejnik:'#dc2626',okno:'#ca8a04'};
 const NAZ={pom:'Pomieszczenia',pomiar:'Pomiary',sala:'Nazwy pomieszczeń',sciany:'Ściany',chmura:'Chmura punktów',trasa:'Trasa',foto:'Zdjęcia',przekroj:'Przekroje',punkt:'Punkty',notatka:'Notatki',oprawy:'Oprawy',grzejnik:'Grzejniki',okno:'Okna'};
 const ZNAK={foto:'📷',przekroj:'⊥',punkt:'•',notatka:'✎',oprawy:'💡',grzejnik:'♨',okno:'▭'};
@@ -151,7 +156,7 @@ function ustawJedn(j){JEDN=j;try{localStorage.setItem('lidar_jedn',j)}catch(e){}
 function post(u,ok,body){return fetch(u,{method:'POST',body}).then(r=>r.json()).then(j=>{if(j.blad)alert(j.blad);else ok&&ok(j)})}
 document.addEventListener('click',e=>{if(!e.target.closest('.menu'))document.querySelectorAll('.menu').forEach(m=>m.classList.remove('otw'))});
 document.querySelectorAll('#zakl button').forEach(b=>b.onclick=()=>pokazWidok(b.dataset.w));
-function pokazWidok(w){document.querySelectorAll('#zakl button').forEach(x=>x.classList.toggle('akt',x.dataset.w==w));document.querySelectorAll('.widok').forEach(x=>x.classList.toggle('akt',x.id==w));if(w=='w2d')rys();if(w=='w3d')tryb3d()}
+function pokazWidok(w){document.querySelectorAll('#zakl button').forEach(x=>x.classList.toggle('akt',x.dataset.w==w));document.querySelectorAll('.widok').forEach(x=>x.classList.toggle('akt',x.id==w));if(w=='w2d')rys();if(w=='w3d')tryb3d();if(w=='wkaw')kawEd()}
 // ---------------------------------------------------------------- lista
 function lista(){fetch('api/sesje').then(r=>r.json()).then(d=>{L=d;rysujListe()})}
 const ZAZN=new Set();
@@ -207,7 +212,7 @@ function przywrocKosz(){post('api/przywroc_kosz',j=>{alert('Przywrócono '+j.ile
 function oproznijKosz(){if(confirm('Opróżnić kosz? Tego nie da się cofnąć.'))post('api/oproznij_kosz',()=>alert('Kosz opróżniony'))}
 function czysc(){$('nag').innerHTML='<div class="tyt"><b>Wybierz nagranie z listy</b></div>';$('panel').innerHTML='';rys()}
 // ---------------------------------------------------------------- sesja
-function otworz(n){fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{S=d;S.n=n;M=null;wyb=null;rysujListe();naglowek();galeria();przekroje();znaczniki();inwent();pliki();porownanie();cad();l2();
+function otworz(n){fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{S=d;S.n=n;M=null;wyb=null;KE.n=null;KE.P=[];if($('wkaw').classList.contains('akt'))setTimeout(kawEd,0);rysujListe();naglowek();galeria();przekroje();znaczniki();inwent();pliki();porownanie();cad();l2();
  if(S.czujniki&&!S.czujniki.d500&&S.czujniki.l2&&$('w2d').classList.contains('akt'))pokazWidok('wl2');
  fetch('api/mapa?n='+n).then(r=>r.ok?r.json():null).then(j=>{POM=j?j.pomieszczenia:null;if(j){M=j.mapa;NZ=j.nazwy||{};KO=j.kontrola||[];seg=0;
  (M.kondygnacje||[]).forEach(k=>{k.znaczniki.forEach(z=>{if((z.opis||'').startsWith('POMIAR '))z.rodzaj='pomiar'});grupujPom(k.znaczniki)});}else{M=null;KO=[]}panel();warstwy();dopasuj();rys();inwent();if($('w3d').classList.contains('akt'))tryb3d()})})}
@@ -221,7 +226,7 @@ function pomLicz(){post('api/pomieszczenia?n='+S.n,()=>{S.pomieszczenia={stan:'l
 function zlozTxt(U){if(U.stan=='liczy'||U.stan=='czeka')return'<span class="btn">🧲 składam kawałki…</span>';
  const b='<button class="btn" title="Złóż kawałki między sobą (bez rysunku CAD): ta sama sala widziana w kilku kawałkach zostaje nałożona" onclick="zlozLicz()">🧲 '+(U.stan=='gotowe'?'↻':'Złóż kawałki')+'</button>';
  if(U.stan!='gotowe')return b;const i=U.ile||{};
- return'<a class="btn" title="Kawałki po złożeniu, warstwy KAWALEK_NN_zlozony/niepewny" href="'+plik('_wynik/kawalki_zlozone.dxf')+'">⬇ złożone</a><a class="btn" href="'+plik('_wynik/kawalki_zlozone.png')+'" target="_blank">przed/po ('+((i.start||0)+(i.zlozony||0))+' złożonych, '+(i.grupa_osobno||0)+' w osobnych grupach, '+(i.niepewny||0)+' zostało)</a>'+b}
+ return'<a class="btn" title="Kawałki po złożeniu, warstwy KAWALEK_NN_zlozony/niepewny" href="'+plik('_wynik/kawalki_zlozone.dxf')+'">⬇ złożone</a><a class="btn" href="'+plik('_wynik/kawalki_zlozone.png')+'" target="_blank">przed/po ('+((i.start||0)+(i.zlozony||0))+' złożonych, '+(i.grupa_osobno||0)+' w osobnych grupach, '+(i.niepewny||0)+' zostało'+(i.reczny?', '+i.reczny+' poprawionych ręcznie':'')+')</a><button class="btn" onclick="pokazWidok(\'wkaw\')" title="Ręczna poprawka odcinków, które się nie złożyły">✋ popraw</button>'+b}
 function zlozLicz(){post('api/zloz_kawalki?n='+S.n,()=>{S.kawalki.zloz={stan:'liczy'};naglowek();const n=S.n;const f=()=>fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(!S||S.n!=n)return;S.kawalki=d.kawalki;naglowek();const z=(d.kawalki.zloz||{}).stan;if(z=='liczy'||z=='czeka')setTimeout(f,10000);else if(z!='gotowe')alert('Składanie nie wyszło – szczegóły w _wynik/kawalki_zlozone_log.txt')});setTimeout(f,10000)})}
 function ulozTxt(U){if(U.stan=='liczy'||U.stan=='czeka')return'<span class="btn">🧩 układam na CAD…</span>';
  if(U.stan=='brak cad')return'';const m=U.metryki||{},k=m.klasy||{};
@@ -263,9 +268,13 @@ function odl(m){return Math.hypot(m.b[0]-m.a[0],m.b[1]-m.a[1])}
 function statKontrola(L_){if(!L_.length)return null;const e=L_.map(m=>odl(m)-m.laser_m),n=e.length,me=e.reduce((a,b)=>a+b,0)/n,mae=e.reduce((a,b)=>a+Math.abs(b),0)/n,rmse=Math.sqrt(e.reduce((a,b)=>a+b*b,0)/n),mx=Math.max(...e.map(Math.abs));
  return{n,me,mae,rmse,mx,st:n<3?'NOT_VALIDATED':rmse<=0.03?'PASS':rmse<=0.05?'WARNING':'FAIL'}}
 function panelKontrola(){const k=M.kondygnacje[seg],L_=KO.filter(m=>m.seg==k.nr),s=statKontrola(L_);
- return '<h3>Pomiary kontrolne</h3><div class="rzad"><button class="btn'+(tryb=='kontrola'?' gl':'')+'" onclick="trybKontrola()">📏 '+(tryb=='kontrola'?(pA?'kliknij drugi punkt…':'kliknij pierwszy punkt…'):'Dodaj pomiar (2 punkty + dalmierz)')+'</button></div>'+
+ const Lm_=MIARY.filter(m=>m.seg==k.nr);
+ return '<h3>Zmierz</h3><div class="rzad"><button class="btn'+(tryb=='miara'?' gl':'')+'" onclick="trybMiara()">📐 '+(tryb=='miara'?(pA?'kliknij drugi punkt…':'kliknij pierwszy punkt…'):'Zmierz odległość (2 punkty)')+'</button>'+(Lm_.length?'<button class="btn" onclick="MIARY=MIARY.filter(m=>m.seg!='+k.nr+');panel();rys()">✕ wyczyść</button>':'')+'</div>'+
+ (Lm_.length?'<p class="mala">'+Lm_.map(m=>odl(m).toFixed(3).replace('.',',')+' m').join(' · ')+'</p>':'<p class="mala">Punkt przyciąga się do ściany lub chmury. Pomiary nie są zapisywane.</p>')+
+ '<h3>Pomiary kontrolne</h3><div class="rzad"><button class="btn'+(tryb=='kontrola'?' gl':'')+'" onclick="trybKontrola()">📏 '+(tryb=='kontrola'?(pA?'kliknij drugi punkt…':'kliknij pierwszy punkt…'):'Dodaj pomiar (2 punkty + dalmierz)')+'</button></div>'+
  (L_.length?'<table>'+L_.map(m=>'<tr><td>'+esc(m.opis||'pomiar')+'<br><span class="mala">skan '+odl(m).toFixed(3)+' · dalmierz '+m.laser_m.toFixed(3)+' m</span></td><td><b>'+((odl(m)-m.laser_m)*100).toFixed(1)+' cm</b></td><td><button class="btn" onclick="usunKontrola('+KO.indexOf(m)+')">✕</button></td></tr>').join('')+'</table>':'<p class="mala">Kliknij dwa punkty na ścianach i wpisz wymiar z dalmierza. Program liczy błąd mapy.</p>')+
  (s?'<div class="stat"><div><b>'+(s.rmse*100).toFixed(1)+' cm</b>RMSE</div><div><b>'+(s.me*100).toFixed(1)+' cm</b>błąd średni</div><div><b>'+(s.mx*100).toFixed(1)+' cm</b>maks.</div><div><b>'+s.st+'</b>'+s.n+' pomiarów</div></div><p class="mala">PASS: RMSE ≤ 3 cm, WARNING ≤ 5 cm, FAIL > 5 cm; poniżej 3 pomiarów – NOT_VALIDATED. Pomiarów kontrolnych nie używamy do poprawiania mapy.</p>':'')}
+function trybMiara(){tryb=tryb=='miara'?null:'miara';pA=null;panel();c.style.cursor=tryb?'crosshair':'grab'}
 function trybKontrola(){tryb=tryb=='kontrola'?null:'kontrola';pA=null;panel();c.style.cursor=tryb?'crosshair':'grab'}
 function zapiszKontrola(){post('api/kontrola?n='+S.n,()=>{panel();rys()},JSON.stringify(KO))}
 function usunKontrola(i){if(confirm('Usunąć ten pomiar kontrolny?')){KO.splice(i,1);zapiszKontrola()}}
@@ -321,11 +330,15 @@ function rys(){const r=c.getBoundingClientRect(),d=devicePixelRatio||1;if(!r.wid
   if(wid.s>55){g.fillStyle='#374151';g.font='11px system-ui';g.fillText((etykieta(z)+(z.rodzaj=='pomiar'&&z.ile>1?'  ('+z.ile+' pomiary)':'')).slice(0,z.rodzaj=='pomiar'?60:34),a+rr+4,b+4)}});
  KO.filter(m=>m.seg==k.nr).forEach(m=>{const[a1,b1]=P(m.a[0],m.a[1]),[a2,b2]=P(m.b[0],m.b[1]);g.strokeStyle='#16a34a';g.lineWidth=2.5;g.beginPath();g.moveTo(a1,b1);g.lineTo(a2,b2);g.stroke();
   [[a1,b1],[a2,b2]].forEach(([x,y])=>{g.fillStyle='#16a34a';g.beginPath();g.arc(x,y,4,0,7);g.fill()});const e_=(odl(m)-m.laser_m)*100;g.fillStyle='#14532d';g.font='bold 12px system-ui';g.fillText((m.opis?m.opis+': ':'')+e_.toFixed(1)+' cm',(a1+a2)/2+6,(b1+b2)/2-6)});
- if(pA){const[a,b]=P(pA[0],pA[1]);g.fillStyle='#16a34a';g.beginPath();g.arc(a,b,6,0,7);g.fill()}
+ MIARY.filter(m=>m.seg==k.nr).forEach(m=>wymiar(g,P(m.a[0],m.a[1]),P(m.b[0],m.b[1]),odl(m).toFixed(3).replace('.',',')+' m','#2563eb'));
+ if(pA){const[a,b]=P(pA[0],pA[1]);g.fillStyle=tryb=='miara'?'#2563eb':'#16a34a';g.beginPath();g.arc(a,b,6,0,7);g.fill()}
  const Lm=wid.s>=120?.5:wid.s>=50?1:wid.s>=20?2:5;g.fillStyle='#111827';g.fillRect(16,r.height-40,Lm*wid.s,4);g.font='12px system-ui';g.fillText(Lm+' m',16,r.height-46);
  g.fillStyle='#111827';g.font='bold 15px system-ui';g.fillText((NZ[k.nr]||{}).nazwa||'Odcinek '+k.nr,r.width-g.measureText((NZ[k.nr]||{}).nazwa||'Odcinek '+k.nr).width-16,26)}
 // kilka pomiarow jednego pomieszczenia (ta sama nazwa albo < 2,5 m od siebie): na rzucie tylko najlepszy -
 // najmniej zasloniety (obrys najblizej prostokata); reszta jako mala kropka bez linii
+function wymiar(g,[a1,b1],[a2,b2],t,kol){const L=Math.hypot(a2-a1,b2-b1)||1,ux=(a2-a1)/L,uy=(b2-b1)/L;g.strokeStyle=kol;g.lineWidth=2;g.beginPath();g.moveTo(a1,b1);g.lineTo(a2,b2);
+ [[a1,b1],[a2,b2]].forEach(([x,y])=>{g.moveTo(x-uy*7,y+ux*7);g.lineTo(x+uy*7,y-ux*7)});g.stroke();let an=Math.atan2(uy,ux);if(an>Math.PI/2)an-=Math.PI;if(an<-Math.PI/2)an+=Math.PI;
+ g.save();g.translate((a1+a2)/2,(b1+b2)/2);g.rotate(an);g.font='bold 13px system-ui';const tw=g.measureText(t).width;g.fillStyle='rgba(255,255,255,.92)';g.fillRect(-tw/2-4,-19,tw+8,17);g.fillStyle=kol;g.textAlign='center';g.fillText(t,0,-6);g.restore();g.textAlign='left'}
 function jakoscPom(z){const p=parsPom(z.opis),o=parseFloat(p.obrys),q=parseFloat(p.pole);return(o&&q?Math.min(o/q,1):0.5)+(z.wym&&z.wym.length==2?0.01:0)}
 function grupujPom(Z){const P_=Z.filter(z=>z.rodzaj=='pomiar'),gr=[];
  P_.forEach(z=>{const n=(parsPom(z.opis).pom||'').toLowerCase();let g=gr.find(g=>g.some(q=>(n&&n==(parsPom(q.opis).pom||'').toLowerCase())||Math.hypot(q.x-z.x,q.y-z.y)<2.5));if(g)g.push(z);else gr.push([z])});
@@ -343,7 +356,8 @@ c.addEventListener('pointermove',e=>{if(!drag){const z=trafiony(e),t=$('tip');if
  if(pinch)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.mv=Math.max(drag.mv,Math.abs(dx)+Math.abs(dy));
  if(drag.rot&&M){const k=M.kondygnacje[seg];(NZ[k.nr]??={}).obrot=(((drag.o0+dx*0.2)%360)+360)%360;if($('ob'))$('ob').value=obr().toFixed(1)}else{wid.x=drag.ox+dx;wid.y=drag.oy+dy}rys()});
 c.addEventListener('pointerup',e=>{if(drag&&drag.mv<5){
- if(tryb=='kontrola'&&M){const q=przyciagnij(e);if(!pA){pA=q;panel();rys()}else{const k=M.kondygnacje[seg],d=Math.hypot(q[0]-pA[0],q[1]-pA[1]);
+ if(tryb=='miara'&&M){const q=przyciagnij(e);if(!pA){pA=q;panel();rys()}else{MIARY.push({seg:M.kondygnacje[seg].nr,a:pA,b:q});pA=null;panel();rys()}}
+ else if(tryb=='kontrola'&&M){const q=przyciagnij(e);if(!pA){pA=q;panel();rys()}else{const k=M.kondygnacje[seg],d=Math.hypot(q[0]-pA[0],q[1]-pA[1]);
   const v=prompt('Skan: '+d.toFixed(3)+' m. Wpisz wymiar z dalmierza (w cm albo m):','');const opis=v?prompt('Opis (np. sala 12 długość):',''):null;
   if(v){let L_=parseFloat(String(v).replace(',','.'));if(L_>30)L_/=100;KO.push({seg:k.nr,a:pA,b:q,laser_m:L_,opis:opis||'',kiedy:new Date().toISOString().slice(0,16)});zapiszKontrola()}
   pA=null;tryb=null;c.style.cursor='grab';panel();rys()}}
@@ -354,6 +368,57 @@ c.addEventListener('touchmove',e=>{if(pinch&&e.touches.length==2){e.preventDefau
  const dk=(Math.atan2(b.clientY-a.clientY,b.clientX-a.clientX)-pinch.k)*180/Math.PI;if(M&&Math.abs(dk)>3){const k=M.kondygnacje[seg];(NZ[k.nr]??={}).obrot=(((pinch.o0-dk)%360)+360)%360}rys()}},{passive:false});
 c.addEventListener('touchend',e=>{if(e.touches.length<2)pinch=null});
 c.addEventListener('dblclick',()=>{dopasuj();rys()});addEventListener('resize',()=>{rys();if(R3.ren)R3.rozmiar()});
+
+// ---------------------------------------------------------------- reczna poprawka zlozonych odcinkow (zakladka Kawalki)
+const KE={n:null,P:[],T:[],S:[],S0:[],wyb:-1,w:{x:0,y:0,s:20},miary:[],pA:null,tryb:null,zm:0};
+const ck=$('ck'),gk=ck.getContext('2d');
+const KE_KOL={start:'#1f2937',zlozony:'#1f2937',grupa_osobno:'#2563eb',niepewny:'#dc2626',reczny:'#16a34a'};
+const KE_NAZ={start:'start',zlozony:'złożony',grupa_osobno:'grupa osobno',niepewny:'niepewny',reczny:'poprawiony ręcznie'};
+function kawEd(){if(!S)return;const Z=(S.kawalki||{}).zloz||{};if(Z.stan!='gotowe'){$('pk').innerHTML='<p class="mala">Najpierw „🧲 Złóż kawałki” (przycisk u góry, przy kawałkach).</p>';KE.n=null;kawRys();return}
+ if(KE.n==S.n&&KE.P.length){kawPanel();kawRys();return}
+ Promise.all([fetch(plik('_wynik/kawalki_zlozone.json')).then(r=>r.json()),fetch(plik('_wynik/kawalki_zlozone_punkty.json')).then(r=>r.ok?r.json():null)]).then(([St,E])=>{
+  if(!E){$('pk').innerHTML='<p class="mala">Ten wynik składania jest ze starszej wersji – kliknij „🧲 ↻”, żeby złożyć od nowa.</p>';return}
+  KE.n=S.n;KE.S=St;KE.S0=JSON.parse(JSON.stringify(St));KE.P=E.kawalki.map(e=>new Float32Array(e.P.map(v=>v/100)));KE.T=E.kawalki.map(e=>e.trasa.map(v=>v/100));KE.wyb=-1;KE.zm=0;KE.miary=[];kawCalosc();kawPanel();kawRys()})}
+function kawXY(i,x,y){const s=KE.S[i],ca=Math.cos(s.a),sa=Math.sin(s.a),dx=x-s.c[0],dy=y-s.c[1];return[ca*dx-sa*dy+s.c[0]+s.t[0],sa*dx+ca*dy+s.c[1]+s.t[1]]}
+const kP=(x,y)=>[KE.w.x+x*KE.w.s,KE.w.y-y*KE.w.s];
+function kawCalosc(){const r=ck.getBoundingClientRect();let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;KE.P.forEach((P,i)=>{for(let j=0;j<P.length;j+=20){const[x,y]=kawXY(i,P[j],P[j+1]);x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y)}});
+ if(x0>x1||!r.width)return;KE.w.s=Math.min(r.width/(x1-x0+2),r.height/(y1-y0+2));KE.w.x=r.width/2-(x0+x1)/2*KE.w.s;KE.w.y=r.height/2+(y0+y1)/2*KE.w.s}
+function kawRys(){const r=ck.getBoundingClientRect(),d=devicePixelRatio||1;if(!r.width)return;ck.width=r.width*d;ck.height=r.height*d;gk.setTransform(d,0,0,d,0,0);gk.clearRect(0,0,r.width,r.height);
+ if(!KE.P.length)return;const st=KE.w.s<15?2:1;
+ KE.P.forEach((P,i)=>{if(i==KE.wyb)return;gk.fillStyle=KE_KOL[KE.S[i].stan]||'#1f2937';gk.globalAlpha=KE.wyb>=0?.35:.6;for(let j=0;j<P.length;j+=2*st){const[x,y]=kawXY(i,P[j],P[j+1]),[a,b]=kP(x,y);gk.fillRect(a,b,1.5,1.5)}});
+ gk.globalAlpha=1;if(KE.wyb>=0){const i=KE.wyb,P=KE.P[i];gk.fillStyle='#ea580c';for(let j=0;j<P.length;j+=2){const[x,y]=kawXY(i,P[j],P[j+1]),[a,b]=kP(x,y);gk.fillRect(a-.5,b-.5,2.4,2.4)}
+  gk.strokeStyle='rgba(234,88,12,.6)';gk.setLineDash([4,3]);gk.beginPath();KE.T[i].length&&KE.T[i].reduce((_,v,j,T)=>{if(j%2)return;const[x,y]=kawXY(i,T[j],T[j+1]),[a,b]=kP(x,y);j?gk.lineTo(a,b):gk.moveTo(a,b)},0);gk.stroke();gk.setLineDash([])}
+ if(KE.w.s>8)KE.P.forEach((P,i)=>{const s=KE.S[i],[a,b]=kP(s.c[0]+s.t[0],s.c[1]+s.t[1]);gk.font=(i==KE.wyb?'bold 13px':'11px')+' system-ui';gk.fillStyle=i==KE.wyb?'#ea580c':(KE_KOL[s.stan]||'#1f2937');gk.fillText('K'+s.nr,a,b)});
+ KE.miary.forEach(m=>wymiar(gk,kP(m.a[0],m.a[1]),kP(m.b[0],m.b[1]),Math.hypot(m.b[0]-m.a[0],m.b[1]-m.a[1]).toFixed(3).replace('.',',')+' m','#2563eb'));
+ if(KE.pA){const[a,b]=kP(KE.pA[0],KE.pA[1]);gk.fillStyle='#2563eb';gk.beginPath();gk.arc(a,b,5,0,7);gk.fill()}
+ const Lm=KE.w.s>=120?.5:KE.w.s>=50?1:KE.w.s>=20?2:5;gk.fillStyle='#111827';gk.fillRect(16,r.height-40,Lm*KE.w.s,4);gk.font='12px system-ui';gk.fillText(Lm+' m',16,r.height-46)}
+function kawPanel(){const i=KE.wyb,s=i>=0?KE.S[i]:null,ile={};KE.S.forEach(x=>ile[x.stan]=(ile[x.stan]||0)+1);
+ $('pk').innerHTML='<h3>Odcinki</h3><p class="mala">'+Object.keys(ile).map(k=>'<b style="color:'+(KE_KOL[k]||'#111')+'">■</b> '+(KE_NAZ[k]||k)+': '+ile[k]).join('<br>')+'</p>'+
+ (s?'<h3>Wybrany: K'+s.nr+' ('+(KE_NAZ[s.stan]||s.stan)+')</h3><div class="rzad"><button class="btn" onclick="kawObr(-90)">⟲90°</button><button class="btn" onclick="kawObr(-5)">⟲5°</button><button class="btn" onclick="kawObr(-1)">⟲1°</button><button class="btn" onclick="kawObr(1)">⟳1°</button><button class="btn" onclick="kawObr(5)">⟳5°</button><button class="btn" onclick="kawObr(90)">⟳90°</button></div>'+
+  '<div class="rzad"><button class="btn gl" onclick="kawDociagnij()" title="Dopasuj dokładnie do ścian sąsiednich odcinków (ustaw najpierw na oko, z dokładnością do ok. 30 cm i kilku stopni)">🧲 Dociągnij</button><button class="btn" onclick="kawCofnij()">↶ jak było</button><button class="btn" onclick="KE.wyb=-1;kawPanel();kawRys()">odznacz</button></div><p class="mala" id="kawInfo"></p>'
+  :'<p class="mala">Kliknij odcinek na rysunku (najlepiej czerwony – niepewny), przeciągnij go na oko na właściwe miejsce, obróć przyciskami albo Shift+przeciąganiem, potem „🧲 Dociągnij”.</p>')+
+ '<h3>Zmierz</h3><div class="rzad"><button class="btn'+(KE.tryb=='miara'?' gl':'')+'" onclick="kawMiara()">📐 '+(KE.tryb=='miara'?(KE.pA?'kliknij drugi punkt…':'kliknij pierwszy punkt…'):'Zmierz odległość')+'</button>'+(KE.miary.length?'<button class="btn" onclick="KE.miary=[];kawPanel();kawRys()">✕ wyczyść</button>':'')+'</div>'+
+ '<h3>Zapis</h3><div class="rzad"><button class="btn gl" onclick="kawZapisz()" '+(KE.zm?'':'disabled')+'>💾 Zapisz poprawki ('+KE.zm+')</button></div><p class="mala">Zapis tworzy na nowo „⬇ złożone” (DXF) i podgląd przed/po. Poprawione odcinki mają warstwę KAWALEK_NN_reczny.</p>'}
+function kawMiara(){KE.tryb=KE.tryb=='miara'?null:'miara';KE.pA=null;kawPanel();kawRys()}
+function kawObr(d){const s=KE.S[KE.wyb];s.a+=d*Math.PI/180;kawZmiana();kawRys()}
+function kawZmiana(){const s=KE.S[KE.wyb];if(s.stan!='reczny'){s.stan='reczny';}KE.zm=KE.S.filter((x,i)=>x.stan=='reczny').length;kawPanel()}
+function kawCofnij(){const i=KE.wyb;KE.S[i]=JSON.parse(JSON.stringify(KE.S0[i]));KE.zm=KE.S.filter(x=>x.stan=='reczny').length;kawPanel();kawRys()}
+function kawDociagnij(){const i=KE.wyb;$('kawInfo').textContent='dociągam…';
+ fetch('api/kawalki_dociagnij?n='+S.n+'&i='+i,{method:'POST',body:JSON.stringify(KE.S)}).then(r=>r.json()).then(j=>{if(j.blad){$('kawInfo').textContent=j.blad;return}
+  const s=KE.S[i],a0=s.a,t0=s.t.slice();s.a=j.a;s.t=j.t;kawZmiana();kawRys();
+  $('kawInfo').innerHTML='Dociągnięto o '+j.przesuniecie_m.toFixed(2).replace('.',',')+' m i '+j.obrot_st.toFixed(1).replace('.',',')+'°. Zgodność ze ścianami sąsiadów: <b>'+Math.round(j.zgodnosc*100)+'%</b>'+(j.zgodnosc<0.5?' – słabo, ustaw dokładniej na oko i spróbuj jeszcze raz':'')+'. <a href="#" onclick="KE.S['+i+'].a='+a0+';KE.S['+i+'].t=['+t0+'];kawRys();return false">cofnij dociągnięcie</a>'})}
+function kawZapisz(){post('api/kawalki_reczne?n='+S.n,()=>{KE.S0=JSON.parse(JSON.stringify(KE.S));alert('Zapisuję – za chwilę „⬇ złożone” i podgląd będą zawierać poprawki.');const n=S.n;setTimeout(()=>fetch('api/sesja?n='+n).then(r=>r.json()).then(d=>{if(S&&S.n==n){S.kawalki=d.kawalki;naglowek()}}),8000)},JSON.stringify(KE.S))}
+function kawTraf(e){const r=ck.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;let best=-1,bd=10,pt=null;
+ KE.P.forEach((P,i)=>{for(let j=0;j<P.length;j+=2){const[x,y]=kawXY(i,P[j],P[j+1]),[a,b]=kP(x,y),d=Math.hypot(a-mx,b-my);if(d<bd||(d<bd+3&&i==KE.wyb&&best!=i)){bd=d;best=i;pt=[x,y]}}});return{i:best,pt,sw:[(mx-KE.w.x)/KE.w.s,(KE.w.y-my)/KE.w.s]}}
+let kd=null;
+ck.addEventListener('pointerdown',e=>{const h=KE.wyb>=0&&KE.tryb!='miara'?kawTraf(e):{i:-1};kd={x:e.clientX,y:e.clientY,ox:KE.w.x,oy:KE.w.y,mv:0,kaw:h.i==KE.wyb&&KE.wyb>=0,rot:e.shiftKey,s0:KE.wyb>=0?JSON.parse(JSON.stringify(KE.S[KE.wyb])):null};ck.setPointerCapture(e.pointerId)});
+ck.addEventListener('pointermove',e=>{if(!kd)return;const dx=e.clientX-kd.x,dy=e.clientY-kd.y;kd.mv=Math.max(kd.mv,Math.abs(dx)+Math.abs(dy));if(kd.mv<4)return;
+ if(kd.kaw){const s=KE.S[KE.wyb];if(kd.rot){s.a=kd.s0.a+dx*0.004}else{s.t=[kd.s0.t[0]+dx/KE.w.s,kd.s0.t[1]-dy/KE.w.s]}if(s.stan!='reczny')kawZmiana()}else{KE.w.x=kd.ox+dx;KE.w.y=kd.oy+dy}kawRys()});
+ck.addEventListener('pointerup',e=>{if(kd&&kd.mv<4){const h=kawTraf(e);
+ if(KE.tryb=='miara'){const q=h.pt||h.sw;if(!KE.pA){KE.pA=q}else{KE.miary.push({a:KE.pA,b:q});KE.pA=null}kawPanel();kawRys()}
+ else{KE.wyb=h.i;kawPanel();kawRys()}}kd=null});
+ck.addEventListener('wheel',e=>{e.preventDefault();const r=ck.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,f=e.deltaY<0?1.2:1/1.2;KE.w.x=mx-(mx-KE.w.x)*f;KE.w.y=my-(my-KE.w.y)*f;KE.w.s*=f;kawRys()},{passive:false});
+ck.addEventListener('dblclick',()=>{kawCalosc();kawRys()});addEventListener('resize',()=>{if($('wkaw').classList.contains('akt'))kawRys()});
 // ---------------------------------------------------------------- okno ze szczegolami
 function pokaz(z){let h='';const prz=z.rodzaj=='przekroj'?(S.przekroje||[]).find(p=>String(p.nr)==String(z.nr)):null;
  if(z.plik)h+='<img src="'+plik(z.plik)+'">';
