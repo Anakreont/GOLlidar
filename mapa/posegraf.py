@@ -212,13 +212,14 @@ def doszlifuj(kf, rund=2, promien=6.0, log=print):
     return X
 
 
-def dopracuj(kf, kt, rund=3, promien=8.0, odstep=8.0, log=print):
+def dopracuj(kf, kt, rund=None, promien=8.0, odstep=8.0, log=print):
     """Po pierwszym przebiegu: kazdy kluczowy skan dopasowany do scian widzianych w INNYM czasie (o > odstep s
     wczesniej lub pozniej), z kontrola widocznosci lica. Sasiednie w czasie skany sa pomijane, bo niosa ten sam
     blad. Usuwa podwojne sciany po odjezdzie trasy w ciasnym pomieszczeniu (skany stamtad widza hol przez drzwi).
     W kierunku slabo okreslonym pozycja zostaje (wiez jak przy degeneracji). Zmiana przyjmowana do 0,35 m / 8 st."""
     import slam
     X = np.array([k[0] for k in kf], float); kt = np.asarray(kt, float)
+    rund = int(slam.PAR.get('dopr_rund', 3)) if rund is None else rund
     for r_ in range(rund):
         W = []; Nw = []
         for (T, p, n), x in zip(kf, X):
@@ -238,6 +239,9 @@ def dopracuj(kf, kt, rund=3, promien=8.0, odstep=8.0, log=print):
             d = Tn - X[i]
             if inl >= 0.35 and rms <= 0.03 and np.hypot(d[0], d[1]) < 0.35 and abs(d[2]) < np.radians(8):
                 Xn[i] = Tn; zm.append(np.hypot(d[0], d[1]))
+                if slam.PAR.get('dopr_gs'):       # Gauss-Seidel: poprawiony skan od razu jest celem dla nastepnych
+                    X[i] = Tn; mk = np.isfinite(n[:, 0]); c, s = np.cos(Tn[2]), np.sin(Tn[2])
+                    W[i] = swiat(Tn, p[mk]); Nw[i] = slam._do_czujnika(W[i], n[mk] @ np.array([[c, s], [-s, c]]), Tn)
         X = Xn
         log(f'  dopracowanie {r_ + 1}: poprawiono {len(zm)} skanow, srednio {1000 * np.mean(zm) if zm else 0:.1f} mm, najw. {1000 * max(zm) if zm else 0:.0f} mm')
     return X

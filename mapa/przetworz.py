@@ -118,7 +118,7 @@ def przetworz(kat):
         print('POSTEP etap zszywanie', flush=True)
         Xz = posegraf.zszyj(kf, slam.mapa.frag, slam.mapa.frag_luka)
         kf = [(Xz[i], kf[i][1], kf[i][2]) for i in range(len(kf))]
-    if DOPRACUJ and len(kf) > 20:             # skany dociagane do scian widzianych w innym czasie (podwojne sciany)
+    if DOPRACUJ and slam.PAR.get('dopracuj', True) and len(kf) > 20:             # skany dociagane do scian widzianych w innym czasie (podwojne sciany)
         print('POSTEP etap dopracowanie', flush=True)
         Xd = posegraf.dopracuj(kf, kt)
         kf = [(Xd[i], kf[i][1], kf[i][2]) for i in range(len(kf))]

@@ -93,15 +93,35 @@ def obroty(z, rmin=0.3, rmax=9.0, pion=None, pion_pas=None):
     # dopasowanie. Wycinki katowe (10 st.), w ktorych w ok. 10 s wiekszosc obrotow ma punkt blizej niz 0,7 m,
     # uznajemy za operatora i odrzucamy w tym oknie; dodatkowo zawsze tyl glowicy (130-230 st.).
     blisko = np.zeros((len(gr), 36), bool)
+    odl_bl = np.full((len(gr), 36), np.nan)      # mediana bliskiej odleglosci w wycinku
     for j, g in enumerate(gr):
         A, D = ang[g].ravel(), d[g].ravel()
         k = (D > 0.1) & (D < 0.7)
-        blisko[j, (A[k] // 10).astype(int) % 36] = True
+        sek = (A[k] // 10).astype(int) % 36
+        blisko[j, sek] = True
+        if PAR.get('operator_ruch'):
+            for s_ in np.unique(sek):
+                odl_bl[j, s_] = np.median(D[k][sek == s_])
+    # operator_ruch: operator obraca sie razem z glowica - w ukladzie czujnika stoi w tym samym wycinku w STALEJ
+    # odleglosci. Sciana ciasnego pomieszczenia przy obrocie glowicy zmienia odleglosc w wycinku. Gdy w oknie byl
+    # obrot >= 25 st., wycinki o niestalej odleglosci (rozrzut 10-90 % > 8 cm) nie sa uznawane za operatora.
+    yaw_gr = None
+    if PAR.get('operator_ruch') and len(gr) and not bool(z.get('bez_imu', False)):
+        yaw_gr = np.degrees(np.interp(np.array([tl[g].mean() for g in gr]), z['ti'], np.unwrap(np.radians(np.asarray(z['yaw'], float)))))
     okno = 100
     maska = np.zeros_like(blisko)
     for j0 in range(0, len(gr), okno // 2):
-        b = blisko[max(0, j0 - okno // 2): j0 + okno]
-        if len(b): maska[j0: j0 + okno // 2] = b.mean(0) > 0.6
+        sl = slice(max(0, j0 - okno // 2), j0 + okno)
+        b = blisko[sl]
+        if not len(b): continue
+        mk = b.mean(0) > 0.6
+        if yaw_gr is not None and mk.any() and np.ptp(yaw_gr[sl]) >= 25.0:
+            od = odl_bl[sl]
+            for s_ in np.where(mk)[0]:
+                o = od[:, s_][np.isfinite(od[:, s_])]
+                if len(o) >= 10 and np.subtract(*np.percentile(o, [90, 10])) > 0.08:
+                    mk[s_] = False
+        maska[j0: j0 + okno // 2] = mk
     # rzutowanie na poziom: przy przechyle wiazka biegnie skosnie i odleglosc do pionowej sciany jest za duza o 1/cos(elewacji).
     # Os BNO wzgledem LiDAR-u ustalona z przekrojow: roll +85 st. = kierunek 0 st. LD19 w dol, wiec elewacja wiazki o kacie A
     # wynosi ok. -roll*cos(A) + pitch*sin(A) (przechyl liczony od pionu z postoju / Zeruj pion).
