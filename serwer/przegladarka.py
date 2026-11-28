@@ -119,7 +119,14 @@ def czujniki(k):
 
 def rozmiar_l2(k):
     """Dane L2: surowe l2.bin z rejestratora albo gotowy rosbag l2.bag (np. przykladowe nagranie Unitree)."""
-    return max(rozmiar(os.path.join(k, 'l2.bin')), rozmiar(os.path.join(k, 'l2.bag')))
+    return max(rozmiar(os.path.join(k, 'l2.bin')), rozmiar(os.path.join(k, 'l2.bag')), rozmiar(os.path.join(k, '_wynik', 'l2', 'chmura.pcd')))
+
+
+def zrodlo_l2(k):
+    """bin = surowe l2.bin z rejestratora, bag = gotowy rosbag (Point-LIO), chmura = import gotowej chmury (bez Point-LIO)."""
+    if rozmiar(os.path.join(k, 'l2.bin')) >= MIN_DANE:
+        return 'bin'
+    return 'bag' if rozmiar(os.path.join(k, 'l2.bag')) >= MIN_DANE else 'chmura'
 
 
 def stan_wyniku(n, k):
@@ -812,10 +819,10 @@ def stan_l2(n, k):
                     pom.append({x: p.get(x) for x in ('nr', 'nazwa', 'typ', 'pow_m2', 'wys_m', 'kub_m3', 'dl_m', 'szer_m', 'ocena', 'pow_pn_iso_9836')} | {'kond': kd.get('nr')})
         except (ValueError, AttributeError):
             pass
-    return {'stan': st, 'pliki': pliki, 'wysokosci': wys, 'otwory': otw, 'pomieszczenia': pom, 'dostepne': bool(skrypt_l2()), 'petle': petle, 'kontrola': kontrola,
+    return {'stan': st, 'pliki': pliki, 'wysokosci': wys, 'otwory': otw, 'pomieszczenia': pom, 'dostepne': bool(skrypt_l2()) and zrodlo_l2(k) != 'chmura', 'petle': petle, 'kontrola': kontrola,
             'wybor': wybor if (wybor == 'bez' or (petle and '_wynik/l2/petle/rzut.dxf' in petle['pliki'])) else 'bez',
             'liczy_s': round(time.time() - t0) if t0 else None, 'nagranie_s': czas, 'mb': round(rozmiar_l2(k) / 1e6, 1),
-            'zrodlo': 'bin' if rozmiar(os.path.join(k, 'l2.bin')) >= MIN_DANE else 'bag',
+            'zrodlo': zrodlo_l2(k),
             'chmura3d': {'bez': jest('chmura.pcd'), 'petle': os.path.exists(os.path.join(wy, 'petle', 'chmura.pcd'))},
             'plan': {'bez': jest('plan.json'), 'petle': os.path.exists(os.path.join(wy, 'petle', 'plan.json'))},
             'narzedzia': {w_: W_L2N.get((n, w_)) for w_ in ('bez', 'petle') if W_L2N.get((n, w_))}}
@@ -1123,6 +1130,8 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/api/l2_licz':
             if not czujniki(k)['l2']:
                 return self._json({'blad': 'w tej sesji nie ma danych z L2 (l2.bin)'}, 409)
+            if zrodlo_l2(k) == 'chmura':
+                return self._json({'blad': 'to nagranie to zaimportowana gotowa chmura - Point-LIO nie jest potrzebny; uzyj "Przelicz rzut z gotowej chmury"'}, 409)
             if not skrypt_l2():
                 return self._json({'blad': 'Brak programu l2_mapa - uruchom na Dellu: bash ~/GOLlidar/l2/instaluj_l2.sh'}, 409)
             with BLOK:
