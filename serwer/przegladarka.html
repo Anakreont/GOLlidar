@@ -107,7 +107,7 @@ body.bez-listy{grid-template-columns:0 1fr}body.bez-listy aside{display:none}
 .menu .lista small{color:var(--szary);margin-left:auto;font-size:11px}
 .nag .grupy{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .zakl .sep{align-self:center;color:#cbd5e1;font-size:11px;padding:0 4px;white-space:nowrap}
-#wpl2.akt{display:flex}#p2war{max-width:calc(100% - 470px)}#p2war.zw .chip{display:none}#p2war .chip.wb{display:inline-block;font-weight:600}
+#wpl2.akt{display:flex}#p2war{top:auto;bottom:40px;max-width:calc(100% - 24px)}#p2war.zw .chip{display:none}#p2war .chip.wb{display:inline-block;font-weight:600}
 .menu .lista{min-width:340px}#cp2{width:100%;height:100%;display:block;background:#fff;touch-action:none;cursor:grab}
 .p2nar{position:absolute;right:10px;top:10px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:60%;z-index:2}
 .p2nar .btn{padding:5px 10px;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,.1)}.p2nar .btn.akt{background:var(--akcent);color:#fff;border-color:var(--akcent)}
@@ -116,7 +116,7 @@ body.bez-listy{grid-template-columns:0 1fr}body.bez-listy aside{display:none}
 .p2it a,.p2it button{font-size:12px;padding:2px 7px}
 #p2img{position:fixed;inset:0;background:rgba(15,23,42,.85);z-index:90;display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;padding:20px}
 #p2img img{max-width:96vw;max-height:84vh;background:#fff;border-radius:8px}#p2img div{color:#fff}
-@media(max-width:900px){body{grid-template-columns:1fr;grid-template-rows:52px 1fr;height:auto;min-height:100vh}header{grid-column:1}header h1{font-size:15px;white-space:nowrap}#p2war{top:auto;bottom:40px;max-width:calc(100% - 24px)}
+@media(max-width:900px){body{grid-template-columns:1fr;grid-template-rows:52px 1fr;height:auto;min-height:100vh}header{grid-column:1}header h1{font-size:15px;white-space:nowrap}
  aside{position:fixed;top:52px;left:0;bottom:0;width:min(92vw,380px);z-index:60;box-shadow:6px 0 30px rgba(0,0,0,.25);display:none}
  body.lista-otw aside{display:block}body.bez-listy{grid-template-columns:1fr}main{min-height:calc(100vh - 52px)}header input{display:none}.panel{display:none}
  #wpl2.akt{flex-direction:column}#wpl2 .plotno{min-height:62vh}#p2pan{display:block;width:auto;border-left:0;border-top:1px solid var(--linia)}.p2nar{max-width:100%;left:10px;justify-content:flex-start}}
@@ -685,7 +685,7 @@ async function p2Wczytaj(wymus){if(!S){return}const pan=$('p2pan');
  if(j.liczy){clearTimeout(P2.t);P2.t=setTimeout(()=>{if($('wpl2').classList.contains('akt'))p2Wczytaj(1)},5000)}
  p2Warstwy();p2Narzedzia();p2Dopasuj();p2Panel();p2Rys();naglowek()}
 function p2K(){return P2.d?P2.d.kondygnacje[P2.k]:null}
-P2.zw=matchMedia('(max-width:900px)').matches;
+P2.zw=matchMedia('(max-width:1200px)').matches;
 function p2Warstwy(){$('p2war').classList.toggle('zw',P2.zw);$('p2war').innerHTML='<span class="chip wb" onclick="P2.zw=!P2.zw;p2Warstwy()">'+(P2.zw?'Warstwy ▸':'Warstwy ◂')+'</span>'+Object.keys(P2NAZ).map(k=>'<span class="chip'+(P2.war[k]?'':' wyl')+'" onclick="P2.war.'+k+'^=1;p2Warstwy();p2Rys()"><i style="background:'+P2KOL[k]+'"></i>'+P2NAZ[k]+'</span>').join('')}
 function p2Narzedzia(){const d=P2.d;let h='';
  if(d&&d.kondygnacje.length>1)h+='<span class="seg">'+d.kondygnacje.map((k,i)=>'<button class="'+(i==P2.k?'akt':'')+'" onclick="P2.k='+i+';P2.A=null;p2Narzedzia();p2Dopasuj();p2Panel();p2Rys()">kond. '+k.nr+'</button>').join('')+'</span>';
@@ -694,7 +694,10 @@ function p2Narzedzia(){const d=P2.d;let h='';
  $('p2podp').textContent=P2.nar=='przekroj'?(P2.A?'kliknij koniec linii przekroju (Esc – anuluj)':'✂ kliknij początek linii przekroju'):P2.nar=='miara'?(P2.A?'kliknij drugi punkt':'📏 kliknij pierwszy punkt'):'przeciągnij – przesuń · kółko / dwa palce – powiększ · dwuklik – całość · kliknij 📷 lub literę przekroju'}
 function p2Narz(n){P2.nar=n;P2.A=null;if(n!='miara')P2.miara=null;p2Narzedzia();p2Rys()}
 function p2Dopasuj(){const k=p2K(),c=$('cp2'),r=c.getBoundingClientRect();if(!k||!r.width)return;
- const sx=k.max[0]-k.min[0]||1,sy=k.max[1]-k.min[1]||1;P2.w.s=Math.min(r.width/sx,r.height/sy)*0.9;P2.w.x=(k.min[0]+k.max[0])/2;P2.w.y=(k.min[1]+k.max[1])/2}
+ // zakres wg scian (2.-98. percentyl punktow scian), nie wg calej chmury - pojedyncze dalekie odczyty nie zmniejszaja planu
+ let mn=k.min,mx=k.max;const P=(k.sciany_pkt||[]);if(P.length>50){const q=(a,f)=>{const s_=a.slice().sort((x,y)=>x-y);return s_[Math.floor(f*(s_.length-1))]},X=P.map(p=>p[0]),Y=P.map(p=>p[1]);
+  mn=[q(X,.02)-1,q(Y,.02)-1];mx=[q(X,.98)+1,q(Y,.98)+1]}
+ const sx=mx[0]-mn[0]||1,sy=mx[1]-mn[1]||1;P2.w.s=Math.min(r.width/sx,(r.height-60)/sy)*0.92;P2.w.x=(mn[0]+mx[0])/2;P2.w.y=(mn[1]+mx[1])/2+20/P2.w.s}
 const p2E=(x,y)=>{const r=$('cp2').getBoundingClientRect();return[(x-P2.w.x)*P2.w.s+r.width/2,r.height/2-(y-P2.w.y)*P2.w.s]};
 const p2S=(px,py)=>{const r=$('cp2').getBoundingClientRect();return[(px-r.width/2)/P2.w.s+P2.w.x,(r.height/2-py)/P2.w.s+P2.w.y]};
 function p2Rys(){const c=$('cp2');if(!c||!$('wpl2').classList.contains('akt'))return;const r=c.getBoundingClientRect(),dp=devicePixelRatio||1;
@@ -722,7 +725,7 @@ function p2Rys(){const c=$('cp2');if(!c||!$('wpl2').classList.contains('akt'))re
  if(P2.A&&P2.kur){linia([P2.A,P2.kur],P2.nar=='przekroj'?P2KOL.przek:'#ea580c',2,[6,4]);const d=Math.hypot(P2.kur[0]-P2.A[0],P2.kur[1]-P2.A[1]),[x,y]=E(P2.kur[0],P2.kur[1]);g.fillStyle='#111827';g.font='600 13px system-ui';g.textAlign='left';g.fillText(liczba(d)+' m',x+10,y-8)}
  if(P2.miara){const[m0,m1]=P2.miara;linia([m0,m1],'#ea580c',2.5);const[x,y]=E((m0[0]+m1[0])/2,(m0[1]+m1[1])/2);g.fillStyle='#ea580c';g.font='700 14px system-ui';g.textAlign='center';g.fillText(liczba(Math.hypot(m1[0]-m0[0],m1[1]-m0[1]))+' m',x,y-8)}
  // podzialka
- const m=s>60?1:s>15?5:10,[x0,y0]=[16,r.height-34];g.strokeStyle='#111827';g.lineWidth=2;g.beginPath();g.moveTo(x0,y0);g.lineTo(x0+m*s,y0);g.stroke();g.fillStyle='#111827';g.font='11px system-ui';g.textAlign='left';g.fillText(m+' m',x0,y0-5)}
+ const m=s>60?1:s>15?5:10,[x0,y0]=[16,28];g.strokeStyle='#111827';g.lineWidth=2;g.beginPath();g.moveTo(x0,y0);g.lineTo(x0+m*s,y0);g.stroke();g.fillStyle='#111827';g.font='11px system-ui';g.textAlign='left';g.fillText(m+' m',x0,y0-5)}
 function p2Panel(){const d=P2.d,k=p2K();if(!d||!k)return;const pre=p2W()=='petle'?'_wynik/l2/petle/':'_wynik/l2/';
  let h='<h3>Kondygnacja '+k.nr+'</h3><div class="mala">podłoga '+liczba(k.podl)+' m · sufit '+liczba(k.suf)+' m · <b>wysokość w świetle '+liczba(k.wys)+' m</b></div>';
  const P=(d.przekroje||[]);
