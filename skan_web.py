@@ -37,8 +37,9 @@ def czas_ns():
 LOCK = threading.Lock()
 STAN = {
     "nagrywa": False, "nazwa": "", "katalog": "", "t_start": 0.0,
-    "bajty": {"lidar": 0, "lidar2": 0, "imu": 0, "baro": 0, "l2": 0},
+    "bajty": {"lidar": 0, "lidar2": 0, "imu": 0, "baro": 0, "l2": 0, "kamera": 0},
     "ost": {"lidar": 0.0, "lidar2": 0.0, "imu": 0.0, "baro": 0.0, "l2": 0.0},
+    "kam_n": 0, "kam_hz": 0.0, "kam_ost": 0.0, "kam_blad": "",  # kamera (Camera Module 3 Wide pod L2)
     "l2_pkt": 0, "l2_hz": 0.0, "l2_imu_hz": 0.0,  # Unitree L2: pakiety chmury i IMU na sekunde        # czas ostatnich danych
     "podglad": "lidar",        # ktory LiDAR jest poziomy (podglad na stronie, przekroje); drugi jest pionowy
     "foto": 0,                 # liczba zdjec w biezacej sesji
@@ -519,11 +520,14 @@ def start(budynek, kondygnacja):
                     f"baro=0x{ARGS.baro_adres:02x}\nlidar2={ARGS.lidar2 or ''}\nlidar_poziomy={STAN['podglad']}\n"
                     f"imu_pitch0={STAN['pion0'][0]:.2f}\nimu_roll0={STAN['pion0'][1]:.2f}\n"
                     f"imu_tryb={STAN.get('imu_tryb', '')}\n"
+                    + (f"kamera={ARGS.kamera_rozm}@{ARGS.kamera_fps}fps,ostrosc={ARGS.kamera_ostrosc}dpt\n" if ARGS.kamera != "nie" and STAN["kam_ost"] > 0 else "") +
                     f"l2={(ARGS.l2_ip + ':' + str(ARGS.l2_port)) if (ARGS.l2 != 'nie' and (ARGS.l2 == 'tak' or time.time() - STAN['ost']['l2'] < 5)) else ''}\n")
         l2 = ARGS.l2 != "nie" and (ARGS.l2 == "tak" or time.time() - STAN["ost"]["l2"] < 5)
-        for s in ("lidar", "imu", "baro") + (("lidar2",) if ARGS.lidar2 else ()) + (("l2",) if l2 else ()):
+        kam = ARGS.kamera != "nie" and time.time() - STAN["kam_ost"] < 5
+        for s in ("lidar", "imu", "baro") + (("lidar2",) if ARGS.lidar2 else ()) + (("l2",) if l2 else ()) + (("kamera",) if kam else ()):
             PLIKI[s] = open(os.path.join(kat, s + ".bin"), "ab")
             STAN["bajty"][s] = 0
+        STAN["bajty"]["kamera"] = 0; STAN["kam_n"] = 0
         kal = STAN.get("_baro_kal")
         if kal:
             PLIKI["baro"].write(struct.pack("<QH", czas_ns(), len(kal)) + kal)
@@ -1087,6 +1091,79 @@ def watek_l2():
             time.sleep(2)
 
 
+def watek_kamera():
+    """Camera Module 3 Wide (CSI) sztywno pod L2, obiektyw do tylu: klatki JPEG do <sesja>/kamera.bin (jeden plik,
+    synchronizowany z Dellem jak inne .bin; rekordy opisane nizej) - tylko w trakcie nagrywania. Sluzy do kolorowania chmury L2,
+    wiec: stala ostrosc (zmiana ostrosci zmienia ogniskowa = psuje kalibracje kamera-L2), krotka ekspozycja (ruch),
+    czas = poczatek ekspozycji z czujnika (ten sam zegar monotoniczny co reszta, + _ZEGAR0).
+    Wymaga: sudo apt install python3-picamera2 (Raspberry Pi OS Bookworm / Bullseye z libcamera)."""
+    try:
+        from picamera2 import Picamera2
+        from libcamera import controls
+    except ImportError:
+        STAN["kam_blad"] = "brak python3-picamera2"
+        return
+    import io
+    w, h = (int(x) for x in ARGS.kamera_rozm.lower().split("x"))
+    okres = 1.0 / max(0.2, ARGS.kamera_fps)
+    while not KONIEC.is_set():
+        cam = None
+        try:
+            cam = Picamera2()
+            konf = cam.create_still_configuration(main={"size": (w, h)}, buffer_count=2)
+            cam.configure(konf)
+            ust = {"AfMode": controls.AfModeEnum.Manual, "LensPosition": ARGS.kamera_ostrosc,
+                   "AeExposureMode": controls.AeExposureModeEnum.Short,
+                   "FrameDurationLimits": (int(okres * 1e6 / 4), int(okres * 1e6))}
+            try:
+                cam.set_controls(ust)
+            except Exception:                                 # starsze libcamera bez ktoregos sterowania
+                cam.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": ARGS.kamera_ostrosc})
+            cam.start()
+            STAN["kam_blad"] = ""
+            n, t_lic, ost = 0, time.monotonic(), 0.0
+            while not KONIEC.is_set():
+                teraz = time.monotonic()
+                if teraz - ost < okres:
+                    time.sleep(min(0.05, okres - (teraz - ost)))
+                    continue
+                ost = teraz
+                with LOCK:
+                    kat = STAN["katalog"] if STAN["nagrywa"] and not STAN.get("pauza") else ""
+                req = cam.capture_request()
+                try:
+                    md = req.get_metadata()
+                    if kat:
+                        t = int(md.get("SensorTimestamp", time.monotonic_ns())) + _ZEGAR0
+                        buf = io.BytesIO()
+                        req.save("main", buf, format="jpeg")
+                        dane = buf.getvalue()
+                        # rekord kamera.bin: [czas_ns u64][dlugosc u32][ekspozycja_us u32][ostrosc_dpt*1000 u16][JPEG]
+                        nagl = struct.pack("<QIIH", t, len(dane), int(md.get("ExposureTime", 0) or 0),
+                                           int(1000 * float(md.get("LensPosition", 0) or 0)))
+                        with LOCK:
+                            f = PLIKI.get("kamera")
+                            if f is not None:
+                                f.write(nagl); f.write(dane)
+                                STAN["kam_n"] += 1
+                                STAN["bajty"]["kamera"] = STAN["bajty"].get("kamera", 0) + len(dane)
+                        n += 1
+                finally:
+                    req.release()
+                STAN["kam_ost"] = time.time()
+                if teraz - t_lic >= 2.0:
+                    STAN["kam_hz"] = n / (teraz - t_lic); n, t_lic = 0, teraz
+        except Exception as e:                               # brak kamery, zajeta, odlaczona tasma
+            STAN["kam_blad"] = f"{type(e).__name__}: {e}"[:120]
+            time.sleep(5)
+        finally:
+            try:
+                if cam is not None:
+                    cam.stop(); cam.close()
+            except Exception:
+                pass
+
+
 def watek_flush():
     while not KONIEC.is_set():
         time.sleep(5)
@@ -1258,6 +1335,7 @@ h2{font-size:13px;color:#9ab;margin:14px 10px 2px;text-transform:uppercase;lette
 <div class="w"><div class="k"><small>LiDAR</small><b id="lid2">–</b></div>
  <div class="k"><small>Max przechył w sesji</small><b id="prz2">–</b><small id="wys2"></small></div></div>
 <div class="w" id="u2" style="display:none"><div class="k"><small>Unitree L2 (3D)</small><b id="u2s">–</b></div></div>
+<div class="w" id="kam" style="display:none"><div class="k"><small>Kamera (kolor chmury)</small><b id="kams">–</b></div></div>
 <div class="w" id="l2" style="display:none"><div class="k"><small>Drugi LiDAR (pionowy)</small><b id="l2s">–</b></div>
  <button class="sz" onclick="if(confirm('Zamienić role LiDAR-ów? Podgląd w zakładce Skan ma pokazywać ten poziomy.'))cmd('zamien_lidary')">Zamień poziomy / pionowy</button></div>
 <div class="w"><div class="k"><small>Adres strony</small><b id="ip">–</b></div>
@@ -1435,6 +1513,7 @@ function odswiez(){fetch('/stan').then(r=>r.json()).then(s=>{rys(s);przekroj(s);
  $('bpa').textContent=s.pauza?'WZNÓW (plecak założony, stoję w tym samym miejscu)':'PAUZA (zdejmuję plecak / schylam się)';document.body.classList.toggle('nagr',s.nagrywa);$('bpa').style.background=s.pauza?'#1f9d68':'#b70';
  
  kl($('lid'),s.lidar_ok?s.hz.toFixed(1)+' Hz':'BRAK',s.lidar_ok?'ok':'zle');$('lid2').textContent=s.pkt_obrot+' pkt/obrót';$('fn').textContent=s.foto||'';
+ $('kam').style.display=s.kam_wl?'':'none';if(s.kam_wl)kl($('kams'),s.kam_ok?(s.sesja_n?s.kam_hz+' kl./s · '+s.kam_n+' klatek':'gotowa'):('BRAK'+(s.kam_blad?' – '+s.kam_blad:'')),s.kam_ok?'ok':'zle');
  $('u2').style.display=s.u2_wl?'':'none';if(s.u2_wl)kl($('u2s'),s.u2_ok?s.u2_hz+' pak./s · IMU '+s.u2_imu+'/s':'BRAK DANYCH',s.u2_ok&&s.u2_hz>100?'ok':'zle');
  $('l2').style.display=s.lidar2_wl?'':'none';if(s.lidar2_wl)kl($('l2s'),s.lidar2_ok?'działa':'BRAK',s.lidar2_ok?'ok':'zle');
  if(s.pitch===null){kl($('prz'),s.imu_wl?'BRAK':'wył.',s.imu_wl?'zle':'')}else{const m=s.przechyl;kl($('prz'),m.toFixed(1)+'°'+(s.imu_tryb==='shtp'?' żyro':''),m>15?'zle':m>8?'uw':'ok')}
@@ -1510,6 +1589,9 @@ class Handler(BaseHTTPRequestHandler):
                 s["u2_ok"] = teraz - STAN["ost"]["l2"] < 1.5
                 s["u2_wl"] = ARGS.l2 != "nie" and (s["u2_ok"] or STAN["l2_pkt"] > 0 or ARGS.l2 == "tak")
                 s["u2_hz"], s["u2_imu"] = round(STAN["l2_hz"]), round(STAN["l2_imu_hz"])
+                s["kam_wl"] = ARGS.kamera == "tak" or (ARGS.kamera == "auto" and (STAN["kam_ost"] > 0 or STAN["kam_blad"] not in ("", "brak python3-picamera2")))
+                s["kam_ok"] = time.time() - STAN["kam_ost"] < 3
+                s["kam_hz"], s["kam_n"], s["kam_blad"] = round(STAN["kam_hz"], 1), STAN["kam_n"], STAN["kam_blad"]
                 drugi = "lidar2" if STAN["podglad"] == "lidar" else "lidar"
                 s["lidar2_ok"] = teraz - STAN["ost"][drugi] < 1.5
                 s["podglad"] = STAN["podglad"]
@@ -1675,6 +1757,11 @@ def main():
     ap.add_argument("--l2-ip", default="192.168.2.62", help="adres L2 (po zmianie z fabrycznego 192.168.1.62)")
     ap.add_argument("--l2-port", type=int, default=6101)
     ap.add_argument("--l2-host-port", type=int, default=6201, help="port na malinie, na ktory L2 wysyla dane")
+    ap.add_argument("--kamera", default="auto", choices=("auto", "tak", "nie"),
+                    help="Camera Module 3 pod L2 (klatki do kolorowania chmury); auto = gdy jest picamera2 i kamera")
+    ap.add_argument("--kamera-fps", type=float, default=2.0, help="klatek na sekunde (Pi 3B+: do ok. 2)")
+    ap.add_argument("--kamera-rozm", default="1536x864", help="rozdzielczosc klatek (pelne pole widzenia Wide)")
+    ap.add_argument("--kamera-ostrosc", type=float, default=0.5, help="stala ostrosc w dioptriach (0,5 = 2 m, glebia ok. 1 m - nieskonczonosc)")
     ap.add_argument("--katalog", default=os.path.expanduser("~/skany"))
     ap.add_argument("--port", type=int, default=8080)
     ARGS = ap.parse_args()
@@ -1693,6 +1780,8 @@ def main():
         watki.append((watek_baro, (ARGS.baro_adres,)))
     if ARGS.l2 != "nie":
         watki.append((watek_l2, ()))
+    if ARGS.kamera != "nie":
+        watki.append((watek_kamera, ()))
     for f, a in watki:
         threading.Thread(target=f, args=a, daemon=True).start()
     try:
