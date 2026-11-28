@@ -370,15 +370,21 @@ c.addEventListener('touchend',e=>{if(e.touches.length<2)pinch=null});
 c.addEventListener('dblclick',()=>{dopasuj();rys()});addEventListener('resize',()=>{rys();if(R3.ren)R3.rozmiar()});
 
 // ---------------------------------------------------------------- reczna poprawka zlozonych odcinkow (zakladka Kawalki)
-const KE={n:null,P:[],T:[],S:[],S0:[],wyb:-1,w:{x:0,y:0,s:20},miary:[],pA:null,tryb:null,zm:0,rot:0};
+const KE={n:null,P:[],T:[],S:[],S0:[],wyb:-1,sel:new Set(),w:{x:0,y:0,s:20},miary:[],pA:null,tryb:null,zm:0,rot:0};
 const ck=$('ck'),gk=ck.getContext('2d');
-const KE_KOL={start:'#1f2937',zlozony:'#1f2937',grupa_osobno:'#2563eb',niepewny:'#dc2626',reczny:'#16a34a'};
-const KE_NAZ={start:'start',zlozony:'złożony',grupa_osobno:'grupa osobno',niepewny:'niepewny',reczny:'poprawiony ręcznie'};
+const KE_KOL={start:'#1f2937',zlozony:'#1f2937',grupa_osobno:'#2563eb',niepewny:'#dc2626',reczny:'#16a34a',usuniety:'#9ca3af'};
+const KE_NAZ={start:'start',zlozony:'złożony',grupa_osobno:'grupa osobno',niepewny:'niepewny',reczny:'poprawiony ręcznie',usuniety:'usunięty (nie trafi do DXF)'};
+// zaznaczenie wielu odcinkow: Ctrl+klik dodaje/odejmuje; przeciaganie i obrot dzialaja na wszystkie zaznaczone (wspolny srodek)
+const kawSr=()=>{let x=0,y=0,n=0;KE.sel.forEach(i=>{const s=KE.S[i];x+=s.c[0]+s.t[0];y+=s.c[1]+s.t[1];n++});return[x/(n||1),y/(n||1)]};
+function kawObrGr(S0,sr,da){KE.sel.forEach(i=>{const s=KE.S[i],o=S0[i],q=kR(o.c[0]+o.t[0]-sr[0],o.c[1]+o.t[1]-sr[1],da);s.a=o.a+da;s.t=[sr[0]+q[0]-s.c[0],sr[1]+q[1]-s.c[1]]})}
+const kawKop=()=>{const o={};KE.sel.forEach(i=>o[i]=JSON.parse(JSON.stringify(KE.S[i])));return o};
+function kawUsun(){KE.sel.forEach(i=>KE.S[i].stan='usuniety');KE.sel.clear();KE.wyb=-1;kawLicz();kawPanel();kawRys()}
+function kawLicz(){KE.zm=KE.S.filter(x=>x.stan=='reczny'||x.stan=='usuniety').length}
 function kawEd(){if(!S)return;const Z=(S.kawalki||{}).zloz||{};if(Z.stan!='gotowe'){$('pk').innerHTML='<p class="mala">Najpierw „🧲 Złóż kawałki” (przycisk u góry, przy kawałkach).</p>';KE.n=null;kawRys();return}
  if(KE.n==S.n&&KE.P.length){kawPanel();kawRys();return}
  Promise.all([fetch(plik('_wynik/kawalki_zlozone.json')).then(r=>r.json()),fetch(plik('_wynik/kawalki_zlozone_punkty.json')).then(r=>r.ok?r.json():null)]).then(([St,E])=>{
   if(!E){$('pk').innerHTML='<p class="mala">Ten wynik składania jest ze starszej wersji – kliknij „🧲 ↻”, żeby złożyć od nowa.</p>';return}
-  KE.n=S.n;KE.S=St;KE.S0=JSON.parse(JSON.stringify(St));KE.P=E.kawalki.map(e=>new Float32Array(e.P.map(v=>v/100)));KE.T=E.kawalki.map(e=>e.trasa.map(v=>v/100));KE.wyb=-1;KE.zm=0;KE.miary=[];kawCalosc();kawPanel();kawRys()})}
+  KE.n=S.n;KE.S=St;KE.S0=JSON.parse(JSON.stringify(St));KE.P=E.kawalki.map(e=>new Float32Array(e.P.map(v=>v/100)));KE.T=E.kawalki.map(e=>e.trasa.map(v=>v/100));KE.wyb=-1;KE.sel.clear();kawLicz();KE.miary=[];kawCalosc();kawPanel();kawRys()})}
 function kawXY(i,x,y){const s=KE.S[i],ca=Math.cos(s.a),sa=Math.sin(s.a),dx=x-s.c[0],dy=y-s.c[1];return[ca*dx-sa*dy+s.c[0]+s.t[0],sa*dx+ca*dy+s.c[1]+s.t[1]]}
 const kR=(x,y,a)=>{const c_=Math.cos(a),s_=Math.sin(a);return[c_*x-s_*y,s_*x+c_*y]};
 const kP=(x,y)=>{const q=kR(x,y,KE.rot*Math.PI/180);return[KE.w.x+q[0]*KE.w.s,KE.w.y-q[1]*KE.w.s]};
@@ -387,27 +393,27 @@ function kawCalosc(){const r=ck.getBoundingClientRect();let x0=1e9,x1=-1e9,y0=1e
  if(x0>x1||!r.width)return;KE.w.s=Math.min(r.width/(x1-x0+2),r.height/(y1-y0+2));KE.w.x=r.width/2-(x0+x1)/2*KE.w.s;KE.w.y=r.height/2+(y0+y1)/2*KE.w.s}
 function kawRys(){const r=ck.getBoundingClientRect(),d=devicePixelRatio||1;if(!r.width)return;ck.width=r.width*d;ck.height=r.height*d;gk.setTransform(d,0,0,d,0,0);gk.clearRect(0,0,r.width,r.height);
  if(!KE.P.length)return;const st=KE.w.s<15?2:1;
- KE.P.forEach((P,i)=>{if(i==KE.wyb)return;gk.fillStyle=KE_KOL[KE.S[i].stan]||'#1f2937';gk.globalAlpha=KE.wyb>=0?.35:.6;for(let j=0;j<P.length;j+=2*st){const[x,y]=kawXY(i,P[j],P[j+1]),[a,b]=kP(x,y);gk.fillRect(a,b,1.5,1.5)}});
- gk.globalAlpha=1;if(KE.wyb>=0){const i=KE.wyb,P=KE.P[i];gk.fillStyle='#ea580c';for(let j=0;j<P.length;j+=2){const[x,y]=kawXY(i,P[j],P[j+1]),[a,b]=kP(x,y);gk.fillRect(a-.5,b-.5,2.4,2.4)}
-  gk.strokeStyle='rgba(234,88,12,.6)';gk.setLineDash([4,3]);gk.beginPath();KE.T[i].length&&KE.T[i].reduce((_,v,j,T)=>{if(j%2)return;const[x,y]=kawXY(i,T[j],T[j+1]),[a,b]=kP(x,y);j?gk.lineTo(a,b):gk.moveTo(a,b)},0);gk.stroke();gk.setLineDash([])}
- if(KE.w.s>8)KE.P.forEach((P,i)=>{const s=KE.S[i],[a,b]=kP(s.c[0]+s.t[0],s.c[1]+s.t[1]);gk.font=(i==KE.wyb?'bold 13px':'11px')+' system-ui';gk.fillStyle=i==KE.wyb?'#ea580c':(KE_KOL[s.stan]||'#1f2937');gk.fillText('K'+s.nr,a,b)});
+ KE.P.forEach((P,i)=>{if(KE.sel.has(i))return;gk.fillStyle=KE_KOL[KE.S[i].stan]||'#1f2937';gk.globalAlpha=KE.S[i].stan=='usuniety'?.12:KE.wyb>=0?.35:.6;for(let j=0;j<P.length;j+=2*st){const[x,y]=kawXY(i,P[j],P[j+1]),[a,b]=kP(x,y);gk.fillRect(a,b,1.5,1.5)}});
+ gk.globalAlpha=1;KE.sel.forEach(i=>{const P=KE.P[i];gk.fillStyle=i==KE.wyb?'#ea580c':'#f59e0b';for(let j=0;j<P.length;j+=2){const[x,y]=kawXY(i,P[j],P[j+1]),[a,b]=kP(x,y);gk.fillRect(a-.5,b-.5,2.4,2.4)}
+  gk.strokeStyle='rgba(234,88,12,.6)';gk.setLineDash([4,3]);gk.beginPath();KE.T[i].length&&KE.T[i].reduce((_,v,j,T)=>{if(j%2)return;const[x,y]=kawXY(i,T[j],T[j+1]),[a,b]=kP(x,y);j?gk.lineTo(a,b):gk.moveTo(a,b)},0);gk.stroke();gk.setLineDash([])});
+ if(KE.w.s>8)KE.P.forEach((P,i)=>{const s=KE.S[i],[a,b]=kP(s.c[0]+s.t[0],s.c[1]+s.t[1]);gk.font=(KE.sel.has(i)?'bold 13px':'11px')+' system-ui';gk.fillStyle=KE.sel.has(i)?'#ea580c':(KE_KOL[s.stan]||'#1f2937');gk.fillText('K'+s.nr,a,b)});
  KE.miary.forEach(m=>wymiar(gk,kP(m.a[0],m.a[1]),kP(m.b[0],m.b[1]),Math.hypot(m.b[0]-m.a[0],m.b[1]-m.a[1]).toFixed(3).replace('.',',')+' m','#2563eb'));
  if(KE.pA){const[a,b]=kP(KE.pA[0],KE.pA[1]);gk.fillStyle='#2563eb';gk.beginPath();gk.arc(a,b,5,0,7);gk.fill()}
  const Lm=KE.w.s>=120?.5:KE.w.s>=50?1:KE.w.s>=20?2:5;gk.fillStyle='#111827';gk.fillRect(16,r.height-40,Lm*KE.w.s,4);gk.font='12px system-ui';gk.fillText(Lm+' m',16,r.height-46)}
 function kawPanel(){const i=KE.wyb,s=i>=0?KE.S[i]:null,ile={};KE.S.forEach(x=>ile[x.stan]=(ile[x.stan]||0)+1);
  $('pk').innerHTML='<h3>Odcinki</h3><p class="mala">'+Object.keys(ile).map(k=>'<b style="color:'+(KE_KOL[k]||'#111')+'">■</b> '+(KE_NAZ[k]||k)+': '+ile[k]).join('<br>')+'</p>'+
- (s?'<h3>Wybrany: K'+s.nr+' ('+(KE_NAZ[s.stan]||s.stan)+')</h3><div class="rzad"><button class="btn" onclick="kawObr(-90)">⟲90°</button><button class="btn" onclick="kawObr(-5)">⟲5°</button><button class="btn" onclick="kawObr(-1)">⟲1°</button><button class="btn" onclick="kawObr(1)">⟳1°</button><button class="btn" onclick="kawObr(5)">⟳5°</button><button class="btn" onclick="kawObr(90)">⟳90°</button></div>'+
-  '<div class="rzad"><button class="btn gl" onclick="kawDociagnij()" title="Dopasuj dokładnie do ścian sąsiednich odcinków (ustaw najpierw na oko, z dokładnością do ok. 30 cm i kilku stopni)">🧲 Dociągnij</button><button class="btn" onclick="kawCofnij()">↶ jak było</button><button class="btn" onclick="KE.wyb=-1;kawPanel();kawRys()">odznacz</button></div><p class="mala" id="kawInfo"></p>'
-  :'<p class="mala">Kliknij odcinek na rysunku (najlepiej czerwony – niepewny), przeciągnij go na oko na właściwe miejsce, obróć przyciskami albo Shift+przeciąganiem, potem „🧲 Dociągnij”.</p>')+
+ (s?'<h3>'+(KE.sel.size>1?'Wybrane ('+KE.sel.size+'): '+[...KE.sel].map(j=>'K'+KE.S[j].nr).join(', '):'Wybrany: K'+s.nr+' ('+(KE_NAZ[s.stan]||s.stan)+')')+'</h3><div class="rzad"><button class="btn" onclick="kawObr(-90)">⟲90°</button><button class="btn" onclick="kawObr(-5)">⟲5°</button><button class="btn" onclick="kawObr(-1)">⟲1°</button><button class="btn" onclick="kawObr(1)">⟳1°</button><button class="btn" onclick="kawObr(5)">⟳5°</button><button class="btn" onclick="kawObr(90)">⟳90°</button></div>'+
+  '<div class="rzad"><button class="btn gl" onclick="kawDociagnij()" title="Dopasuj dokładnie do ścian sąsiednich odcinków (ustaw najpierw na oko, z dokładnością do ok. 30 cm i kilku stopni)">🧲 Dociągnij</button><button class="btn" onclick="kawCofnij()">↶ jak było</button><button class="btn" onclick="KE.wyb=-1;KE.sel.clear();kawPanel();kawRys()">odznacz</button></div><div class="rzad"><button class="btn" onclick="kawUsun()" title="Odcinek znika z rysunku i nie trafi do DXF; można przywrócić: kliknij wyszarzony odcinek i „jak było”">🗑 Usuń z rysunku</button></div><p class="mala" id="kawInfo"></p>'
+  :'<p class="mala">Kliknij odcinek na rysunku (najlepiej czerwony – niepewny), przeciągnij go na oko na właściwe miejsce, obróć przyciskami albo Shift+przeciąganiem, potem „🧲 Dociągnij”. <b>Ctrl+klik</b> zaznacza kilka odcinków naraz – przesuwają się i obracają razem. Zbędny odcinek: „🗑 Usuń z rysunku”.</p>')+
  '<h3>Obrót całości</h3><div class="rzad"><button class="btn" onclick="kawObrCal(90)">⟲90°</button><button class="btn" onclick="kawObrCal(1)">⟲1°</button><button class="btn" onclick="kawObrCal(-1)">⟳1°</button><button class="btn" onclick="kawObrCal(-90)">⟳90°</button></div>'+
  '<div class="rzad"><input type="text" id="kob" style="width:80px" value="'+(((KE.rot%360)+360)%360).toFixed(1)+'" onchange="KE.rot=+String(this.value).replace(\',\',\'.\')||0;kawRys()"> ° <span class="mala">też Shift+przeciągnij tło; zapisuje się razem z poprawkami</span></div>'+
  '<h3>Zmierz</h3><div class="rzad"><button class="btn'+(KE.tryb=='miara'?' gl':'')+'" onclick="kawMiara()">📐 '+(KE.tryb=='miara'?(KE.pA?'kliknij drugi punkt… (Esc – przerwij)':'kliknij pierwszy punkt… (Esc – przerwij)'):'Zmierz odległość')+'</button>'+(KE.miary.length?'<button class="btn" onclick="KE.miary=[];kawPanel();kawRys()">✕ wyczyść</button>':'')+'</div>'+
  '<h3>Zapis</h3><div class="rzad"><button class="btn gl" onclick="kawZapisz()" '+(KE.zm||KE.rot%360?'':'disabled')+'>💾 Zapisz poprawki ('+KE.zm+(KE.rot%360?' + obrót':'')+')</button></div><p class="mala">Zapis tworzy na nowo „⬇ złożone” (DXF) i podgląd przed/po. Poprawione odcinki mają warstwę KAWALEK_NN_reczny.</p>'}
 function kawObrCal(d){const r=ck.getBoundingClientRect(),cx=r.width/2,cy=r.height/2,w0=kS(cx,cy);KE.rot+=d;const q=kR(w0[0],w0[1],KE.rot*Math.PI/180);KE.w.x=cx-q[0]*KE.w.s;KE.w.y=cy+q[1]*KE.w.s;kawPanel();kawRys()}
 function kawMiara(){KE.tryb=KE.tryb=='miara'?null:'miara';KE.pA=null;kawPanel();kawRys()}
-function kawObr(d){const s=KE.S[KE.wyb];s.a+=d*Math.PI/180;kawZmiana();kawRys()}
-function kawZmiana(){const s=KE.S[KE.wyb];if(s.stan!='reczny'){s.stan='reczny';}KE.zm=KE.S.filter((x,i)=>x.stan=='reczny').length;kawPanel()}
-function kawCofnij(){const i=KE.wyb;KE.S[i]=JSON.parse(JSON.stringify(KE.S0[i]));KE.zm=KE.S.filter(x=>x.stan=='reczny').length;kawPanel();kawRys()}
+function kawObr(d){kawObrGr(kawKop(),kawSr(),d*Math.PI/180);kawZmiana();kawRys()}
+function kawZmiana(){KE.sel.forEach(i=>KE.S[i].stan='reczny');kawLicz();kawPanel()}
+function kawCofnij(){KE.sel.forEach(i=>{KE.S[i]=JSON.parse(JSON.stringify(KE.S0[i]));if(KE.S[i].stan=='usuniety')KE.S[i].stan='reczny'});kawLicz();kawPanel();kawRys()}
 function kawDociagnij(){const i=KE.wyb;$('kawInfo').textContent='dociągam…';
  fetch('api/kawalki_dociagnij?n='+S.n+'&i='+i,{method:'POST',body:JSON.stringify(KE.S)}).then(r=>r.json()).then(j=>{if(j.blad){$('kawInfo').textContent=j.blad;return}
   const s=KE.S[i],a0=s.a,t0=s.t.slice();s.a=j.a;s.t=j.t;kawZmiana();kawRys();
@@ -418,12 +424,12 @@ function kawZapisz(){const A=KE.rot*Math.PI/180;if(A%(2*Math.PI)){KE.S.forEach(s
 function kawTraf(e){const r=ck.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;let best=-1,bd=10,pt=null;
  KE.P.forEach((P,i)=>{for(let j=0;j<P.length;j+=2){const[x,y]=kawXY(i,P[j],P[j+1]),[a,b]=kP(x,y),d=Math.hypot(a-mx,b-my);if(d<bd||(d<bd+3&&i==KE.wyb&&best!=i)){bd=d;best=i;pt=[x,y]}}});return{i:best,pt,sw:kS(mx,my)}}
 let kd=null;
-ck.addEventListener('pointerdown',e=>{const h=KE.wyb>=0&&KE.tryb!='miara'?kawTraf(e):{i:-1};kd={x:e.clientX,y:e.clientY,ox:KE.w.x,oy:KE.w.y,r0:KE.rot,mv:0,kaw:h.i==KE.wyb&&KE.wyb>=0,rot:e.shiftKey,s0:KE.wyb>=0?JSON.parse(JSON.stringify(KE.S[KE.wyb])):null};ck.setPointerCapture(e.pointerId)});
+ck.addEventListener('pointerdown',e=>{const h=KE.wyb>=0&&KE.tryb!='miara'?kawTraf(e):{i:-1};kd={x:e.clientX,y:e.clientY,ox:KE.w.x,oy:KE.w.y,r0:KE.rot,mv:0,kaw:KE.sel.has(h.i)&&!(e.ctrlKey||e.metaKey),rot:e.shiftKey,s0:kawKop(),sr:kawSr(),zm:0};ck.setPointerCapture(e.pointerId)});
 ck.addEventListener('pointermove',e=>{if(!kd)return;const dx=e.clientX-kd.x,dy=e.clientY-kd.y;kd.mv=Math.max(kd.mv,Math.abs(dx)+Math.abs(dy));if(kd.mv<4)return;
- if(kd.kaw){const s=KE.S[KE.wyb];if(kd.rot){s.a=kd.s0.a-dx*0.004}else{const d_=kR(dx/KE.w.s,-dy/KE.w.s,-KE.rot*Math.PI/180);s.t=[kd.s0.t[0]+d_[0],kd.s0.t[1]+d_[1]]}if(s.stan!='reczny')kawZmiana()}else if(kd.rot){KE.rot=kd.r0-dx*0.2;const o=$('kob');if(o)o.value=(((KE.rot%360)+360)%360).toFixed(1)}else{KE.w.x=kd.ox+dx;KE.w.y=kd.oy+dy}kawRys()});
+ if(kd.kaw){if(kd.rot){kawObrGr(kd.s0,kd.sr,-dx*0.004)}else{const d_=kR(dx/KE.w.s,-dy/KE.w.s,-KE.rot*Math.PI/180);KE.sel.forEach(i=>{KE.S[i].t=[kd.s0[i].t[0]+d_[0],kd.s0[i].t[1]+d_[1]]})}if(!kd.zm){kd.zm=1;kawZmiana()}}else if(kd.rot){KE.rot=kd.r0-dx*0.2;const o=$('kob');if(o)o.value=(((KE.rot%360)+360)%360).toFixed(1)}else{KE.w.x=kd.ox+dx;KE.w.y=kd.oy+dy}kawRys()});
 ck.addEventListener('pointerup',e=>{if(kd&&kd.mv<4){const h=kawTraf(e);
  if(KE.tryb=='miara'){const q=h.pt||h.sw;if(!KE.pA){KE.pA=q}else{KE.miary.push({a:KE.pA,b:q});KE.pA=null;KE.tryb=null}kawPanel();kawRys()}
- else{KE.wyb=h.i;kawPanel();kawRys()}}kd=null});
+ else{if(e.ctrlKey||e.metaKey){if(h.i>=0){if(KE.sel.has(h.i)){KE.sel.delete(h.i);KE.wyb=KE.sel.size?[...KE.sel].pop():-1}else{KE.sel.add(h.i);KE.wyb=h.i}}}else{KE.sel.clear();if(h.i>=0)KE.sel.add(h.i);KE.wyb=h.i}kawPanel();kawRys()}}kd=null});
 ck.addEventListener('wheel',e=>{e.preventDefault();const r=ck.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,f=e.deltaY<0?1.2:1/1.2;KE.w.x=mx-(mx-KE.w.x)*f;KE.w.y=my-(my-KE.w.y)*f;KE.w.s*=f;kawRys()},{passive:false});
 addEventListener('keydown',e=>{if(e.key!='Escape')return;if(KE.tryb){KE.tryb=null;KE.pA=null;kawPanel();kawRys()}if(tryb){tryb=null;pA=null;if(M)panel();rys();c.style.cursor='grab'}});
 ck.addEventListener('dblclick',()=>{kawCalosc();kawRys()});addEventListener('resize',()=>{if($('wkaw').classList.contains('akt'))kawRys()});

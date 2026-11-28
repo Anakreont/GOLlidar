@@ -279,6 +279,8 @@ def zapisz(kat, K, S, nazwa='kawalki_zlozone', dziel_m=None):
     d = ezdxf.new('R2010'); d.header['$INSUNITS'] = 6; msp = d.modelspace()
     kol = {'start': 5, 'zlozony': 3, 'niepewny': 30, 'grupa_osobno': 6, 'reczny': 4}
     for k, s in zip(K, S):
+        if s['stan'] == 'usuniety':               # usuniety w edytorze: nie trafia do DXF (w json zostaje - mozna przywrocic)
+            continue
         war = f"KAWALEK_{k['nr']:02d}_{s['stan']}"
         d.layers.add(war, color=kol[s['stan']])
         f = lambda X: przeksztalc(X, np.array(s['c']), s['a'], np.array(s['t']))
@@ -305,6 +307,8 @@ def zapisz(kat, K, S, nazwa='kawalki_zlozone', dziel_m=None):
         cm = plt.get_cmap('tab20')
         for k, s in zip(K, S):
             for x, (A, T) in enumerate([(0.0, np.zeros(2)), (s['a'], np.array(s['t']))]):
+                if x == 1 and s['stan'] == 'usuniety':
+                    continue
                 X = przeksztalc(k['P'][::3], np.array(s['c']), A, T)
                 ax[x].scatter(*X.T, s=0.2, color=cm(k['nr'] % 20))
                 ax[x].text(*X.mean(0), f"K{k['nr']}" + ('' if x == 0 or s['stan'] != 'niepewny' else '?'), fontsize=7)
@@ -329,7 +333,8 @@ def dociagnij(kat, i, S):
     """Recznie przesuniety odcinek i: ICP do pozostalych (bez 'niepewny', chyba ze poprawione recznie)."""
     K, _ = _z_edytora(kat)
     poz = lambda j: przeksztalc(K[j]['P'], np.array(S[j]['c']), S[j]['a'], np.array(S[j]['t']))
-    inne = [j for j in range(len(K)) if j != i and S[j]['stan'] != 'niepewny'] or [j for j in range(len(K)) if j != i]
+    inne = ([j for j in range(len(K)) if j != i and S[j]['stan'] not in ('niepewny', 'usuniety')]
+            or [j for j in range(len(K)) if j != i and S[j]['stan'] != 'usuniety'] or [j for j in range(len(K)) if j != i])
     ref = Odniesienie(np.vstack([poz(j) for j in inne]))
     Pc = poz(i); c = np.array(S[i]['c']) + np.array(S[i]['t'])
     a, t, zg, wsp = icp(Pc, ref, c, 0.0, np.zeros(2), iters=12)
