@@ -622,7 +622,8 @@ async function l3Wczytaj(){await l3Init();const T=L3.T,inf=$('l3info');
  L3.zlo=zz[Math.floor(n*.01)]||0;L3.zhi=zz[Math.floor(n*.99)]||1;L3.zmax=zz[n-1]||1;L3.ext=[mx[0]/100,mx[1]/100,mx[2]/100];
  l3Czysc();const g=new T.BufferGeometry();g.setAttribute('position',new T.BufferAttribute(P,3));g.setAttribute('color',new T.BufferAttribute(new Float32Array(n*3),3));
  L3.pkt=new T.Points(g,L3.mat);L3.sc.add(L3.pkt);L3.klucz=klucz;L3.n=n;
- $('l3gora').value=1000;$('l3dol').value=0;l3Kolory();l3Ciecie();l3Pkt();L3.rozm();l3Kamera('skos');await l3Trasa();
+ const sf=parseFloat((S.l2.wysokosci||{}).sufit_m);   // domyslnie ciecie 25 cm pod sufitem - widac wnetrze z gory
+ $('l3gora').value=isFinite(sf)&&sf-o[2]-0.25>0.5&&sf-o[2]-0.25<L3.zmax?Math.round((sf-o[2]-0.25)/L3.zmax*1000):1000;$('l3dol').value=0;l3Kolory();l3Ciecie();l3Pkt();L3.rozm();l3Kamera('skos');await l3Trasa();
  const wys=(S.l2.wysokosci||{});inf.innerHTML=n.toLocaleString('pl')+' pkt (podgląd, siatka 3 cm) · '+liczba(L3.ext[0],1)+' × '+liczba(L3.ext[1],1)+' × '+liczba(L3.ext[2],1)+' m'+
   (Object.keys(wys).length?' · '+esc(Object.entries(wys).slice(0,3).map(([a,b])=>a+' '+b).join(' · ')):'')+' · lewy – obrót, prawy/dwa palce – przesuń, kółko – zoom';}
 function l3Czysc(){if(L3.pkt){L3.sc.remove(L3.pkt);L3.pkt.geometry.dispose();L3.pkt=null}if(L3.tr){L3.sc.remove(L3.tr);L3.tr.geometry.dispose();L3.tr=null}L3.klucz=null}
